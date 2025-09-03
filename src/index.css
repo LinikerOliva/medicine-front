@@ -1,0 +1,394 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variáveis CSS para cores médicas e sistema de design */
+@layer base {
+  :root {
+    /* Cores base do sistema - LIGHT */
+    --background: 0 0% 100%; /* #FFFFFF */
+    --foreground: 220.9 39.3% 11%; /* #111827 */
+    --card: 220 14.3% 95.9%; /* #F3F4F6 */
+    --card-foreground: 220.9 39.3% 11%; /* #111827 */
+    --popover: 220 14.3% 95.9%; /* #F3F4F6 */
+    --popover-foreground: 220.9 39.3% 11%; /* #111827 */
+
+    /* Primária (cor base, para componentes sólidos) */
+    --primary: 217 91% 60%; /* #3B82F6 */
+    --primary-foreground: 210 20% 98%; /* quase branco */
+
+    /* Neutros complementares */
+    --secondary: 220 14.3% 95.9%; /* #F3F4F6 */
+    --secondary-foreground: 220.9 39.3% 11%; /* #111827 */
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%; /* #6B7280 */
+
+    /* Feedback */
+    --destructive: 0 85% 60%; /* #EF4444 */
+    --destructive-foreground: 210 20% 98%;
+    --success: 158 64% 52%; /* #34D399 */
+    --success-foreground: 210 20% 98%;
+    --warning: 38 92% 50%; /* #F59E0B */
+    --warning-foreground: 210 20% 98%;
+    --info: 217 91% 60%; /* #3B82F6 */
+    --info-foreground: 210 20% 98%;
+
+    --border: 220 13% 91%; /* #E5E7EB */
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
+
+    /* Títulos com alto contraste no claro */
+    --heading-foreground: 220.9 39.3% 11%;
+
+    /* Brand gradient tokens (parametriza gradiente principal) */
+    --brand-blue: 217 91% 60%; /* #3B82F6 */
+    --brand-green: 160 84% 39%; /* #10B981 */
+
+    /* Cores médicas temáticas (mantidas) */
+    --medical-blue: 210 88% 58%;
+    --medical-green: 142 71% 45%;
+    --medical-purple: 262 83% 58%;
+    --medical-orange: 25 95% 53%;
+    --medical-red: 0 84% 60%;
+    --medical-teal: 173 80% 40%;
+    --medical-gray: 215 28% 17%;
+
+    /* Cores específicas por perfil */
+    --doctor-primary: 210 88% 58%;
+    --doctor-secondary: 210 88% 95%;
+    --doctor-accent: 210 88% 85%;
+    --patient-primary: 142 71% 45%;
+    --patient-secondary: 142 71% 95%;
+    --patient-accent: 142 71% 85%;
+
+    /* Sidebar personalizada - TEMA CLARO (azulado suave) */
+    --sidebar-background: 210 33% 99%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-border: 213 27% 90%;
+    --sidebar-accent: 210 40% 97%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    /* Base - DARK (tons fechados) */
+    --background: 220.9 39.3% 11%; /* #111827 */
+    --foreground: 210 20% 98%; /* #F9FAFB */
+    --heading-foreground: 210 20% 98%;
+
+    /* Primária */
+    --primary: 221 83% 53%; /* #2563EB */
+    --primary-foreground: 210 20% 98%;
+
+    /* Superfícies */
+    --card: 215 28% 17%; /* #1F2937 */
+    --card-foreground: 210 20% 96%;
+    --popover: 215 28% 17%; /* #1F2937 */
+    --popover-foreground: 210 20% 96%;
+
+    /* Neutros e acentos */
+    --secondary: 215 28% 17%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 220 14% 18%;
+    --muted-foreground: 220 15% 80%; /* #D1D5DB aproximado */
+    --accent: 222 20% 20%;
+    --accent-foreground: 210 20% 96%;
+
+    /* Feedback e contornos */
+    --destructive: 0 90% 71%; /* #F87171 */
+    --destructive-foreground: 210 20% 98%;
+    --success: 160 84% 39%; /* #10B981 */
+    --success-foreground: 210 20% 98%;
+    --warning: 45 96% 58%; /* #FBBF24 */
+    --warning-foreground: 210 20% 98%;
+    --info: 221 83% 53%; /* #2563EB */
+    --info-foreground: 210 20% 98%;
+
+    --border: 220 13% 35%; /* #374151 aprox */
+    --input: 220 13% 35%;
+    --ring: 221 83% 53%;
+
+    /* Brand gradient tokens no dark */
+    --brand-blue: 221 83% 53%; /* #2563EB */
+    --brand-green: 162 93% 30%; /* #059669 */
+
+    /* Sidebar (alinhada com o resto do dark) */
+    --sidebar-background: 222 23% 12%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-border: 220 13% 22%;
+    --sidebar-accent: 222 20% 18%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-ring: 221 83% 53%;
+  }
+}
+
+/* Componentes personalizados */
+@layer components {
+  .layout-container {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .card-elevated {
+    border: 1px solid hsla(var(--border) / 0.6);
+    background-color: hsl(var(--card));
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .card-medical {
+    @apply border border-medical-blue/20 bg-gradient-to-br from-white via-blue-50/30 to-blue-100/20;
+    border-color: hsl(var(--medical-blue) / 0.2);
+    box-shadow: 0 4px 20px -4px hsl(var(--medical-blue) / 0.15);
+  }
+
+  .sidebar-mobile {
+    @apply fixed inset-0 z-50 lg:hidden;
+  }
+}
+
+/* Classes de utilidade para temas por role */
+@layer utilities {
+  /* Gradientes de fundo baseados no papel */
+  .bg-doctor-gradient {
+    background: linear-gradient(135deg, hsl(var(--doctor-secondary)), hsl(var(--doctor-accent)));
+  }
+  
+  .bg-patient-gradient {
+    background: linear-gradient(135deg, hsl(var(--patient-secondary)), hsl(var(--patient-accent)));
+  }
+
+  /* Backgrounds suaves */
+  .bg-doctor-soft {
+    background-color: hsl(var(--doctor-secondary));
+  }
+  
+  .bg-patient-soft {
+    background-color: hsl(var(--patient-secondary));
+  }
+
+  /* Bordas temáticas */
+  .border-doctor {
+    border-color: hsl(var(--doctor-primary) / 0.2);
+  }
+  
+  .border-patient {
+    border-color: hsl(var(--patient-primary) / 0.2);
+  }
+
+  /* Novos utilitários para a aplicação */
+  .bg-app-soft {
+    background: linear-gradient(135deg, hsl(210 80% 99%) 0%, hsl(210 60% 97%) 100%);
+  }
+  
+  /* Versão dark da bg-app-soft */
+  .dark .bg-app-soft {
+    background: linear-gradient(135deg, hsl(220 20% 15%) 0%, hsl(220 20% 12%) 100%);
+  }
+
+  /* Gradiente principal atualizado para tokens brand */
+  .bg-app-gradient {
+    background: linear-gradient(135deg, hsl(var(--brand-blue)) 0%, hsl(var(--brand-green)) 100%);
+  }
+
+  .text-app-gradient {
+    background: linear-gradient(135deg, hsl(var(--brand-blue)) 0%, hsl(var(--brand-green)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .shadow-app {
+    box-shadow: 0 4px 20px -2px hsl(var(--brand-blue) / 0.15), 0 2px 10px -2px hsl(var(--brand-blue) / 0.1);
+  }
+
+  .shadow-app-lg {
+    box-shadow: 0 10px 40px -4px hsl(var(--brand-blue) / 0.2), 0 4px 20px -2px hsl(var(--brand-blue) / 0.15);
+  }
+}
+
+/* Sombras médicas */
+.shadow-medical {
+  box-shadow: 
+    0 4px 20px -2px hsl(var(--medical-blue) / 0.15),
+    0 2px 10px -2px hsl(var(--medical-blue) / 0.1);
+}
+
+.shadow-patient {
+  box-shadow: 
+    0 4px 20px -2px hsl(var(--medical-green) / 0.15),
+    0 2px 10px -2px hsl(var(--medical-green) / 0.1);
+}
+
+/* Base styles */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Transições suaves globais */
+* {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Animações médicas */
+@keyframes pulse-medical {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-medical {
+  animation: pulse-medical 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@layer base {
+  /* Títulos com alto contraste */
+  h1, h2, h3, h4, h5, h6,
+  .section-title, .card-title, .widget-title, .panel-title {
+    color: hsl(var(--heading-foreground));
+  }
+  h1, h2, h3 {
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Texto secundário mais legível e bordas visíveis */
+  small, .text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+  }
+  hr {
+    border-color: hsl(var(--border));
+  }
+}
+
+/* Navbar e Sidebar: variáveis compartilhadas para os gradientes */
+:root {
+  /* Light (verde mais claro) */
+  --app-light-green-from: 142 56% 94%;
+  --app-light-green-to: 142 45% 88%;
+  --app-green-border-light: 142 28% 86%;
+
+  /* Dark (verde escuro) – já usado anteriormente */
+  --app-dark-green-from: 142 25% 10%;
+  --app-dark-green-to: 142 22% 18%;
+  --app-green-border-dark: 142 22% 22%;
+}
+
+/* Classe utilitária: aplica o gradiente verde claro no LIGHT (navbar) */
+.app-light-green-gradient {
+  background-color: hsl(var(--app-light-green-to)); /* fallback */
+  background-image: linear-gradient(
+    to bottom,
+    hsl(var(--app-light-green-from) / 0.95),
+    hsl(var(--app-light-green-to) / 0.90)
+  );
+  border-color: hsl(var(--app-green-border-light));
+}
+
+/* Classe utilitária: aplica o mesmo gradiente verde escuro no DARK (navbar) */
+.dark .app-dark-green-gradient {
+  background-color: hsl(var(--app-dark-green-to)); /* fallback */
+  background-image: linear-gradient(
+    to bottom,
+    hsl(var(--app-dark-green-from) / 0.95),
+    hsl(var(--app-dark-green-to) / 0.90)
+  );
+  border-color: hsl(var(--app-green-border-dark));
+}
+
+/* Sidebar (LIGHT): usa o mesmo gradiente claro da navbar */
+.sidebar-green {
+  /* Mantém as variáveis já usadas pela sidebar (seus componentes) */
+  --sidebar-background: 142 45% 97%;
+  --sidebar-border: var(--app-green-border-light);
+  --sidebar-accent: 142 55% 92%;
+  --sidebar-accent-foreground: 142 61% 16%;
+  --sidebar-ring: 142 66% 46%;
+
+  background-color: hsl(var(--app-light-green-to)); /* fallback */
+  background-image: linear-gradient(
+    to bottom,
+    hsl(var(--app-light-green-from) / 0.95),
+    hsl(var(--app-light-green-to) / 0.90)
+  );
+  border-color: hsl(var(--app-green-border-light));
+}
+
+/* Sidebar (DARK): mantém o mesmo gradiente escuro da navbar */
+.dark .sidebar-green {
+  --sidebar-background: 142 25% 12%;
+  --sidebar-border: var(--app-green-border-dark);
+  --sidebar-accent: 142 30% 18%;
+  --sidebar-accent-foreground: 142 70% 86%;
+  --sidebar-ring: 142 62% 50%;
+
+  background-color: hsl(var(--app-dark-green-to)); /* fallback */
+  background-image: linear-gradient(
+    to bottom,
+    hsl(var(--app-dark-green-from) / 0.95),
+    hsl(var(--app-dark-green-to) / 0.90)
+  );
+  border-color: hsl(var(--app-green-border-dark));
+}
+
+/* CTA Button - estilo unificado (claro/escuro) */
+.app-cta-btn {
+  @apply relative overflow-hidden rounded-xl border shadow-sm transition-all duration-300;
+  @apply inline-flex items-center gap-2;
+  @apply ring-1 ring-transparent hover:ring-green-400/40;
+
+  /* Claro */
+  @apply bg-white text-green-800 border-green-300/60;
+  @apply hover:shadow-lg hover:-translate-y-0.5;
+
+  /* Escuro */
+  @apply dark:bg-green-950/20 dark:text-green-200 dark:border-green-800/60;
+}
+
+.app-cta-btn .icon-pill {
+  @apply inline-flex h-6 w-6 items-center justify-center rounded-md;
+  @apply bg-green-600/10 text-green-700;
+  @apply dark:bg-green-400/10 dark:text-green-300;
+}
+
+.app-cta-btn:focus-visible {
+  @apply outline-none ring-2 ring-green-400/60;
+}
+
+/* Quick Actions - estilos reutilizáveis */
+.app-quick-action {
+  @apply flex items-center gap-4 p-4 rounded-xl border bg-white/70 dark:bg-white/5 backdrop-blur-sm;
+  @apply shadow-sm transition-all duration-300 hover:shadow-md hover:-translate-y-0.5;
+  /* NÃO usar 'group' aqui */
+  @apply cursor-pointer hover:border-green-300/60 dark:hover:border-green-700/60;
+}
+
+.app-quick-icon {
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-full;
+  @apply ring-1 ring-black/5 dark:ring-white/10 text-white;
+}
+
+/* Variantes de cor do ícone (gradiente suave) */
+.app-quick-icon.primary { @apply bg-gradient-to-b from-emerald-500 to-emerald-600 dark:from-emerald-400 dark:to-emerald-500; }
+.app-quick-icon.success { @apply bg-gradient-to-b from-green-500 to-green-600 dark:from-green-400 dark:to-green-500; }
+.app-quick-icon.info    { @apply bg-gradient-to-b from-blue-500 to-blue-600   dark:from-blue-400   dark:to-blue-500; }
+/* nova variante para status/alertas */
+.app-quick-icon.warning { @apply bg-gradient-to-b from-amber-500 to-amber-600 dark:from-amber-400 dark:to-amber-500; }
+.app-quick-title { @apply font-semibold text-foreground transition-colors group-hover:text-green-700 dark:group-hover:text-green-300; }
+.app-quick-desc  { @apply text-sm text-muted-foreground; }
+
+.app-quick-chevron {
+  @apply ml-auto h-8 w-8 rounded-full bg-black/5 dark:bg-white/5 flex items-center justify-center;
+  @apply text-muted-foreground transition-all;
+  @apply group-hover:bg-green-600/10 group-hover:text-green-700 dark:group-hover:text-green-300 group-hover:translate-x-0.5;
+}
+
+
+
