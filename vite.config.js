@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    base: "/medicine-front/",
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
