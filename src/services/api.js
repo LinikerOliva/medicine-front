@@ -7,13 +7,14 @@ const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || "/api"
 // Em desenvolvimento, por padrão usar o proxy do Vite
 const IS_DEV = import.meta.env.DEV
 const USE_PROXY = String(import.meta.env.VITE_USE_PROXY ?? "true").toLowerCase() !== "false"
+const API_VERBOSE = String(import.meta.env.VITE_API_VERBOSE_LOGS ?? "false").toLowerCase() === "true"
 
 // Origin base (em dev com proxy, deixamos vazio para usar o host atual)
 const BASE_ORIGIN = IS_DEV && USE_PROXY ? "" : API_BASE_URL
 
 // Log de diagnóstico (ajuda a confirmar no console do navegador)
 if (typeof window !== "undefined") {
-  if (IS_DEV) {
+  if (IS_DEV && API_VERBOSE) {
     console.info("[api] DEV=", IS_DEV, "USE_PROXY=", USE_PROXY, "BASE_ORIGIN=", BASE_ORIGIN, "API_BASE_PATH=", API_BASE_PATH)
   }
 }
@@ -106,7 +107,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    if (IS_DEV) {
+    if (IS_DEV && API_VERBOSE) {
       if (error.code === "ECONNABORTED") {
         console.error("[API] Tempo de requisição esgotado:", error.config?.url)
       } else if (error.message?.includes("Network Error")) {

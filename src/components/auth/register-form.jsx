@@ -34,12 +34,33 @@ export default function RegisterForm() {
     if (digits.length > 3) return `${p1}.${p2}`;
     return p1;
   };
+  // NOVO: formatador de CNPJ 00.000.000/0000-00 com limitação a 14 dígitos
+  const formatCNPJ = (value) => {
+    const d = String(value || "").replace(/\D/g, "").slice(0, 14);
+    const p1 = d.slice(0, 2);
+    const p2 = d.slice(2, 5);
+    const p3 = d.slice(5, 8);
+    const p4 = d.slice(8, 12);
+    const p5 = d.slice(12, 14);
+    if (d.length > 12) return `${p1}.${p2}.${p3}/${p4}-${p5}`;
+    if (d.length > 8) return `${p1}.${p2}.${p3}/${p4}`;
+    if (d.length > 5) return `${p1}.${p2}.${p3}`;
+    if (d.length > 2) return `${p1}.${p2}`;
+    return p1;
+  };
+  // NOVO: limitador de CRM (somente números, até 7 dígitos)
+  const formatCRM = (value) => String(value || "").replace(/\D/g, "").slice(0, 7);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     // Formatar CPF automaticamente para o padrão exigido pelo backend
     if (name === "cpf") {
       setFormData({ ...formData, cpf: formatCPF(value) });
+      return;
+    }
+    // NOVO: Formatar CNPJ e limitar a 14 dígitos
+    if (name === "cnpj") {
+      setFormData({ ...formData, cnpj: formatCNPJ(value) });
       return;
     }
     setFormData({ ...formData, [name]: value });
@@ -79,7 +100,11 @@ export default function RegisterForm() {
 
   const handleMedicoChange = (e) => {
     const { name, value } = e.target;
-    setMedicoForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "crm") {
+      setMedicoForm((prev) => ({ ...prev, crm: formatCRM(value) }));
+    } else {
+      setMedicoForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
   const handleMedicoDocChange = (key, file) => {
     setMedicoForm((prev) => ({
@@ -290,7 +315,10 @@ export default function RegisterForm() {
         email: formData.email,
         password: formData.senha,
         password_confirm: formData.confirmSenha,
-        role: tipo,
+        // IMPORTANTE: se for médico, não enviamos 'medico' como role no registro para evitar que o backend tente criar Medico direto
+        // Enviamos um papel seguro (paciente) e carregamos desired_role para referência futura
+        role: tipo === "medico" ? (import.meta.env.VITE_DEFAULT_MEDICO_REGISTER_ROLE || "paciente") : tipo,
+        desired_role: tipo,
         cpf: formData.cpf || "",
       };
 
@@ -299,19 +327,18 @@ export default function RegisterForm() {
         userData.cnpj = formData.cnpj;
       }
 
-      const response = await authService.register(userData);
+      const response = await authService.register(userData, { medicoData: tipo === "medico" ? medicoForm : undefined });
 
-      // Se for médico, enviar a solicitação
+      // Resultado da criação de médico (se aplicável)
       if (tipo === "medico") {
-        try {
-          const { solicitacaoService } = await import("../../services/solicitacaoService");
-          await solicitacaoService.criarSolicitacaoMedico(medicoForm);
+        const medApp = response?.medicoApplication;
+        if (medApp?.success) {
           toast({
             title: "Solicitação enviada!",
             description: "Seus dados de médico foram enviados para análise.",
           });
-        } catch (err) {
-          console.error("[RegisterForm] criarSolicitacaoMedico falhou:", err?.response?.data || err);
+        } else if (medApp && medApp.success === false) {
+          console.error("[RegisterForm] criarSolicitacaoMedico via authService falhou:", medApp.error);
           toast({
             title: "Solicitação pendente",
             description:
@@ -333,6 +360,48 @@ export default function RegisterForm() {
       console.error("Headers da resposta:", error.response?.headers);
       
       let errorMessage = "Erro interno do servidor. Tente novamente.";
+
+      // NOVO: heurísticas para respostas HTML (ex.: Django debug) e violações de UNIQUE
+      let looksLikeHtmlDjango = false;
+      let looksLikeUniqueViolation = false;
+      let likelyMedicoUnique = false;
+      try {
+        const status = error.response?.status;
+        const headers = error.response?.headers || {};
+        const contentType = (headers["content-type"]) || headers["Content-Type"] || "";
+        const rawData = error.response?.data;
+        const asString = typeof rawData === "string" ? rawData : "";
+        const lower = (asString || "").toLowerCase();
+
+        // Mapeamento de campos únicos comuns
+        const setUniqueMessage = (field) => {
+          if (field === "crm") errorMessage = "CRM já cadastrado no sistema. Utilize outro número de CRM.";
+          else if (field === "email") errorMessage = "E-mail já cadastrado no sistema.";
+          else if (field === "cpf") errorMessage = "CPF já cadastrado no sistema.";
+          else errorMessage = "Algum campo único já está cadastrado (ex.: CRM, e-mail ou CPF).";
+        };
+
+        if (status === 409) {
+          // Conflito costuma indicar registro duplicado
+          setUniqueMessage("unknown");
+          looksLikeUniqueViolation = true;
+        }
+
+        looksLikeHtmlDjango = String(contentType).includes("text/html");
+        if (looksLikeHtmlDjango || lower.includes("unique constraint") || lower.includes("integrityerror")) {
+          if (lower.includes("crm")) {
+            setUniqueMessage("crm");
+            looksLikeUniqueViolation = true;
+            likelyMedicoUnique = true;
+          } else if (lower.includes("email")) {
+            setUniqueMessage("email");
+            looksLikeUniqueViolation = true;
+          } else if (lower.includes("cpf")) {
+            setUniqueMessage("cpf");
+            looksLikeUniqueViolation = true;
+          }
+        }
+      } catch {}
       
       if (error.response?.data) {
         const errorData = error.response.data;
@@ -348,10 +417,12 @@ export default function RegisterForm() {
               errorMessages.push(`${field}: ${messages}`);
             }
           }
-          errorMessage = errorMessages.join('\n');
+          if (errorMessages.length) errorMessage = errorMessages.join('\n');
         }
         if (typeof errorData === 'string') {
-          errorMessage = errorData;
+          // Se vier string não-HTML, mostre-a; se for HTML, mantemos a mensagem amigável definida acima
+          const looksHtml = /<\/?(html|body|head|table|div|span|style|script)[^>]*>/i.test(errorData);
+          if (!looksHtml) errorMessage = errorData;
         } else if (errorData.message) {
           errorMessage = errorData.message;
         } else if (errorData.email) {
@@ -360,6 +431,45 @@ export default function RegisterForm() {
           errorMessage = `Senha: ${errorData.password[0]}`;
         }
       }
+
+      // NOVO: Recuperação — se for muito provável que o usuário tenha sido criado, redireciona para login
+      try {
+        const st = error.response?.status;
+        const headers = error.response?.headers || {};
+        const contentType = headers["content-type"] || headers["Content-Type"] || "";
+        const raw = error.response?.data;
+        const s = typeof raw === "string" ? raw : "";
+        const low = (s || "").toLowerCase();
+
+        const looksUnique = looksLikeUniqueViolation || st === 409 || low.includes("unique constraint") || low.includes("integrityerror");
+        const htmlLike = looksLikeHtmlDjango || String(contentType).includes("text/html");
+        const mentionsMedicoOrCrm = likelyMedicoUnique || low.includes("crm") || low.includes("medico");
+
+        if (looksUnique && (htmlLike || mentionsMedicoOrCrm)) {
+          // Tenta verificar rapidamente se a conta foi criada fazendo um login silencioso
+          try {
+            await authService.login({ email: formData.email, password: formData.senha });
+            // Desloga para manter o fluxo pedido (ir para tela de login)
+            await authService.logout();
+            toast({
+              title: "Conta criada",
+              description: "Sua conta foi criada, mas houve um problema com os dados de médico (CRM). Faça login para continuar.",
+            });
+            navigate("/login");
+            return; // evita exibir toast de erro abaixo
+          } catch {
+            // Se o login não funcionar, seguimos com o erro padrão
+          }
+
+          // Caso não consiga verificar via login, ainda assim guia o usuário para login
+          toast({
+            title: "Conta possivelmente criada",
+            description: errorMessage + " — Tente fazer login com seu e-mail e senha.",
+          });
+          navigate("/login");
+          return;
+        }
+      } catch {}
       
       toast({
         title: "Erro no registro",
@@ -570,6 +680,7 @@ export default function RegisterForm() {
                       placeholder="CRM"
                       value={medicoForm.crm}
                       onChange={handleMedicoChange}
+                      maxLength={7}
                       className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"
                     />
                   </div>

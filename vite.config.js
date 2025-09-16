@@ -10,13 +10,13 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
-    base: "/medicine-front/",
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
       },
     },
     server: {
+      host: true, // permite acesso via IP (ex.: http://192.168.x.x:5174)
       port: 5174,
       proxy: {
         [apiBasePath]: {

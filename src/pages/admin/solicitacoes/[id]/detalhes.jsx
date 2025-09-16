@@ -170,6 +170,9 @@ export default function SolicitacaoDetalhes() {
     }
   }
 
+  // Evitar crash quando endereco não existir na resposta
+  const endereco = solicitacao?.endereco || {}
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -302,20 +305,20 @@ export default function SolicitacaoDetalhes() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-muted-foreground">CEP</Label>
-                    <span>{solicitacao.endereco.cep}</span>
+                    <span>{endereco.cep || "—"}</span>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-muted-foreground">Logradouro</Label>
-                    <span>{solicitacao.endereco.logradouro}</span>
+                    <span>{endereco.logradouro || "—"}</span>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-muted-foreground">Bairro</Label>
-                    <span>{solicitacao.endereco.bairro}</span>
+                    <span>{endereco.bairro || "—"}</span>
                   </div>
                   <div className="space-y-2">
                     <Label className="text-sm font-medium text-muted-foreground">Cidade/Estado</Label>
                     <span>
-                      {solicitacao.endereco.cidade}/{solicitacao.endereco.estado}
+                      {(endereco.cidade || "—")}/{(endereco.estado || "—")}
                     </span>
                   </div>
                 </div>
@@ -382,7 +385,8 @@ export default function SolicitacaoDetalhes() {
                 </div>
 
                 <Button
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  variant="default"
+                  className="w-full"
                   onClick={handleAprovar}
                   disabled={isProcessing}
                 >

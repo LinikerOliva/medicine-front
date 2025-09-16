@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,37 +30,61 @@ export default function AdminSolicitacoes() {
   const [urgenciaFilter, setUrgenciaFilter] = useState("all")
   const [isLoading, setIsLoading] = useState(false)
   const [solicitacoes, setSolicitacoes] = useState([])
+  const abortRef = useRef(null)
   const { toast } = useToast()
+
+  const queryKey = useMemo(() => ({
+    search: searchTerm.trim(),
+    status: statusFilter,
+    tipo: tipoFilter,
+    urgencia: urgenciaFilter,
+  }), [searchTerm, statusFilter, tipoFilter, urgenciaFilter])
 
   useEffect(() => {
     setIsLoading(true)
     const t = setTimeout(async () => {
+      // cancela requisição anterior se ainda estiver pendente
+      if (abortRef.current) {
+        try { abortRef.current.abort() } catch {}
+      }
+      const controller = new AbortController()
+      abortRef.current = controller
       try {
         const params = {}
-        if (statusFilter !== "all") params.status = statusFilter
-        if (tipoFilter !== "all") params.tipo = tipoFilter
-        if (urgenciaFilter !== "all") params.urgencia = urgenciaFilter
-        if (searchTerm?.trim()) params.search = searchTerm.trim()
+        if (queryKey.status !== "all") params.status = queryKey.status
+        if (queryKey.tipo !== "all") params.tipo = queryKey.tipo
+        if (queryKey.urgencia !== "all") params.urgencia = queryKey.urgencia
+        if (queryKey.search) params.search = queryKey.search
 
-        const data = await adminService.getSolicitacoes(params)
+        const data = await adminService.getSolicitacoes(params, { signal: controller.signal })
         const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
         setSolicitacoes(items)
       } catch (e) {
-        console.warn("[AdminSolicitacoes] getSolicitacoes falhou:", e?.response?.status)
-        setSolicitacoes([])
+        if (e?.name !== "AbortError") {
+          // evita log ruidoso em DEV
+          setSolicitacoes([])
+        }
       } finally {
         setIsLoading(false)
       }
-    }, 300)
+    }, 400)
     return () => clearTimeout(t)
-  }, [searchTerm, statusFilter, tipoFilter, urgenciaFilter])
+  }, [queryKey])
 
   // Ações rápidas na lista
   const handleAprovar = async (id) => {
     setIsLoading(true)
     try {
-      await adminService.aprovarSolicitacao(id)
-      setSolicitacoes((prev) => prev.map((s) => (s.id === id ? { ...s, status: "approved" } : s)))
+      const updated = await adminService.aprovarSolicitacao(id)
+      setSolicitacoes((prev) => prev.map((s) => (s.id === id ? {
+        ...s,
+        status: "approved",
+        aprovadoPor: updated?.approved_by || s.aprovadoPor || "",
+        dataAprovacao: updated?.approved_at || s.dataAprovacao || new Date().toISOString(),
+        rejeitadoPor: "",
+        dataRejeicao: null,
+        motivoRejeicao: "",
+      } : s)))
       toast({ title: "Solicitação aprovada", description: "A solicitação foi aprovada com sucesso." })
     } catch (e) {
       toast({ title: "Erro ao aprovar", description: "Não foi possível aprovar a solicitação.", variant: "destructive" })
@@ -74,8 +98,16 @@ export default function AdminSolicitacoes() {
     if (motivo === null) return // cancelado
     setIsLoading(true)
     try {
-      await adminService.rejeitarSolicitacao(id, (motivo || "").trim())
-      setSolicitacoes((prev) => prev.map((s) => (s.id === id ? { ...s, status: "rejected" } : s)))
+      const updated = await adminService.rejeitarSolicitacao(id, (motivo || "").trim())
+      setSolicitacoes((prev) => prev.map((s) => (s.id === id ? {
+        ...s,
+        status: "rejected",
+        rejeitadoPor: updated?.rejected_by || s.rejeitadoPor || "",
+        dataRejeicao: updated?.rejected_at || s.dataRejeicao || new Date().toISOString(),
+        motivoRejeicao: updated?.rejection_reason || motivo || s.motivoRejeicao || "",
+        aprovadoPor: "",
+        dataAprovacao: null,
+      } : s)))
       toast({ title: "Solicitação rejeitada", description: "A solicitação foi rejeitada." })
     } catch (e) {
       toast({ title: "Erro ao rejeitar", description: "Não foi possível rejeitar a solicitação.", variant: "destructive" })
@@ -139,10 +171,10 @@ export default function AdminSolicitacoes() {
 
   const filteredSolicitacoes = solicitacoes.filter((solicitacao) => {
     const matchesSearch =
-      solicitacao.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      solicitacao.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (solicitacao.crm && solicitacao.crm.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (solicitacao.cnpj && solicitacao.cnpj.includes(searchTerm))
+      (solicitacao.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (solicitacao.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (solicitacao.crm && String(solicitacao.crm).toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (solicitacao.cnpj && String(solicitacao.cnpj).includes(searchTerm))
 
     const matchesStatus = statusFilter === "all" || solicitacao.status === statusFilter
     const matchesTipo = tipoFilter === "all" || solicitacao.tipo === tipoFilter
@@ -199,7 +231,7 @@ export default function AdminSolicitacoes() {
             </div>
             <div>
               <p className="font-medium text-muted-foreground">Documentos</p>
-              <p>{solicitacao.documentos.length} arquivo(s)</p>
+              <p>{Array.isArray(solicitacao.documentos) ? solicitacao.documentos.length : 0} arquivo(s)</p>
             </div>
           </div>
 
@@ -212,38 +244,24 @@ export default function AdminSolicitacoes() {
           {solicitacao.status === "approved" && (
             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg">
               <p className="text-sm text-green-800 dark:text-green-200">
-                <strong>Aprovado em:</strong> {new Date(solicitacao.dataAprovacao).toLocaleDateString()} por{" "}
-                {solicitacao.aprovadoPor}
+                <strong>Aprovado em:</strong> {solicitacao.dataAprovacao ? new Date(solicitacao.dataAprovacao).toLocaleDateString() : "—"}
+                {solicitacao.aprovadoPor ? (<> por {solicitacao.aprovadoPor}</>) : null}
               </p>
             </div>
           )}
 
-          {solicitacao.status === "rejected" && (
-            <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-              <p className="text-sm text-red-800 dark:text-red-200">
-                <strong>Rejeitado em:</strong> {new Date(solicitacao.dataRejeicao).toLocaleDateString()} por{" "}
-                {solicitacao.rejeitadoPor}
-                <br />
-                <strong>Motivo:</strong> {solicitacao.motivoRejeicao}
-              </p>
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link to={`/admin/solicitacoes/${solicitacao.id}`}>
-                <Eye className="mr-2 h-4 w-4" />
-                Ver Detalhes
+                <Eye className="mr-2 h-4 w-4" /> Ver detalhes
               </Link>
             </Button>
             {solicitacao.status === "pending" && (
               <>
-                <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleAprovar(solicitacao.id)} disabled={isLoading}>
-                  <CheckCircle className="mr-2 h-4 w-4" />
+                <Button variant="success" size="sm" onClick={() => handleAprovar(solicitacao.id)}>
                   Aprovar
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => handleRejeitar(solicitacao.id)} disabled={isLoading}>
-                  <XCircle className="mr-2 h-4 w-4" />
+                <Button variant="destructive" size="sm" onClick={() => handleRejeitar(solicitacao.id)}>
                   Rejeitar
                 </Button>
               </>
@@ -255,129 +273,138 @@ export default function AdminSolicitacoes() {
   )
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Solicitações de Cadastro</h1>
-        <p className="text-muted-foreground">Gerencie as solicitações de médicos e clínicas</p>
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Solicitações</h1>
+          <p className="text-muted-foreground">Gerencie solicitações de médicos e clínicas.</p>
+        </div>
       </div>
 
-      {/* Filtros */}
-      <Card>
+      <Card className="rounded-xl">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
+          <CardTitle>Filtros</CardTitle>
+          <CardDescription>Use os filtros para refinar sua busca.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome, email, CRM ou CNPJ..."
-                className="pl-10"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Buscar por nome, e-mail, CRM ou CNPJ" className="pl-9"
+                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Status</SelectItem>
-                <SelectItem value="pending">Pendente</SelectItem>
-                <SelectItem value="approved">Aprovado</SelectItem>
-                <SelectItem value="rejected">Rejeitado</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={tipoFilter} onValueChange={setTipoFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Tipos</SelectItem>
-                <SelectItem value="medico">Médico</SelectItem>
-                <SelectItem value="clinica">Clínica</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={urgenciaFilter} onValueChange={setUrgenciaFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Urgência" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as Urgências</SelectItem>
-                <SelectItem value="alta">Alta</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="baixa">Baixa</SelectItem>
-              </SelectContent>
-            </Select>
+            <div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="approved">Aprovado</SelectItem>
+                  <SelectItem value="rejected">Rejeitado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Select value={tipoFilter} onValueChange={setTipoFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="medico">Médicos</SelectItem>
+                  <SelectItem value="clinica">Clínicas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Select value={urgenciaFilter} onValueChange={setUrgenciaFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Urgência" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="alta">Alta</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="baixa">Baixa</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Tabs com Solicitações */}
-      <Tabs defaultValue="pending" className="space-y-4">
+      <Tabs defaultValue="todas" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="pending" className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            Pendentes ({pendingSolicitacoes.length})
+          <TabsTrigger value="todas" className="gap-2">
+            <Filter className="h-4 w-4" /> Todas
           </TabsTrigger>
-          <TabsTrigger value="approved" className="flex items-center gap-2">
-            <CheckCircle className="h-4 w-4" />
-            Aprovadas ({approvedSolicitacoes.length})
+          <TabsTrigger value="pendentes" className="gap-2">
+            <Clock className="h-4 w-4" /> Pendentes
           </TabsTrigger>
-          <TabsTrigger value="rejected" className="flex items-center gap-2">
-            <XCircle className="h-4 w-4" />
-            Rejeitadas ({rejectedSolicitacoes.length})
+          <TabsTrigger value="aprovadas" className="gap-2">
+            <CheckCircle className="h-4 w-4" /> Aprovadas
           </TabsTrigger>
-          <TabsTrigger value="all" className="flex items-center gap-2">
-            Todas ({filteredSolicitacoes.length})
+          <TabsTrigger value="rejeitadas" className="gap-2">
+            <XCircle className="h-4 w-4" /> Rejeitadas
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pending">
-          <div className="grid gap-4">
-            {pendingSolicitacoes.length > 0 ? (
-              pendingSolicitacoes.map((solicitacao) => (
-                <SolicitacaoCard key={solicitacao.id} solicitacao={solicitacao} />
-              ))
-            ) : (
-              <Card>
-                <CardContent className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <Clock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-lg font-medium">Nenhuma solicitação pendente</p>
-                    <p className="text-muted-foreground">Todas as solicitações foram processadas</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+        <TabsContent value="todas">
+          {isLoading ? (
+            <p className="text-muted-foreground">Carregando solicitações...</p>
+          ) : filteredSolicitacoes.length === 0 ? (
+            <p className="text-muted-foreground">Nenhuma solicitação encontrada.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredSolicitacoes.map((sol) => (
+                <SolicitacaoCard key={sol.id} solicitacao={sol} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="approved">
-          <div className="grid gap-4">
-            {approvedSolicitacoes.map((solicitacao) => (
-              <SolicitacaoCard key={solicitacao.id} solicitacao={solicitacao} />
-            ))}
-          </div>
+        <TabsContent value="pendentes">
+          {isLoading ? (
+            <p className="text-muted-foreground">Carregando solicitações...</p>
+          ) : pendingSolicitacoes.length === 0 ? (
+            <p className="text-muted-foreground">Nenhuma solicitação pendente.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {pendingSolicitacoes.map((sol) => (
+                <SolicitacaoCard key={sol.id} solicitacao={sol} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="rejected">
-          <div className="grid gap-4">
-            {rejectedSolicitacoes.map((solicitacao) => (
-              <SolicitacaoCard key={solicitacao.id} solicitacao={solicitacao} />
-            ))}
-          </div>
+        <TabsContent value="aprovadas">
+          {isLoading ? (
+            <p className="text-muted-foreground">Carregando solicitações...</p>
+          ) : approvedSolicitacoes.length === 0 ? (
+            <p className="text-muted-foreground">Nenhuma solicitação aprovada.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {approvedSolicitacoes.map((sol) => (
+                <SolicitacaoCard key={sol.id} solicitacao={sol} />
+              ))}
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="all">
-          <div className="grid gap-4">
-            {filteredSolicitacoes.map((solicitacao) => (
-              <SolicitacaoCard key={solicitacao.id} solicitacao={solicitacao} />
-            ))}
-          </div>
+        <TabsContent value="rejeitadas">
+          {isLoading ? (
+            <p className="text-muted-foreground">Carregando solicitações...</p>
+          ) : rejectedSolicitacoes.length === 0 ? (
+            <p className="text-muted-foreground">Nenhuma solicitação rejeitada.</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {rejectedSolicitacoes.map((sol) => (
+                <SolicitacaoCard key={sol.id} solicitacao={sol} />
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

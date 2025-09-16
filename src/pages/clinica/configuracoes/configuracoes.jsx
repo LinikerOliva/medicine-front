@@ -9,16 +9,7 @@ import { adminService } from "../../../services/adminService"
 import { clinicaService } from "../../../services/clinicaService"
 
 export default function ConfiguracoesClinica() {
-  const { toast } = useToast()
-  const breadcrumbs = [{ label: "Dashboard", href: "/clinica/dashboard" }, { label: "Configurações" }]
-  const [form, setForm] = useState({
-    nome: "",
-    cnpj: "",
-    email: "",
-    responsavel: "",
-  })
-
-  // --- Secretária: estados ---
+  const [form, setForm] = useState({ nome: "", cnpj: "", email: "", responsavel: "" })
   const [secEmail, setSecEmail] = useState("")
   const [secNome, setSecNome] = useState("")
   const [secSobrenome, setSecSobrenome] = useState("")
@@ -26,8 +17,24 @@ export default function ConfiguracoesClinica() {
   const [linking, setLinking] = useState(false)
   const [secError, setSecError] = useState("")
   const [secSuccess, setSecSuccess] = useState("")
+  const { toast } = useToast()
 
-  const handleSave = () => {
+  // NOVO: formatador de CNPJ e limitação
+  const formatCNPJ = (value) => {
+    const d = String(value || "").replace(/\D/g, "").slice(0, 14)
+    const p1 = d.slice(0, 2)
+    const p2 = d.slice(2, 5)
+    const p3 = d.slice(5, 8)
+    const p4 = d.slice(8, 12)
+    const p5 = d.slice(12, 14)
+    if (d.length > 12) return `${p1}.${p2}.${p3}/${p4}-${p5}`
+    if (d.length > 8) return `${p1}.${p2}.${p3}/${p4}`
+    if (d.length > 5) return `${p1}.${p2}.${p3}`
+    if (d.length > 2) return `${p1}.${p2}`
+    return p1
+  }
+
+  const handleSave = async () => {
     // Aqui futuramente podemos chamar um clinicaService.updatePerfil(form)
     toast({ title: "Configurações", description: "Alterações salvas (stub)." })
   }
@@ -93,10 +100,10 @@ export default function ConfiguracoesClinica() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configurações da Clínica</h1>
-        <p className="text-muted-foreground">Atualize as informações da clínica</p>
+    <ClinicaLayout>
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Configurações</h1>
+
       </div>
 
       <Card>
@@ -111,7 +118,7 @@ export default function ConfiguracoesClinica() {
           </div>
           <div className="space-y-2">
             <label className="text-sm">CNPJ</label>
-            <Input value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
+            <Input value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: formatCNPJ(e.target.value) })} placeholder="00.000.000/0000-00" />
           </div>
           <div className="space-y-2">
             <label className="text-sm">E-mail</label>
@@ -159,11 +166,11 @@ export default function ConfiguracoesClinica() {
               {linking ? "Processando..." : "Criar e vincular"}
             </Button>
             <Button variant="outline" onClick={() => handleAddSecretary(false)} disabled={linking}>
-              {linking ? "Processando..." : "Vincular existente"}
+              {linking ? "Processando..." : "Vincular por e-mail"}
             </Button>
           </div>
         </CardContent>
       </Card>
-    </div>
+    </ClinicaLayout>
   )
 }

@@ -242,12 +242,28 @@ export default function MedicoConsultasHoje() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate])
 
-  const handleIniciarConsulta = (consulta) => {
+  const handleIniciarConsulta = async (consulta) => {
     try {
-      navigate(`/medico/paciente/${consulta.paciente.id}/iniciar-consulta`)
+      // Chama action do backend para iniciar a consulta
+      if (consulta?.id) {
+        await medicoService.iniciarConsulta(consulta.id)
+      }
     } catch (e) {
+      // Em caso de erro, ainda permite navegar para a tela (pode tentar novamente lá)
       // eslint-disable-next-line no-console
-      console.log("Iniciar consulta", consulta.id)
+      console.error("Falha ao iniciar consulta no backend:", e)
+    } finally {
+      try {
+        const consultaId = consulta?.id
+        const pacienteId = consulta?.paciente?.id
+        const url = consultaId
+          ? `/medico/paciente/${pacienteId}/iniciar-consulta?consultaId=${consultaId}`
+          : `/medico/paciente/${pacienteId}/iniciar-consulta`
+        navigate(url)
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.log("Iniciar consulta (fallback navegação)", consulta?.id)
+      }
     }
   }
 

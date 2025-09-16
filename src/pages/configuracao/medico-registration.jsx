@@ -63,10 +63,15 @@ export function MedicoRegistration() {
     },
   })
 
+  // NOVO: máscara/limite de CRM (somente números, até 7 dígitos)
+  const formatCRM = (v) => String(v || "").replace(/\D/g, "").slice(0, 7)
+
   const handleInputChange = (e) => {
+    const { name, value } = e.target
+    const next = name === "crm" ? formatCRM(value) : value
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: next,
     })
   }
 

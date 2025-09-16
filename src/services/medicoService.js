@@ -245,7 +245,7 @@ export const medicoService = {
     // Fallback: montar dados a partir das consultas do dia (apenas do médico logado)
     try {
       const d = new Date()
-      const pad = (n) => String(n).padStart(2, "0")
+      const pad = (n) => String(n).toString().padStart(2, "0")
       const todayLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
       // Usa o método que já resolve o médico e aplica sinônimos de filtros
@@ -258,89 +258,86 @@ export const medicoService = {
 
       const proximas = Array.isArray(consultas)
         ? consultas.map((c) => ({
-            id: c.id || c.consulta_id,
-            paciente_id: c.paciente_id || c.paciente?.id,
-            paciente_nome:
-              c.paciente_nome ||
-              c?.paciente?.nome ||
-              (c?.paciente?.user
-                ? [c.paciente.user.first_name, c.paciente.user.last_name].filter(Boolean).join(" ").trim()
-                : "Paciente"),
-            data_hora: c.data_hora || c.horario || c.inicio || c.data || c.start_time || "",
-            tipo: c.tipo || c.modalidade || "Consulta",
-            status: c.status || "Agendada",
-            clinica_nome: c.clinica_nome || c.clinica?.nome || c.local || null,
+            id: c.id || c.consulta_id || c.uuid,
+            paciente: c.paciente,
+            data_hora: c.data_hora,
+            status: c.status,
           }))
         : []
 
-      return {
-        consultas_hoje: proximas.length,
-        proximas_consultas: proximas.slice(0, 5),
-        pacientes_ativos: 0,
-        prontuarios: 0,
-        exames_pendentes: 0,
-        variacao_consultas: 0,
-        novos_pacientes_semana: 0,
-        pacientes_recentes: [],
-      }
-    } catch (error) {
-      // Em último caso, retorna dados mockados mínimos
-      return {
-        consultas_hoje: 0,
-        proximas_consultas: [],
-        pacientes_ativos: 0,
-        prontuarios: 0,
-        exames_pendentes: 0,
-        variacao_consultas: 0,
-        novos_pacientes_semana: 0,
-        pacientes_recentes: [],
-      }
+      return { proximas }
+    } catch (err) {
+      // Fallback final
+      return { proximas: [] }
     }
   },
 
-  async buscarPacientes(query) {
-    const endpoint = import.meta.env.VITE_BUSCAR_PACIENTES_ENDPOINT || "/buscar-pacientes/"
-    const res = await api.get(endpoint, { params: { q: query } })
+  // NOVO: iniciar uma consulta (action do backend)
+  async iniciarConsulta(consultaId) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const url = `${base}${consultaId}/iniciar/`
+    const res = await api.post(url)
     return res.data
   },
 
+  // NOVO: finalizar uma consulta (action do backend)
+  async finalizarConsulta(consultaId) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const url = `${base}${consultaId}/finalizar/`
+    const res = await api.post(url)
+    return res.data
+  },
+
+  // NOVO: criar receita vinculada à consulta
+  async criarReceita(payload) {
+    // payload: { consulta_id, medicamentos, posologia, validade, observacoes? }
+    const endpoint = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const { data } = await api.post(endpoint, payload)
+    return data
+  },
+
+  // NOVO: enviar dados para sumarização/IA após finalizar a consulta
+  async sumarizarConsulta(consultaId, payload = {}) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const url = `${base}${consultaId}/sumarizar/`
+    const { data } = await api.post(url, payload)
+    return data
+  },
+
+  // Criar prontuário (via consulta_id write-only no serializer)
+  async criarProntuario(payload) {
+    // payload esperado: { consulta_id, queixa_principal, historia_doenca_atual, diagnostico_principal, conduta, ... }
+    const endpoint = import.meta.env.VITE_PRONTUARIOS_ENDPOINT || "/prontuarios/"
+    const { data } = await api.post(endpoint, payload)
+    return data
+  },
+
+  // Busca simplificada de pacientes por nome
+  async buscarPacientes(query) {
+    const endpoint = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+    const response = await api.get(endpoint, { params: { search: query } })
+    return response.data
+  },
+
+  // NOVO: atualizar dados do paciente por ID
+  async atualizarPacienteById(id, payload) {
+    if (!id) throw new Error("id do paciente é obrigatório")
+    const baseRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const res = await api.patch(`${base}${id}/`, payload)
+    return res.data
+  },
+
+  // Exemplo de vincular secretaria
   async vincularSecretaria(secretariaId) {
-    if (!secretariaId) throw new Error("secretariaId é obrigatório")
-
-    // Resolver id do médico atual
-    let medicoId = null
-    try {
-      const perfil = await this.getPerfil()
-      if (perfil?.medico?.id) medicoId = perfil.medico.id
-      else if (perfil && typeof perfil === "object" && "crm" in perfil) medicoId = perfil.id
-    } catch {}
-    if (!medicoId) throw new Error("Não foi possível resolver o ID do médico atual.")
-
-    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
-    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
-
-    const candidates = [
-      `${medBase}${medicoId}/secretarias/`,
-      `${medBase}${medicoId}/adicionar_secretaria/`,
-      `${medBase}${medicoId}/vincular_secretaria/`,
-    ]
-
-    const bodyCommon = { secretaria: secretariaId, secretaria_id: secretariaId }
-
-    let lastError
-    for (const url of candidates) {
-      try {
-        const res = await api.post(url, bodyCommon)
-        return res.data
-      } catch (err) {
-        const st = err?.response?.status
-        if (st === 404 || st === 405) {
-          lastError = err
-          continue
-        }
-        throw err
-      }
-    }
-    throw lastError || new Error("Nenhum endpoint de vinculação de secretária encontrado para médico.")
+    const endpoint = import.meta.env.VITE_SECRETARIAS_ENDPOINT || "/secretarias/"
+    const res = await api.post(`${endpoint}${secretariaId}/vincular/`)
+    return res.data
   },
 }

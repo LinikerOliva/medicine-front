@@ -36,6 +36,7 @@ import ProntuarioPacienteMedico from "./pages/medico/paciente/[id]/prontuario/pr
 import ExamesPacienteMedico from "./pages/medico/paciente/[id]/exames/exames";
 import IniciarConsulta from "./pages/medico/paciente/[id]/iniciar-consulta/iniciar-consulta";
 import MedicoConsultasHoje from "./pages/medico/consultas/hoje";
+import PreviewReceitaMedico from "./pages/medico/paciente/[id]/receita/preview";
 
 // Clínica
 import DashboardClinica from "./pages/clinica/dashboard/dashboard";
@@ -124,6 +125,7 @@ function App() {
               <Route path="paciente/:id/prontuario" element={<ProntuarioPacienteMedico />} />
               <Route path="paciente/:id/exames" element={<ExamesPacienteMedico />} />
               <Route path="paciente/:id/iniciar-consulta" element={<IniciarConsulta />} />
+              <Route path="paciente/:id/receita/preview" element={<PreviewReceitaMedico />} />
               <Route path="configuracoes" element={<Configuracao />} />
             </Route>
 

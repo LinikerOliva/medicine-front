@@ -55,7 +55,7 @@ export const authService = {
     return response.data
   },
 
-  async register(userData) {
+  async register(userData, options = {}) {
     const endpoint = import.meta.env.VITE_REGISTER_ENDPOINT || "/auth/register/"
     const response = await api.post(endpoint, userData)
 
@@ -83,7 +83,54 @@ export const authService = {
       } catch {}
     }
 
-    return response.data
+    const result = { ...response.data }
+    
+    // NOVO: criação automática da solicitação de médico, se dados forem fornecidos
+    let medicoApplication = null
+    const medicoData = options?.medicoData
+    if (medicoData && typeof medicoData === "object") {
+      try {
+        // Fallback robusto: se não houve token após o registro, tenta login silencioso
+        const hasToken = !!localStorage.getItem("access_token")
+        if (!hasToken && userData?.password) {
+          // 1) tenta com username (se existir)
+          if (userData?.username) {
+            try {
+              await authService.login({ username: userData.username, password: userData.password })
+            } catch {}
+          }
+          // 2) tenta com email como username
+          if (!localStorage.getItem("access_token") && userData?.email) {
+            try {
+              await authService.login({ username: userData.email, email: userData.email, password: userData.password })
+            } catch {}
+          }
+        }
+
+        const mod = await import("./solicitacaoService")
+        // Enriquecer payload com dados do usuário (alguns backends exigem nome/email/cpf na solicitação)
+        const fullName = [userData.first_name || "", userData.last_name || ""].filter(Boolean).join(" ") || userData.username || ""
+        const medicoPayload = {
+          ...medicoData,
+          nome: medicoData.nome || fullName,
+          nome_completo: medicoData.nome_completo || fullName,
+          email: medicoData.email || userData.email,
+          cpf: medicoData.cpf || userData.cpf,
+          tipo: "medico",
+        }
+        const created = await mod.solicitacaoService.criarSolicitacaoMedico(medicoPayload)
+        medicoApplication = { success: true, data: created }
+      } catch (err) {
+        console.error("[authService.register] criarSolicitacaoMedico falhou:", err?.response?.data || err)
+        medicoApplication = {
+          success: false,
+          error: (err && (err.response?.data || err.message)) || String(err),
+        }
+      }
+    }
+
+    if (medicoApplication) result.medicoApplication = medicoApplication
+    return result
   },
 
   async logout() {

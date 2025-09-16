@@ -71,7 +71,7 @@ export default function AdminDashboard() {
 
       try {
         // Últimas solicitações pendentes (já existia)
-        const list = await adminService.getSolicitacoes({ status: "pending", ordering: "-created_at", limit: 5 })
+        const list = await adminService.getSolicitacoes({ status: "pending", limit: 5 })
         const items = Array.isArray(list?.results) ? list.results : Array.isArray(list) ? list : []
         const normalized = items.map((it) => ({
           ...it,
@@ -100,9 +100,8 @@ export default function AdminDashboard() {
         const fetchByStatus = async (status) => {
           const resp = await adminService.getSolicitacoes({
             status,
-            ordering: "-created_at",
             limit: 100,
-            created_at__gte: weekStartIso, // se o backend não suportar, filtramos no client
+            created_at__gte: weekStartIso,
           })
           const arr = Array.isArray(resp?.results) ? resp.results : Array.isArray(resp) ? resp : []
           return arr
@@ -260,7 +259,7 @@ export default function AdminDashboard() {
           <CardDescription>Acesso rápido às principais funcionalidades</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Link to="/admin/solicitacoes?status=pending">
+          <Link to={{ pathname: "/admin/solicitacoes", search: "?status=pending" }}>
             <div className="app-quick-action group">
               <div className="app-quick-icon warning">
                 <Clock className="h-4 w-4" />
