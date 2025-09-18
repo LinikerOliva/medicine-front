@@ -490,11 +490,17 @@ export default function IniciarConsulta() {
   
       const medicamentos = formData.medicamentos || extracted.medicamentos || ""
       const posologia = extracted.posologia || ""
+      const diagnostico = formData.diagnostico || extracted.diagnostico || ""
+      const conduta = formData.conduta || extracted.conduta || ""
+      const queixa = formData.queixa || extracted.queixa || ""
+      const historia = formData.historia || extracted.historia || ""
   
       if (consultaId && (medicamentos || posologia)) {
         try {
           await medicoService.criarReceita({
             consulta_id: consultaId,
+            paciente: id,
+            paciente_id: id,
             medicamentos,
             posologia,
             validade: validadeStr,
@@ -506,17 +512,33 @@ export default function IniciarConsulta() {
       }
   
       try { localStorage.removeItem(storageKey) } catch {}
-      navigate(`/medico/paciente/${id}/receita/preview`, { state: { fromConsulta: { medicamentos, posologia, validade: validadeStr }, consultaId } })
+      // Redireciona para a nova tela de resumo da consulta antes do preview da receita
+      navigate(`/medico/paciente/${id}/consulta/resumo`, {
+        state: {
+          resumo: { medicamentos, posologia, validade: validadeStr, diagnostico, conduta, queixa, historia },
+          consultaId,
+          prontuarioId,
+        },
+      })
     } catch (err) {
       console.error('Erro ao salvar prontuário/consulta:', err)
-      // Mesmo em erro, encaminhar para preview com dados disponíveis
+      // Mesmo em erro, encaminhar para a tela de resumo com os dados disponíveis
       const hoje = new Date()
       const validade = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 7)
       const pad = (n) => String(n).padStart(2, "0")
       const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
       const medicamentos = formData.medicamentos || extracted.medicamentos || ""
       const posologia = extracted.posologia || ""
-      navigate(`/medico/paciente/${id}/receita/preview`, { state: { fromConsulta: { medicamentos, posologia, validade: validadeStr }, consultaId } })
+      const diagnostico = formData.diagnostico || extracted.diagnostico || ""
+      const conduta = formData.conduta || extracted.conduta || ""
+      const queixa = formData.queixa || extracted.queixa || ""
+      const historia = formData.historia || extracted.historia || ""
+      navigate(`/medico/paciente/${id}/consulta/resumo`, {
+        state: {
+          resumo: { medicamentos, posologia, validade: validadeStr, diagnostico, conduta, queixa, historia },
+          consultaId,
+        },
+      })
     } finally {
       setIsSubmitting(false)
     }

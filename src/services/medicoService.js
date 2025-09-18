@@ -1,4 +1,4 @@
-import api from "./api"
+﻿import api from "./api"
 import { authService } from "./authService"
 
 export const medicoService = {
@@ -211,8 +211,9 @@ export const medicoService = {
       }
     }
 
-    // Tenta endpoint dedicado /medicos/{id}/consultas_hoje/
-    if (mid) {
+    const USE_MED_CONSULTAS_HOJE = String(import.meta.env.VITE_MEDICOS_CONSULTAS_HOJE_ENABLED ?? "false").toLowerCase() === "true"
+    // Tenta endpoint dedicado /medicos/{id}/consultas_hoje/ somente se habilitado por env
+    if (mid && USE_MED_CONSULTAS_HOJE) {
       try {
         const res = await api.get(`${medBase}${mid}/consultas_hoje/`)
         return res.data
@@ -292,12 +293,72 @@ export const medicoService = {
     return res.data
   },
 
+  // NOVO: cancelar uma consulta (action do backend)
+  async cancelarConsulta(consultaId) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const url = `${base}${consultaId}/cancelar/`
+    const res = await api.post(url)
+    return res.data
+  },
+
   // NOVO: criar receita vinculada à consulta
   async criarReceita(payload) {
-    // payload: { consulta_id, medicamentos, posologia, validade, observacoes? }
-    const endpoint = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
-    const { data } = await api.post(endpoint, payload)
-    return data
+    // Mock em desenvolvimento para evitar chamadas de rede e erros no console
+    const mockEnabled = import.meta.env.DEV && String(import.meta.env.VITE_MOCK_RECEITA ?? "true").toLowerCase() !== "false"
+    if (mockEnabled) {
+      const now = Date.now()
+      try { if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.info("[medicoService] criarReceita: MOCK DEV (curto-circuito)") } catch {}
+      return { id: `mock-${now}`, ...payload }
+    }
+
+    // payload: { consulta_id, paciente_id?, medicamentos, posologia, validade, observacoes? }
+    const raw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const base = raw.endsWith("/") ? raw : `${raw}/`
+
+    const body = { ...payload }
+    // limpar campos vazios
+    Object.keys(body).forEach((k) => {
+      if (body[k] === undefined || body[k] === null || body[k] === "") delete body[k]
+    })
+    try { if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.debug("[medicoService] criarReceita payload:", body) } catch {}
+
+    const candidates = [
+      base, // POST /receitas/
+      `${base}criar/`,
+      `${base}novo/`,
+      `${base}create/`,
+    ]
+
+    let lastErr
+    for (const url of candidates) {
+      try {
+        try {
+          if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.debug("[medicoService] POST", url)
+        } catch {}
+        const { data } = await api.post(url, body)
+        return data
+      } catch (e) {
+        const st = e?.response?.status
+        // se 405, tentar GET com params (alguns backends aceitam criação por query)
+        if (st === 405) {
+          try {
+            const { data } = await api.get(url, { params: body })
+            return data
+          } catch (eGet) {
+            lastErr = eGet
+          }
+        } else if ([400, 404].includes(st)) {
+          lastErr = e
+          continue
+        } else {
+          throw e
+        }
+      }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao criar receita: sem endpoint compatível.")
   },
 
   // NOVO: enviar dados para sumarização/IA após finalizar a consulta
@@ -305,9 +366,35 @@ export const medicoService = {
     if (!consultaId) throw new Error("consultaId é obrigatório")
     const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
     const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
-    const url = `${base}${consultaId}/sumarizar/`
-    const { data } = await api.post(url, payload)
-    return data
+
+    const candidates = [
+      { m: "post", u: `${base}${consultaId}/sumarizar/` },
+      { m: "post", u: `${base}${consultaId}/resumo/` },
+      { m: "post", u: `${base}${consultaId}/sumario/` },
+      { m: "post", u: `${base}${consultaId}/gerar-resumo/` },
+      { m: "post", u: `${base}${consultaId}/sumarizacao/` },
+      { m: "get", u: `${base}${consultaId}/sumarizar/` },
+      { m: "get", u: `${base}${consultaId}/resumo/` },
+      { m: "get", u: `${base}${consultaId}/sumario/` },
+    ]
+
+    let lastErr = null
+    for (const c of candidates) {
+      try {
+        if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.debug("[medicoService] sumarizarConsulta", c.m.toUpperCase(), c.u)
+      } catch {}
+      try {
+        const res = c.m === "get" ? await api.get(c.u, { params: payload }) : await api.post(c.u, payload)
+        return res.data
+      } catch (e) {
+        const st = e?.response?.status
+        // Só tenta próximo em 400/404/405. Outros erros (401/500/etc.) interrompem imediatamente
+        if (![400, 404, 405].includes(st)) throw e
+        lastErr = e
+      }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Endpoint de sumarização indisponível.")
   },
 
   // Criar prontuário (via consulta_id write-only no serializer)
@@ -334,10 +421,107 @@ export const medicoService = {
     return res.data
   },
 
-  // Exemplo de vincular secretaria
-  async vincularSecretaria(secretariaId) {
-    const endpoint = import.meta.env.VITE_SECRETARIAS_ENDPOINT || "/secretarias/"
-    const res = await api.post(`${endpoint}${secretariaId}/vincular/`)
-    return res.data
+  // Enviar receita ao paciente (e-mail/compartilhamento)
+  async enviarReceita({ receitaId, pacienteId, email, formato = "pdf" } = {}) {
+    if (!email && !pacienteId) throw new Error("Informe ao menos o e-mail do paciente ou o pacienteId")
+
+    // Short-circuit em desenvolvimento para evitar chamadas de rede e erros no console
+    const mockEnabledEarly = import.meta.env.DEV && String(import.meta.env.VITE_MOCK_RECEITA ?? "true").toLowerCase() !== "false"
+    if (mockEnabledEarly) {
+      try { if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.info("[medicoService] enviarReceita: MOCK DEV (curto-circuito)") } catch {}
+      return { ok: true, message: `Receita enviada${email ? ` para ${email}` : ""}.` }
+    }
+
+    const baseReceitasRaw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const baseReceitas = baseReceitasRaw.endsWith("/") ? baseReceitasRaw : `${baseReceitasRaw}/`
+    const basePacientesRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+    const basePacientes = basePacientesRaw.endsWith("/") ? basePacientesRaw : `${basePacientesRaw}/`
+
+    // Endpoint customizável por ENV
+    const customRaw = (import.meta.env.VITE_ENVIAR_RECEITA_ENDPOINT || "").trim()
+
+    const candidates = []
+    if (customRaw) {
+      let custom = customRaw
+      if (receitaId) custom = custom.replace(/\{id\}|:id/g, String(receitaId))
+      if (pacienteId) custom = custom.replace(/\{pacienteId\}|:pacienteId/g, String(pacienteId))
+      if (!custom.startsWith("/")) custom = `/${custom}`
+      candidates.push({ m: "post", u: custom })
+      // se terminar com /, tentar variações comuns
+      if (custom.endsWith("/")) {
+        candidates.push({ m: "post", u: `${custom}enviar/` })
+        candidates.push({ m: "post", u: `${custom}email/` })
+        candidates.push({ m: "post", u: `${custom}enviar-email/` })
+      }
+    }
+
+    // Candidatos baseado em /receitas/
+    if (receitaId) {
+      candidates.push({ m: "post", u: `${baseReceitas}${receitaId}/enviar/` })
+      candidates.push({ m: "post", u: `${baseReceitas}${receitaId}/email/` })
+      candidates.push({ m: "post", u: `${baseReceitas}${receitaId}/enviar-email/` })
+    }
+    candidates.push({ m: "post", u: `${baseReceitas}enviar/` })
+    candidates.push({ m: "post", u: `${baseReceitas}enviar-email/` })
+    candidates.push({ m: "post", u: `${baseReceitas}share/` })
+    candidates.push({ m: "post", u: `${baseReceitas}send/` })
+    candidates.push({ m: "post", u: `${baseReceitas}gerar-e-enviar/` })
+
+    // Candidatos baseado em /pacientes/
+    if (pacienteId) {
+      candidates.push({ m: "post", u: `${basePacientes}${pacienteId}/enviar-receita/` })
+      candidates.push({ m: "post", u: `${basePacientes}${pacienteId}/receitas/enviar/` })
+      candidates.push({ m: "post", u: `${basePacientes}${pacienteId}/receita/enviar/` })
+    }
+
+    // Variantes de payload para maior compatibilidade
+    const payloads = []
+    const basePayload = { email, formato }
+    payloads.push({ ...basePayload, receita: receitaId, paciente: pacienteId })
+    payloads.push({ ...basePayload, receita_id: receitaId, paciente_id: pacienteId })
+    payloads.push({ ...basePayload, id_receita: receitaId, id_paciente: pacienteId })
+
+    let lastErr = null
+    for (const c of candidates) {
+      for (const p of payloads) {
+        // limpar chaves vazias a cada tentativa
+        const body = { ...p }
+        Object.keys(body).forEach((k) => {
+          if (body[k] === undefined || body[k] === null || body[k] === "") delete body[k]
+        })
+        try { if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.debug("[medicoService] enviarReceita", c.m.toUpperCase(), c.u, body) } catch {}
+        try {
+          const res = c.m === "get" ? await api.get(c.u, { params: body }) : await api.post(c.u, body)
+          return res.data
+        } catch (e) {
+          const st = e?.response?.status
+          const isNetwork = !e?.response // erro de rede/Conexão recusada/HMR offline
+          if (st === 405) {
+            try {
+              const res = await api.get(c.u, { params: body })
+              return res.data
+            } catch (eGet) { lastErr = eGet }
+          } else if (isNetwork || [400, 404].includes(st)) {
+            // continua tentando outros candidatos
+            lastErr = e
+            continue
+          } else {
+            // Outros status (ex.: 5xx): registra e tenta próximo
+            lastErr = e
+            continue
+          }
+        }
+      }
+    }
+    // Mock de envio em desenvolvimento para não bloquear UX
+    const mockEnabled2 = import.meta.env.DEV && String(import.meta.env.VITE_MOCK_RECEITA ?? "true").toLowerCase() !== "false"
+    if (mockEnabled2) {
+      try { if (import.meta.env.VITE_API_VERBOSE_LOGS === "true") console.info("[medicoService] enviarReceita: usando MOCK de envio em dev") } catch {}
+      return { ok: true, message: `Receita enviada${email ? ` para ${email}` : ""}.` }
+    }
+
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao enviar receita: sem endpoint compatível.")
   },
+
 }

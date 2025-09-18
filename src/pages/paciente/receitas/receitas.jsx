@@ -48,9 +48,8 @@ export default function ReceitasPaciente() {
   }, [receitas])
 
   const receitasList = useMemo(() => {
-    if (Array.isArray(receitas)) return receitas
-    if (Array.isArray(receitas?.results)) return receitas.results
-    return []
+    const base = Array.isArray(receitas) ? receitas : (Array.isArray(receitas?.results) ? receitas.results : [])
+    return [...base].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
   }, [receitas])
 
   useEffect(() => {
@@ -201,14 +200,24 @@ export default function ReceitasPaciente() {
                 ) : null}
                 {r.arquivo_assinado ? (
                   <div className="mt-3">
-                    <a
-                      className="text-blue-600 underline"
-                      href={r.arquivo_assinado}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Baixar PDF assinado
-                    </a>
+                    {/^data:|^blob:/i.test(r.arquivo_assinado) ? (
+                      <a
+                        className="text-blue-600 underline"
+                        href={r.arquivo_assinado}
+                        download={`Receita_${r.id || "documento"}.pdf`}
+                      >
+                        Baixar PDF assinado
+                      </a>
+                    ) : (
+                      <a
+                        className="text-blue-600 underline"
+                        href={/^https?:\/\//i.test(r.arquivo_assinado) ? r.arquivo_assinado : `${(import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")}${r.arquivo_assinado.startsWith("/") ? "" : "/"}${r.arquivo_assinado}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Baixar PDF assinado
+                      </a>
+                    )}
                   </div>
                 ) : null}
               </div>

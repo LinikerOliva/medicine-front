@@ -130,7 +130,7 @@ export default function PacienteHistoricoMedico() {
 
         const timeline = [...consultasMap, ...exames, ...receitas]
           .filter((x) => x.data)
-          .sort((a, b) => new Date(b.data) - new Date(a.data))
+          .sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0))
 
         if (mounted) setItems(timeline)
       } catch (e) {
@@ -387,10 +387,24 @@ const handleDownloadFile = async (item) => {
   try {
     let url = item?.resultado_url
     if (!url) return
+
+    // Se for data: ou blob:, baixar diretamente sem requisição HTTP
+    if (/^(data|blob):/i.test(url)) {
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${item.nome || "resultado"}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      return
+    }
+
+    // Se for relativo, prefixa com base do backend
     if (!/^https?:\/\//i.test(url)) {
       const base = import.meta.env.VITE_API_URL || "http://localhost:8000"
       url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
     }
+
     const res = await api.get(url, { responseType: "blob", baseURL: "" })
     const blob = new Blob([res.data], { type: res.headers["content-type"] || "application/octet-stream" })
     const cd = res.headers["content-disposition"] || ""

@@ -8,6 +8,7 @@ const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || "/api"
 const IS_DEV = import.meta.env.DEV
 const USE_PROXY = String(import.meta.env.VITE_USE_PROXY ?? "true").toLowerCase() !== "false"
 const API_VERBOSE = String(import.meta.env.VITE_API_VERBOSE_LOGS ?? "false").toLowerCase() === "true"
+const API_SILENCE_ERRORS = String(import.meta.env.VITE_API_SILENCE_ERRORS ?? "true").toLowerCase() !== "false"
 
 // Origin base (em dev com proxy, deixamos vazio para usar o host atual)
 const BASE_ORIGIN = IS_DEV && USE_PROXY ? "" : API_BASE_URL
@@ -107,6 +108,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (error) => {
+    if (IS_DEV && API_SILENCE_ERRORS) {
+      // Silencia erros de rede no console para reduzir ruído no DEV
+      return Promise.reject(error)
+    }
     if (IS_DEV && API_VERBOSE) {
       if (error.code === "ECONNABORTED") {
         console.error("[API] Tempo de requisição esgotado:", error.config?.url)

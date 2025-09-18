@@ -299,21 +299,125 @@ export const pacienteService = {
     const { __propagateErrors, ...cleanParams } = params || {}
     const queryParams = { ...cleanParams }
 
+    let pacienteId = null
+    let temPaciente = false
     try {
       const paciente = await this.getPacienteDoUsuario()
       if (paciente?.id) {
+        pacienteId = paciente.id
+        // Não usar consulta__paciente por padrão para evitar 500 em alguns backends
         if (!queryParams["paciente"]) queryParams["paciente"] = paciente.id
         if (!queryParams["paciente_id"]) queryParams["paciente_id"] = paciente.id
+        temPaciente = true
       }
     } catch (_) {}
 
-    try {
-      const res = await api.get(endpoint, { params: queryParams })
-      return res.data
-    } catch (err) {
-      if (cleanParams.__propagateErrors === true) throw err
+    // Evita requisição se não houver paciente e nenhum filtro explícito
+    if (!temPaciente && Object.keys(queryParams).length === 0) {
       return { results: [] }
     }
+
+    // Helper para tentar GET e retornar data normalizada
+    const tryGet = async (url, params) => {
+      try {
+        const res = await api.get(url, params ? { params } : undefined)
+        const data = res?.data
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : null)
+        return { ok: true, data: list != null ? data : { results: [] } }
+      } catch (err) {
+        const st = err?.response?.status
+        // se __propagateErrors e não queremos fallback, relança
+        if (__propagateErrors === true && ![400, 404, 405, 500].includes(st)) throw err
+        return { ok: false, err }
+      }
+    }
+
+    // Tenta sequencialmente um conjunto reduzido de endpoints/parametrizações para evitar spam de erros no console
+    const attempts = []
+    if (pacienteId) {
+      // Priorizar variações com query string no endpoint /receitas/
+      attempts.push(() => tryGet(endpoint, { paciente: pacienteId }))
+      attempts.push(() => tryGet(endpoint, { paciente_id: pacienteId }))
+    }
+    // Por último, tenta com os queryParams originais (para preservar filtros adicionais),
+    // porém removendo explicitamente consulta__paciente se existir
+    const sanitizedParams = { ...queryParams }
+    delete sanitizedParams["consulta__paciente"]
+    attempts.push(() => tryGet(endpoint, sanitizedParams))
+
+    let apiData = null
+    for (const fn of attempts) {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await fn()
+      if (r.ok) {
+        apiData = r.data
+        break
+      }
+    }
+
+    // Último fallback: busca geral e filtra no cliente
+    if (!apiData) {
+      const rAll = await tryGet(endpoint)
+      if (rAll.ok) {
+        apiData = rAll.data
+        // manter shape
+        const list = Array.isArray(apiData) ? apiData : (Array.isArray(apiData?.results) ? apiData.results : [])
+        const filtered = pacienteId
+          ? list.filter((x) => String(x.paciente_id || x.paciente || x?.consulta?.paciente || x?.consulta?.paciente_id || "") === String(pacienteId))
+          : list
+        apiData = Array.isArray(apiData) ? filtered : { results: filtered }
+      } else {
+        apiData = { results: [] }
+      }
+    }
+
+    // Mesclar com receitas mock salvas localmente (quando em DEV)
+    let local = []
+    try {
+      const arr = JSON.parse(localStorage.getItem("mock_receitas") || "[]")
+      if (Array.isArray(arr)) {
+        // Se houver paciente no query, filtra
+        const pid = queryParams["consulta__paciente"] || queryParams.paciente || queryParams.paciente_id || pacienteId
+        local = pid ? arr.filter((x) => String(x.paciente_id || x.consulta?.paciente_id || "") === String(pid)) : arr
+      }
+    } catch (_) {}
+
+    // Normalizar para lista
+    const list = Array.isArray(apiData) ? apiData : Array.isArray(apiData?.results) ? apiData.results : []
+
+    // Evitar duplicados por id
+    const byId = new Map()
+    ;[...list, ...local].forEach((r) => {
+      if (!r) return
+      const k = r.id ?? `${r.created_at}-${r.medicamentos}`
+      if (!byId.has(k)) byId.set(k, r)
+    })
+
+    const merged = Array.from(byId.values())
+
+    // Normalizar campo de link assinado -> garantir URL ABSOLUTA para funcionar ao abrir em nova aba no DEV
+    const normalizeUrl = (u) => {
+      if (!u) return u
+      // manter URLs absolutas (http/https) e esquemas especiais (data:, blob:)
+      if (/^https?:\/\//i.test(u) || /^(data|blob):/i.test(u)) return u
+      const origin = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+      const path = u.startsWith("/") ? u : `/${u}`
+      return `${origin}${path}`
+    }
+
+    const mergedNormalized = merged.map((r) => {
+      const arquivo = r.arquivo_assinado || r.arquivoAssinado || r?.arquivo?.url || r?.pdf_url || r?.download_url
+      if (arquivo && !r.arquivo_assinado) {
+        return { ...r, arquivo_assinado: normalizeUrl(arquivo) }
+      }
+      if (r.arquivo_assinado) {
+        return { ...r, arquivo_assinado: normalizeUrl(r.arquivo_assinado) }
+      }
+      return r
+    })
+
+    // Retornar no mesmo formato (results) esperado pela tela
+    return { results: mergedNormalized }
   },
 
   async getMedicosVinculados() {
