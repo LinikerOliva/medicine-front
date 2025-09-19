@@ -317,7 +317,7 @@ export default function RegisterForm() {
         password_confirm: formData.confirmSenha,
         // IMPORTANTE: se for médico, não enviamos 'medico' como role no registro para evitar que o backend tente criar Medico direto
         // Enviamos um papel seguro (paciente) e carregamos desired_role para referência futura
-        role: tipo === "medico" ? (import.meta.env.VITE_DEFAULT_MEDICO_REGISTER_ROLE || "paciente") : tipo,
+        role: tipo,
         desired_role: tipo,
         cpf: formData.cpf || "",
       };

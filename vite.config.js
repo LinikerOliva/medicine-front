@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || 'http://127.0.0.1:8000';
   const apiBasePath = env.VITE_API_BASE_PATH || '/api';
   const enableMockReceita = String(env.VITE_MOCK_RECEITA ?? 'true').toLowerCase() !== 'false';
+  const enableMockMedicoCert = String(env.VITE_MOCK_MEDICO_CERTIFICADO ?? 'true').toLowerCase() !== 'false';
 
   // Plugin para mockar endpoints de geração de receita em desenvolvimento
   const mockReceitaPlugin = () => ({
@@ -122,8 +123,169 @@ export default defineConfig(({ mode }) => {
     },
   });
 
+  // Plugin para mockar endpoints de Certificado Digital do Médico em desenvolvimento
+  const mockMedicoCertificadoPlugin = () => ({
+    name: 'mock-medico-certificado',
+    apply: 'serve',
+    configureServer(server) {
+      // Estado em memória do certificado atual (apenas para DEV)
+      let currentCert = null;
+
+      const json = (res, status, obj) => {
+        res.statusCode = status;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(obj));
+      };
+
+      const readRawBody = async (req) => new Promise((resolve) => {
+        const chunks = [];
+        req.on('data', (c) => chunks.push(Buffer.from(c)));
+        req.on('end', () => resolve(Buffer.concat(chunks)));
+        req.on('error', () => resolve(Buffer.alloc(0)));
+      });
+
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const method = (req.method || 'GET').toUpperCase();
+          const url = req.url || '/';
+          const pathname = url.split('?')[0];
+
+          const base = apiBasePath.replace(/\/?$/, '/');
+
+          // MOCK: Endpoints de Certificado do Médico
+          const certTargets = new Set([
+            `${base}medicos/me/certificado/`,
+            `${base}medicos/certificado/`,
+            `${base}certificados/`,
+            '/medicos/me/certificado/',
+            '/medicos/certificado/',
+            '/certificados/',
+          ]);
+          const idCertRegexes = [
+            new RegExp(`^${base.replace(/\/$/, '')}/?medicos/[^/]+/(certificado|assinatura)/$`),
+            /^\/medicos\/[^/]+\/(certificado|assinatura)\/$/,
+          ];
+
+          const isCertPath = certTargets.has(pathname) || idCertRegexes.some((r) => r.test(pathname));
+          if (isCertPath) {
+            if (method === 'GET') {
+              const info = currentCert
+                ? currentCert
+                : { exists: false, message: 'Nenhum certificado cadastrado (MOCK DEV)'};
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify(info));
+              return;
+            }
+
+            if (['POST','PUT','PATCH'].includes(method)) {
+              // Aceita qualquer multipart/form-data; não precisamos parsear o arquivo para o mock
+              const now = Date.now();
+              const addDays = (n) => new Date(now + n*24*60*60*1000).toISOString();
+              currentCert = {
+                id: 'mock-cert',
+                exists: true,
+                subject_name: 'Dr. Mock',
+                issuer_name: 'Autoridade Certificadora Mock',
+                valid_from: addDays(-180),
+                valid_to: addDays(180),
+                uploaded_at: new Date(now).toISOString(),
+              };
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify(currentCert));
+              return;
+            }
+
+            if (method === 'DELETE') {
+              currentCert = null;
+              res.statusCode = 204;
+              res.end();
+              return;
+            }
+
+            res.statusCode = 405;
+            res.setHeader('Allow', 'GET, POST, PUT, PATCH, DELETE');
+            res.end('Method Not Allowed');
+            return;
+          }
+
+          // Endpoints de ASSINATURA (mock)
+          const signTargets = new Set([
+            `${base}medicos/me/assinar/`,
+            `${base}medicos/assinar/`,
+            `${base}assinatura/assinar/`,
+            '/medicos/me/assinar/',
+            '/medicos/assinar/',
+            '/assinatura/assinar/',
+            '/medico/assinar/',
+          ]);
+
+          if (!signTargets.has(pathname)) return next();
+          if (!['POST','PUT'].includes(method)) {
+            res.statusCode = 405;
+            res.setHeader('Allow', 'POST, PUT');
+            return res.end('Method Not Allowed');
+          }
+
+          // Coleta corpo bruto (multipart)
+          const chunks = [];
+          req.on('data', (c) => chunks.push(Buffer.from(c)));
+          req.on('end', async () => {
+            try {
+              const body = Buffer.concat(chunks);
+              // Detecta PDF dentro do multipart de forma simples
+              const start = body.indexOf(Buffer.from('%PDF'));
+              const end = body.lastIndexOf(Buffer.from('%%EOF'));
+              let pdfBuf;
+              if (start !== -1 && end !== -1) {
+                pdfBuf = body.subarray(start, end + 5);
+              } else {
+                const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+                const pdfDoc = await PDFDocument.create();
+                const page = pdfDoc.addPage([595.28, 841.89]);
+                const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                page.drawText('Documento gerado (mock)', { x: 50, y: 800, size: 14, font, color: rgb(0,0,0) });
+                pdfBuf = Buffer.from(await pdfDoc.save());
+              }
+
+              const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+              const pdfDoc = await PDFDocument.load(pdfBuf);
+              const pages = pdfDoc.getPages();
+              const page = pages[pages.length - 1];
+              const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+              const stamp = `Assinado digitalmente (MOCK)\nTitular: Dr. Mock\nAlgoritmo: SHA256-RSA\nData: ${new Date().toLocaleString()}`;
+              page.drawRectangle({ x: 40, y: 40, width: 515, height: 70, color: rgb(0.95,0.95,0.95) });
+              page.drawText(stamp, { x: 50, y: 80, size: 10, font, color: rgb(0,0,0) });
+              page.drawText('Carimbo de assinatura mock', { x: 50, y: 60, size: 8, font, color: rgb(0.3,0.3,0.3) });
+
+              const out = await pdfDoc.save();
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/pdf');
+              res.setHeader('Content-Disposition', 'attachment; filename="documento_assinado_mock.pdf"');
+              res.end(Buffer.from(out));
+            } catch (e) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+            }
+          });
+        } catch (e) {
+          try { console.error('[mock-medico-certificado] erro:', e); } catch {}
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ ok:false, error: 'Falha no mock de certificado/assinatura' }));
+        }
+      });
+    },
+  });
+
   return {
-    plugins: [react(), ...(enableMockReceita ? [mockReceitaPlugin()] : [])],
+    plugins: [
+      react(),
+      ...(enableMockReceita ? [mockReceitaPlugin()] : []),
+      ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
+    ],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),

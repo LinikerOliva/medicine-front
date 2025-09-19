@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { MedicoRegistration } from "./medico-registration"
-import { User, Lock, Bell, Stethoscope } from "lucide-react"
+import { User, Lock, Bell, Stethoscope, Shield } from "lucide-react"
 import { useLocation } from "react-router-dom"
 import { ProfileTabs } from "@/components/profile-tabs"
 import { useEffect, useState } from "react"
@@ -23,6 +23,7 @@ export default function Configuracao() {
   const { activeRole } = useUser()
   const location = useLocation()
   const isPaciente = location.pathname.startsWith("/paciente/")
+  const isMedico = location.pathname.startsWith("/medico/")
   const { toast } = useToast()
 
   // Estados para perfil/usuário
@@ -84,7 +85,50 @@ export default function Configuracao() {
     { label: "Configurações", href: "/paciente/configuracoes" },
   ]
 
-  // Carregar perfil e paciente
+  // Estado para criação de perfil de paciente pela secretária
+  const [creatingPatient, setCreatingPatient] = useState(false)
+
+  // NOVO: Certificado Digital (Médico)
+  const [certInfo, setCertInfo] = useState(null)
+  const [loadingCert, setLoadingCert] = useState(false)
+  const [uploadingCert, setUploadingCert] = useState(false)
+  const [selectedCertFile, setSelectedCertFile] = useState(null)
+  const [certPassword, setCertPassword] = useState("")
+  const [signFile, setSignFile] = useState(null)
+  const [signReason, setSignReason] = useState('Assinatura de documento médico')
+  const [signLocation, setSignLocation] = useState('Hospital')
+  const [signLoading, setSignLoading] = useState(false)
+
+  const handleSignDocument = async () => {
+    if (!signFile) {
+      toast.error('Selecione um PDF para assinar.')
+      return
+    }
+    const fd = new FormData()
+    fd.append('file', signFile)
+    if (signReason) fd.append('reason', signReason)
+    if (signLocation) fd.append('location', signLocation)
+
+    try {
+      setSignLoading(true)
+      const { filename, blob } = await medicoService.signDocumento(fd, { reason: signReason, location: signLocation })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename || 'documento_assinado.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Documento assinado com sucesso.')
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || 'Falha ao assinar o documento.'
+      toast.error(msg)
+    } finally {
+      setSignLoading(false)
+    }
+  }
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -150,6 +194,13 @@ export default function Configuracao() {
       mounted = false
     }
   }, [])
+
+  // Carregar informações do certificado quando na tela do médico
+  useEffect(() => {
+    if (!isMedico) return
+    handleFetchCertInfo()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMedico])
 
   const handleFormChange = (e) => {
     const { name, value } = e.target
@@ -245,6 +296,84 @@ export default function Configuracao() {
     }
   }
 
+  // NOVO: buscar informações do certificado
+  async function handleFetchCertInfo() {
+    setLoadingCert(true)
+    try {
+      const info = await medicoService.getCertificadoInfo()
+      setCertInfo(info || null)
+    } catch (e) {
+      // Não mostra erro agressivo aqui; ação manual tem toast
+      setCertInfo(null)
+    } finally {
+      setLoadingCert(false)
+    }
+  }
+
+  // NOVO: upload de certificado
+  async function handleUploadCert() {
+    if (!selectedCertFile) {
+      toast({ title: "Selecione um arquivo", description: "Escolha um arquivo .pfx, .p12, .crt, .cer ou .pem.", variant: "destructive" })
+      return
+    }
+    const maxSize = 15 * 1024 * 1024 // 15MB
+    if (selectedCertFile.size > maxSize) {
+      toast({ title: "Arquivo muito grande", description: "O limite é de 15MB.", variant: "destructive" })
+      return
+    }
+    const formData = new FormData()
+    // Anexa com múltiplos aliases para maior compatibilidade no backend
+    formData.append("file", selectedCertFile)
+    formData.append("certificado", selectedCertFile)
+    formData.append("arquivo", selectedCertFile)
+    formData.append("pfx", selectedCertFile)
+    // Senha opcional do PFX/PKCS#12
+    if (certPassword) {
+      formData.append("password", certPassword)
+      formData.append("senha", certPassword)
+      formData.append("passphrase", certPassword)
+      formData.append("pfx_password", certPassword)
+    }
+
+    setUploadingCert(true)
+    try {
+      const saved = await medicoService.uploadCertificado(formData)
+      setCertInfo(saved || null)
+      toast({ title: "Certificado enviado", description: "Seu certificado foi armazenado com sucesso." })
+      setSelectedCertFile(null)
+    } catch (e) {
+      const status = e?.response?.status
+      const details = e?.response?.data
+      const msg =
+        status === 404
+          ? "Endpoint de upload não encontrado no backend. Configure a variável VITE_MEDICO_CERTIFICADO_ENDPOINT."
+          : typeof details === "string"
+          ? details
+          : "Não foi possível enviar o certificado."
+      toast({ title: "Falha no upload", description: msg, variant: "destructive" })
+    } finally {
+      setUploadingCert(false)
+      setCertPassword("")
+    }
+  }
+
+  // Utilitário de status
+  const daysToExpire = (() => {
+    const dt = certInfo?.valid_to || certInfo?.validade_fim || certInfo?.validade || certInfo?.valid_to_date
+    if (!dt) return null
+    const exp = new Date(dt)
+    const now = new Date()
+    return Math.ceil((exp - now) / (1000 * 60 * 60 * 24))
+  })()
+
+  // Máscara simples de data para exibição
+  const formatDate = (v) => {
+    if (!v) return "?"
+    try { return new Date(v).toLocaleDateString() } catch { return String(v) }
+  }
+
+  const exists = Boolean(certInfo && (certInfo.exists ?? certInfo.id ?? certInfo.valid_to ?? certInfo.subject))
+
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="space-y-6">
@@ -294,7 +423,7 @@ export default function Configuracao() {
         )}
 
         <Tabs defaultValue="perfil" className="space-y-6">
-          <TabsList className={`grid w-full ${isPaciente ? "grid-cols-3" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full ${isMedico ? "grid-cols-4" : "grid-cols-3"}`}>
             <TabsTrigger value="perfil" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
@@ -307,6 +436,12 @@ export default function Configuracao() {
               <Bell className="h-4 w-4" />
               Notificações
             </TabsTrigger>
+            {isMedico && (
+              <TabsTrigger value="certificado" className="flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Certificado Digital
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Perfil */}
@@ -483,7 +618,7 @@ export default function Configuracao() {
               <Card>
                 <CardHeader>
                   <CardTitle>Autenticação de Dois Fatores</CardTitle>
-                  <CardDescription>Adicione uma camada extra de segurança à sua conta</CardDescription>
+                <CardDescription>Adicione uma camada extra de segurança à sua conta</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
@@ -556,6 +691,114 @@ export default function Configuracao() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* NOVO: Certificado Digital (somente na área do médico) */}
+          {isMedico && (
+            <TabsContent value="certificado">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Configuração de Certificado Digital</CardTitle>
+                  <CardDescription>
+                    Envie seu certificado (.pfx/.p12 ou .crt/.cer/.pem). O arquivo é enviado com segurança ao servidor.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Status atual */}
+                  <div className="rounded-lg border p-4 bg-muted/30">
+                    {loadingCert ? (
+                      <p className="text-muted-foreground">Carregando informações do certificado...</p>
+                    ) : exists ? (
+                      <div className="space-y-1">
+                        <p className="font-medium">Certificado cadastrado</p>
+                        <p className="text-sm text-muted-foreground">
+                          Titular: {certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Emitente: {certInfo?.issuer || certInfo?.issuer_name || certInfo?.emitente || "—"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Validade: {certInfo?.valid_from || certInfo?.validade_inicio || "?"} — {certInfo?.valid_to || certInfo?.validade_fim || "?"}
+                        </p>
+                        {daysToExpire != null && (
+                          <p className={`text-sm ${daysToExpire <= 0 ? "text-destructive" : daysToExpire < 30 ? "text-amber-600" : "text-emerald-600"}`}>
+                            {daysToExpire <= 0 ? "Expirado" : `Expira em ${daysToExpire} dia(s)`}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Nenhum certificado cadastrado para este médico.</p>
+                    )}
+                    <div className="mt-3">
+                      <Button variant="outline" size="sm" onClick={handleFetchCertInfo} disabled={loadingCert}>
+                        {loadingCert ? "Validando..." : "Validar agora"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Upload */}
+                  <div className="space-y-2">
+                    <Label>Arquivo do certificado</Label>
+                    <Input
+                      type="file"
+                      accept=".pfx,.p12,.crt,.cer,.pem"
+                      onChange={(e) => setSelectedCertFile(e.target.files?.[0] || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Aceita: .pfx, .p12, .crt, .cer, .pem. Tamanho máximo: 15MB.
+                    </p>
+                    {selectedCertFile && (
+                      <p className="text-xs">Selecionado: {selectedCertFile.name} ({Math.ceil(selectedCertFile.size / 1024)} KB)</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Senha do certificado (se aplicável)</Label>
+                    <Input
+                      type="password"
+                      value={certPassword}
+                      onChange={(e) => setCertPassword(e.target.value)}
+                      placeholder="Senha do .pfx (opcional)"
+                    />
+                    <p className="text-xs text-muted-foreground">A senha não é armazenada no navegador; é usada apenas durante o processamento.</p>
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button onClick={handleUploadCert} disabled={uploadingCert}>
+                      {uploadingCert ? "Enviando..." : "Enviar Certificado"}
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  {/* Assinatura de Documento */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Arquivo PDF para assinar</Label>
+                      <Input type="file" accept=".pdf" onChange={(e) => setSignFile(e.target.files?.[0] || null)} />
+                      {signFile && (
+                        <p className="text-xs">Selecionado: {signFile.name} ({Math.ceil(signFile.size / 1024)} KB)</p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Motivo (opcional)</Label>
+                        <Input value={signReason} onChange={(e) => setSignReason(e.target.value)} placeholder="Ex.: Assinatura de prescrição" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Local (opcional)</Label>
+                        <Input value={signLocation} onChange={(e) => setSignLocation(e.target.value)} placeholder="Ex.: São Paulo - SP" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button onClick={handleSignDocument} disabled={signLoading || !signFile}>
+                        {signLoading ? "Assinando..." : "Assinar e Baixar"}
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* Médico - renderiza apenas para paciente */}
           {isPaciente && (

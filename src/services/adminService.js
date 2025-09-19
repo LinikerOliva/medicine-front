@@ -223,25 +223,261 @@ export const adminService = {
   },
 
   async getUsuarios(params = {}) {
-    const response = await api.get("/admin/usuarios/", { params })
-    const data = response.data
-    return Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+    // Novo: usar probing de endpoints e normalizar parâmetros
+    const bases = getUserBaseCandidates()
+    const normalized = sanitizeListParams(normalizeParams(params))
+
+    let lastErr
+    for (const base of bases) {
+      const baseUrl = ensureTrailingSlash(base)
+      const endpointsToTry = STRICT
+        ? [baseUrl]
+        : [baseUrl, baseUrl + "listar/", baseUrl + "list/", baseUrl + "todas/", baseUrl + "all/"]
+
+      const paramVariants = []
+      paramVariants.push(normalized)
+      if (!STRICT && normalized?.ordering) {
+        const { ordering, ...rest } = normalized
+        paramVariants.push(rest)
+      }
+      if (!STRICT) {
+        const pageOnly = {}
+        if (normalized.page_size != null) pageOnly.page_size = normalized.page_size
+        if (normalized.limit != null) pageOnly.limit = normalized.limit
+        if (normalized.page != null) pageOnly.page = normalized.page
+        if (normalized.offset != null) pageOnly.offset = normalized.offset
+        if (Object.keys(pageOnly).length) paramVariants.push(pageOnly)
+      }
+      if (Object.keys(normalized).length) paramVariants.push({})
+
+      for (const endpoint of endpointsToTry) {
+        for (const p of paramVariants) {
+          try {
+            if (VERBOSE) console.debug("[adminService.getUsuarios] GET", endpoint, p)
+            const response = await api.get(endpoint, { params: p })
+            const data = response.data
+            const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+            const count = typeof data?.count === "number" ? data.count : list.length
+            if (VERBOSE) console.debug("[adminService.getUsuarios] OK", endpoint, `items=${list.length}`)
+            return { results: list, count }
+          } catch (err) {
+            const st = err?.response?.status
+            if (VERBOSE) console.warn("[adminService.getUsuarios] Falhou", endpoint, "status=", st, "params=", p)
+            if (st === 401) { throw err }
+            lastErr = err
+            continue
+          }
+        }
+      }
+      continue
+    }
+
+    if (!VERBOSE && import.meta.env.DEV) {
+      console.info("[adminService.getUsuarios] Nenhum endpoint respondeu. Retornando lista vazia.")
+    }
+    return { results: [], count: 0 }
   },
 
   async getClinicas(params = {}) {
-    const response = await api.get("/admin/clinicas/", { params })
-    const data = response.data
-    return Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+    // Novo: usar probing de endpoints e normalizar parâmetros
+    const bases = getClinicBaseCandidates()
+    const normalized = sanitizeListParams(normalizeParams(params))
+
+    let lastErr
+    for (const base of bases) {
+      const baseUrl = ensureTrailingSlash(base)
+      const endpointsToTry = STRICT
+        ? [baseUrl]
+        : [baseUrl, baseUrl + "listar/", baseUrl + "list/", baseUrl + "todas/", baseUrl + "all/"]
+
+      const paramVariants = []
+      paramVariants.push(normalized)
+      if (!STRICT && normalized?.ordering) {
+        const { ordering, ...rest } = normalized
+        paramVariants.push(rest)
+      }
+      if (!STRICT) {
+        const pageOnly = {}
+        if (normalized.page_size != null) pageOnly.page_size = normalized.page_size
+        if (normalized.limit != null) pageOnly.limit = normalized.limit
+        if (normalized.page != null) pageOnly.page = normalized.page
+        if (normalized.offset != null) pageOnly.offset = normalized.offset
+        if (Object.keys(pageOnly).length) paramVariants.push(pageOnly)
+      }
+      if (Object.keys(normalized).length) paramVariants.push({})
+
+      for (const endpoint of endpointsToTry) {
+        for (const p of paramVariants) {
+          try {
+            if (VERBOSE) console.debug("[adminService.getClinicas] GET", endpoint, p)
+            const response = await api.get(endpoint, { params: p })
+            const data = response.data
+            const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+            const count = typeof data?.count === "number" ? data.count : list.length
+            if (VERBOSE) console.debug("[adminService.getClinicas] OK", endpoint, `items=${list.length}`)
+            return { results: list, count }
+          } catch (err) {
+            const st = err?.response?.status
+            if (VERBOSE) console.warn("[adminService.getClinicas] Falhou", endpoint, "status=", st, "params=", p)
+            if (st === 401) { throw err }
+            lastErr = err
+            continue
+          }
+        }
+      }
+      continue
+    }
+
+    if (!VERBOSE && import.meta.env.DEV) {
+      console.info("[adminService.getClinicas] Nenhum endpoint respondeu. Retornando lista vazia.")
+    }
+    return { results: [], count: 0 }
   },
 
   async updateUsuario(id, payload = {}) {
-    const response = await api.patch(`/admin/usuarios/${id}/`, payload)
-    return response.data
+    const userId = id || payload?.id
+    if (!userId) throw new Error("ID do usuário é obrigatório para atualização")
+
+    // Normaliza payload: duplica campos para chaves comuns em APIs distintas
+    const body = { ...payload }
+    if (body.role && body.tipo == null) body.tipo = body.role
+    if (body.is_active != null && body.ativo == null) body.ativo = !!body.is_active
+    if ((body.first_name || body.last_name) && body.nome == null) {
+      body.nome = [body.first_name || "", body.last_name || ""].filter(Boolean).join(" ").trim() || undefined
+    }
+
+    const bases = getUserBaseCandidates()
+    let lastErr = null
+
+    for (const base of bases) {
+      const b = ensureTrailingSlash(base)
+
+      // 1) PATCH no recurso com ID na URL
+      try {
+        const resp = await api.patch(`${b}${userId}/`, body)
+        return resp.data
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.updateUsuario] PATCH falhou", `${b}${userId}/`, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+      }
+
+      // 2) PUT no recurso com ID na URL
+      try {
+        const resp = await api.put(`${b}${userId}/`, body)
+        return resp.data
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.updateUsuario] PUT falhou", `${b}${userId}/`, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+      }
+
+      // 3) PATCH no base (ID no corpo)
+      try {
+        const resp = await api.patch(b, { id: userId, ...body })
+        return resp.data
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.updateUsuario] PATCH base falhou", b, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+      }
+
+      // 4) POST em endpoints de update comuns
+      for (const suffix of ["update/", "editar/", "edicao/"]) {
+        const url = b + suffix
+        try {
+          const resp = await api.post(url, { id: userId, ...body })
+          return resp.data
+        } catch (err) {
+          const st = err?.response?.status
+          if (VERBOSE) console.warn("[adminService.updateUsuario] POST falhou", url, "status=", st)
+          if (st === 401) throw err
+          lastErr = err
+        }
+      }
+    }
+
+    if (!VERBOSE && import.meta.env.DEV) {
+      console.info("[adminService.updateUsuario] Nenhum endpoint aceitou a atualização do usuário.")
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao atualizar usuário: nenhum endpoint aceitou a requisição.")
   },
 
   async removerUsuariosEmMassa(ids = []) {
-    const response = await api.post("/admin/usuarios/remover/", { ids })
-    return response.data
+    const idList = (Array.isArray(ids) ? ids : [ids]).filter(Boolean)
+    if (idList.length === 0) {
+      return { success: true, deleted: [], detail: "no-op" }
+    }
+
+    const bases = getUserBaseCandidates()
+    let lastErr = null
+
+    // Tentar endpoints de bulk conhecidos com POST
+    const bulkVariants = [
+      { suffix: "remover/", method: "post", bodyKey: "ids" },
+      { suffix: "delete/", method: "post", bodyKey: "ids" },
+      { suffix: "bulk_delete/", method: "post", bodyKey: "ids" },
+    ]
+
+    for (const base of bases) {
+      const b = ensureTrailingSlash(base)
+
+      // Variantes de POST
+      for (const v of bulkVariants) {
+        const url = b + v.suffix
+        try {
+          const resp = await api.post(url, { [v.bodyKey]: idList })
+          return resp.data
+        } catch (err) {
+          const st = err?.response?.status
+          if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] POST falhou", url, "status=", st)
+          if (st === 401) throw err
+          lastErr = err
+        }
+      }
+
+      // Variante DELETE com body { ids }
+      try {
+        const url = b
+        const resp = await api.delete(url, { data: { ids: idList } })
+        return resp.data
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] DELETE bulk falhou", b, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+      }
+
+      // Fallback: deletar cada ID individualmente
+      let anySuccess = false
+      for (const id of idList) {
+        const url = `${b}${id}/`
+        try {
+          await api.delete(url)
+          anySuccess = true
+        } catch (err) {
+          const st = err?.response?.status
+          if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] DELETE por id falhou", url, "status=", st)
+          if (st === 401) throw err
+          lastErr = err
+          // Continua tentando os demais IDs/endpoints
+        }
+      }
+      if (anySuccess) {
+        return { success: true }
+      }
+    }
+
+    // Se chegou aqui, nenhuma tentativa funcionou
+    if (!VERBOSE && import.meta.env.DEV) {
+      console.info("[adminService.removerUsuariosEmMassa] Nenhum endpoint de exclusão respondeu aos padrões testados.")
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao excluir usuários: nenhum endpoint aceitou a requisição.")
   },
 
   async createUsuario(payload = {}) {
@@ -306,6 +542,38 @@ function getBaseCandidates() {
 
   const candidates = Array.from(new Set([...preferred, ...envs, ...others].filter(Boolean)))
   return candidates
+}
+
+// ADICIONADO: candidatos para endpoints de usuários do admin
+function getUserBaseCandidates() {
+  const envAdmin = (import.meta.env.VITE_ADMIN_USERS_ENDPOINT || "").trim()
+  const envGeneric = (import.meta.env.VITE_USERS_ENDPOINT || "").trim()
+  const envs = Array.from(new Set([envAdmin, envGeneric].filter(Boolean)))
+
+  const preferred = [
+    "/admin/usuarios/",
+    "/usuarios/",
+    "/admin/users/",
+    "/users/",
+  ]
+
+  return Array.from(new Set([...envs, ...preferred].filter(Boolean)))
+}
+
+// ADICIONADO: candidatos para endpoints de clínicas do admin
+function getClinicBaseCandidates() {
+  const envAdmin = (import.meta.env.VITE_ADMIN_CLINICAS_ENDPOINT || "").trim()
+  const envGeneric = (import.meta.env.VITE_CLINICAS_ENDPOINT || "").trim()
+  const envs = Array.from(new Set([envAdmin, envGeneric].filter(Boolean)))
+
+  const preferred = [
+    "/admin/clinicas/",
+    "/clinicas/",
+    "/admin/clinica/",
+    "/clinica/",
+  ]
+
+  return Array.from(new Set([...envs, ...preferred].filter(Boolean)))
 }
 
 function normalizeSolicitacaoItem(it = {}) {

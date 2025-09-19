@@ -101,6 +101,13 @@ api.interceptors.request.use((config) => {
     delete config.headers.Authorization
   }
 
+  // Se for enviar FormData, remove Content-Type para o browser definir o boundary corretamente
+  if (config.data instanceof FormData) {
+    if (config.headers) {
+      delete config.headers["Content-Type"]
+    }
+  }
+
   return config
 })
 
