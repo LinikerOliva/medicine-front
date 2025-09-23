@@ -95,6 +95,17 @@ api.interceptors.request.use((config) => {
     } catch {}
   }
 
+  // Auto-correção: se o esquema não combinar com o formato do token, ajustar dinamicamente
+  try {
+    if (token && token.includes(".") && /^token$/i.test(String(scheme))) {
+      scheme = "Bearer"
+      localStorage.setItem("auth_scheme", scheme)
+    } else if (token && !token.includes(".") && /^bearer$/i.test(String(scheme))) {
+      scheme = "Token"
+      localStorage.setItem("auth_scheme", scheme)
+    }
+  } catch {}
+
   if (token) {
     config.headers.Authorization = `${scheme} ${token}`
   } else {

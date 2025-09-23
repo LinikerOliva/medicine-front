@@ -334,12 +334,19 @@ export default function Configuracao() {
       formData.append("passphrase", certPassword)
       formData.append("pfx_password", certPassword)
     }
+    // NOVO: flags para solicitar não persistir dados privados
+    formData.append("no_persist", "true")
+    formData.append("ephemeral", "true")
+    formData.append("save_public_only", "true")
 
     setUploadingCert(true)
     try {
       const saved = await medicoService.uploadCertificado(formData)
       setCertInfo(saved || null)
-      toast({ title: "Certificado enviado", description: "Seu certificado foi armazenado com sucesso." })
+      const desc = saved?.public_cert_saved
+        ? "Certificado público extraído e salvo para validações. O PFX não foi armazenado."
+        : "Certificado processado. O PFX não foi armazenado."
+      toast({ title: "Processamento concluído", description: desc })
       setSelectedCertFile(null)
     } catch (e) {
       const status = e?.response?.status
@@ -349,8 +356,8 @@ export default function Configuracao() {
           ? "Endpoint de upload não encontrado no backend. Configure a variável VITE_MEDICO_CERTIFICADO_ENDPOINT."
           : typeof details === "string"
           ? details
-          : "Não foi possível enviar o certificado."
-      toast({ title: "Falha no upload", description: msg, variant: "destructive" })
+          : "Não foi possível processar o certificado."
+      toast({ title: "Falha no processamento", description: msg, variant: "destructive" })
     } finally {
       setUploadingCert(false)
       setCertPassword("")

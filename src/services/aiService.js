@@ -16,8 +16,14 @@ export const aiService = {
       "  \"conduta\": string,",
       "  \"medicamentos\": string,",
       "  \"posologia\": string,",
-      "  \"alergias\": string",
+      "  \"alergias\": string,",
+      // Novos campos para exame físico/sinais vitais
+      "  \"pressao\": string,",
+      "  \"frequencia_cardiaca\": string,",
+      "  \"temperatura\": string,",
+      "  \"saturacao\": string",
       "}",
+      "Formate as unidades quando possível (ex.: 120/80 mmHg, 75 bpm, 36.5 °C, 98%).",
       "Se algum dado não estiver na transcrição, deixe a string vazia."
     ].join("\n")
 

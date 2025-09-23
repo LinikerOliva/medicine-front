@@ -262,7 +262,7 @@ export default function IniciarConsulta() {
     }
   }
 
-  const stopListening = () => {
+  const stopListening = async () => {
     try {
       setIsListening(false)
       listeningRef.current = false
@@ -274,6 +274,76 @@ export default function IniciarConsulta() {
         recognitionRef.current.onerror = null
         recognitionRef.current.stop()
         recognitionRef.current = null
+      }
+    } catch {}
+
+    // NOVO: ao parar manualmente e se houver transcrição e ainda não aplicamos IA, chama backend
+    try {
+      const hasText = (transcript || "").trim().length > 0
+      if (hasText && !aiApplied && consultaId) {
+        try { await medicoService.finalizarConsulta(consultaId) } catch {}
+        try {
+          const extracted = extractFromTranscript(transcript || "")
+          const aiData = await medicoService.sumarizarConsulta(consultaId, {
+            transcript: transcript || "",
+            extracted: {
+              queixa: extracted.queixa || "",
+              historia: extracted.historia || "",
+              diagnostico: extracted.diagnostico || "",
+              conduta: extracted.conduta || "",
+              medicamentos: extracted.medicamentos || "",
+              posologia: extracted.posologia || "",
+              pressao: extracted.pressao || "",
+              frequencia_cardiaca: extracted["frequencia-cardiaca"] || extracted.frequencia || "",
+              temperatura: extracted.temperatura || "",
+              saturacao: extracted.saturacao || "",
+            },
+            form: {
+              queixa_principal: formData.queixa || "",
+              historia_doenca_atual: formData.historia || "",
+              diagnostico_principal: formData.diagnostico || "",
+              conduta: formData.conduta || "",
+              medicamentos_uso: formData.medicamentos || "",
+              alergias: formData.alergias || "",
+              pressao: formData.pressao || "",
+              frequencia_cardiaca: formData.frequencia || formData["frequencia-cardiaca"] || "",
+              temperatura: formData.temperatura || "",
+              saturacao: formData.saturacao || "",
+            },
+          })
+
+          const candidates = [aiData, aiData?.data, aiData?.result, aiData?.output, aiData?.summary, aiData?.sumarizacao, aiData?.resumo, aiData?.fields].filter(Boolean)
+          const read = (obj, path) => path.split('.').reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), obj)
+          const pick = (paths) => {
+            for (const obj of candidates) {
+              for (const p of paths) {
+                const v = read(obj, p)
+                if (typeof v === 'string' && v.trim()) return v.trim()
+              }
+            }
+            return ''
+          }
+
+          const filled = {
+            queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
+            historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
+            medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
+            alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
+            diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
+            conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
+            posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
+            pressao: formData.pressao || pick(["pressao", "sinais_vitais.pressao"]) || extracted.pressao || "",
+            "frequencia-cardiaca": formData["frequencia-cardiaca"] || formData.frequencia || pick(["frequencia_cardiaca", "sinais_vitais.frequencia_cardiaca", "fc", "heart_rate"]) || extracted["frequencia-cardiaca"] || extracted.frequencia || "",
+            temperatura: formData.temperatura || pick(["temperatura", "sinais_vitais.temperatura"]) || extracted.temperatura || "",
+            saturacao: formData.saturacao || pick(["saturacao", "sinais_vitais.saturacao", "spo2"]) || extracted.saturacao || "",
+          }
+
+          setFormData((prev) => ({ ...prev, ...filled }))
+          setAiApplied(true)
+          toast({ title: "Resumo aplicado", description: "Pré-preenchimento realizado a partir da transcrição." })
+        } catch (e) {
+          console.debug("[auto-sumarizar] falhou:", e?.message)
+        }
       }
     } catch {}
   }
@@ -298,7 +368,6 @@ export default function IniciarConsulta() {
     let medicamentos = ""
     let posologia = ""
     if (prescricao) {
-      // Heurística simples: primeira linha como medicamentos, próximo(s) como posologia
       const lines = prescricao.split(/\n+/).map((l) => l.trim()).filter(Boolean)
       if (lines.length === 1) {
         medicamentos = lines[0]
@@ -310,7 +379,6 @@ export default function IniciarConsulta() {
     }
 
     if (!medicamentos && conduta) {
-      // fallback: extrair de conduta algum trecho com mg/ml/comprimido
       const medLine = (conduta.match(/.+?(\d+\s?(mg|ml|g|mcg)|comprimid|c[aá]psul|gotas).*/i) || [""])[0]
       if (medLine) {
         medicamentos = medLine.trim()
@@ -318,7 +386,13 @@ export default function IniciarConsulta() {
       }
     }
 
-    return { queixa, historia, diagnostico, conduta, medicamentos, posologia }
+    // Extração simples de sinais vitais no texto completo
+    const pressao = (norm.match(/(PA|press[aã]o( arterial)?)[^\d]*(\d{2,3}\s*\/\s*\d{2,3})\s*(mmhg)?/i) || ["", "", "", ""])[3] || ""
+    const frequencia = (norm.match(/(FC|freq[uê]ncia\s*card[ií]aca)[^\d]*(\d{2,3})\s*(bpm)?/i) || ["", "", ""])[2] || ""
+    const temperatura = (norm.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""])[3] || ""
+    const saturacao = (norm.match(/(sat|satura[cç][aã]o)[^\d]*(\d{2})\s*%/i) || ["", "", ""])[2] || ""
+
+    return { queixa, historia, diagnostico, conduta, medicamentos, posologia, pressao, "frequencia-cardiaca": frequencia, temperatura, saturacao }
   }
 
   // Adiciona alergia no formulário e opcionalmente atualiza no backend
@@ -352,10 +426,15 @@ export default function IniciarConsulta() {
     setIsSubmitting(true)
     // garantir que o microfone pare antes de prosseguir
     try { stopListening() } catch {}
+    // calcular extrações fora do try/catch para uso no fallback
+    const extracted = extractFromTranscript(transcript || "")
 
     try {
       // Extrair a partir da transcrição (fallback)
-      const extracted = extractFromTranscript(transcript)
+      // já extraído acima
+
+      // Permitir seguir no mesmo clique após aplicar IA
+      let filledForSave = null
 
       // ETAPA 1: Finalizar e buscar resumo da IA para preencher os campos na tela
       if (!aiApplied) {
@@ -432,69 +511,130 @@ export default function IniciarConsulta() {
             alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
             diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
             conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
+            posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
+            // Sinais vitais (nomes compatíveis com o formulário)
+            pressao: formData.pressao || pick(["pressao", "sinais_vitais.pressao"]) || extracted.pressao || "",
+            "frequencia-cardiaca": formData["frequencia-cardiaca"] || pick(["frequencia_cardiaca", "sinais_vitais.frequencia_cardiaca"]) || extracted["frequencia-cardiaca"] || "",
+            temperatura: formData.temperatura || pick(["temperatura", "sinais_vitais.temperatura"]) || extracted.temperatura || "",
+            saturacao: formData.saturacao || pick(["saturacao", "sinais_vitais.saturacao"]) || extracted.saturacao || "",
           }
 
+          filledForSave = filled
           setFormData((prev) => ({ ...prev, ...filled }))
           setAiApplied(true)
           toast({
             title: "Resumo aplicado",
-            description: "Preenchemos os campos com a sugestão da IA. Revise e clique novamente para salvar o prontuário.",
+            description: "Campos preenchidos com a sugestão da IA. Salvando prontuário...",
           })
-          setIsSubmitting(false)
-          return
+          // NÃO retornar: seguimos para salvar
         } else {
-          // Sem consultaId: usar apenas o que foi extraído da transcrição
-          setFormData((prev) => ({
-            ...prev,
-            queixa: prev.queixa || extracted.queixa || "",
-            historia: prev.historia || extracted.historia || "",
-            diagnostico: prev.diagnostico || extracted.diagnostico || "",
-            conduta: prev.conduta || extracted.conduta || "",
-            medicamentos: prev.medicamentos || extracted.medicamentos || "",
-          }))
-          setAiApplied(true)
-          toast({ title: "Campos sugeridos", description: "Usamos a transcrição para sugerir os campos. Revise e clique novamente para salvar." })
-          setIsSubmitting(false)
-          return
+          // Sem consultaId: ainda assim tentar sumarizar com IA a partir da transcrição
+          try {
+            const aiData = await aiService.sumarizarTranscricao(transcript || "", {
+              queixa_principal: extracted.queixa || formData.queixa || "",
+              historia_doenca_atual: extracted.historia || formData.historia || "",
+              diagnostico_principal: extracted.diagnostico || formData.diagnostico || "",
+              conduta: extracted.conduta || formData.conduta || "",
+              medicamentos: extracted.medicamentos || formData.medicamentos || "",
+              posologia: extracted.posologia || formData.posologia || "",
+              alergias: formData.alergias || "",
+            })
+
+            // Funções auxiliares para ler de estruturas diversas (IA pode retornar em formatos diferentes)
+            const candidates = [aiData, aiData?.data, aiData?.result, aiData?.output, aiData?.summary, aiData?.sumarizacao, aiData?.resumo, aiData?.fields].filter(Boolean)
+            const deepGet = (obj, path) => {
+              try {
+                return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj)
+              } catch {
+                return undefined
+              }
+            }
+            const pick = (paths) => {
+              for (const c of candidates) {
+                for (const p of paths) {
+                  const v = deepGet(c, p)
+                  if (v !== undefined && v !== null) {
+                    const s = String(v).trim()
+                    if (s) return s
+                  }
+                }
+              }
+              return ""
+            }
+
+            const filled = {
+              queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
+              historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
+              medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
+              alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
+              diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
+              conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
+              posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
+            }
+
+            filledForSave = filled
+            setFormData((prev) => ({ ...prev, ...filled }))
+            setAiApplied(true)
+            toast({ title: "Campos sugeridos", description: "Usamos a transcrição e a IA para preencher. Salvando prontuário..." })
+          } catch (e) {
+            // Fallback final: usar apenas o que foi extraído da transcrição
+            const filled = {
+              queixa: formData.queixa || extracted.queixa || "",
+              historia: formData.historia || extracted.historia || "",
+              diagnostico: formData.diagnostico || extracted.diagnostico || "",
+              conduta: formData.conduta || extracted.conduta || "",
+              medicamentos: formData.medicamentos || extracted.medicamentos || "",
+              posologia: formData.posologia || extracted.posologia || "",
+            }
+            filledForSave = filled
+            setFormData((prev) => ({ ...prev, ...filled }))
+            setAiApplied(true)
+            toast({ title: "Campos sugeridos", description: "Usamos a transcrição para preencher. Salvando prontuário..." })
+          }
+          // NÃO retornar: seguimos para salvar
         }
       }
 
       // ETAPA 2: Salvar de fato o prontuário (e receita)
+      const source = filledForSave ? { ...formData, ...filledForSave } : formData
+      // Monta payload mínimo e ignora campos vazios para evitar 400
       const prontuarioPayload = {
         consulta_id: consultaId,
-        queixa_principal: formData.queixa || extracted.queixa || "",
-        historia_doenca_atual: formData.historia || extracted.historia || "",
-        medicamentos_uso: formData.medicamentos || "",
-        alergias: formData.alergias || "",
-        pressao_arterial: formData.pressao || "",
-        frequencia_cardiaca: formData["frequencia-cardiaca"] || "",
-        temperatura: formData.temperatura || "",
-        saturacao_oxigenio: formData.saturacao || "",
-        exame_geral: formData["exame-geral"] || "",
-        sistema_cardiovascular: formData["sistema-cardiovascular"] || "",
-        sistema_respiratorio: formData["sistema-respiratorio"] || "",
-        diagnostico_principal: formData.diagnostico || extracted.diagnostico || "",
-        conduta: formData.conduta || extracted.conduta || "",
-        exames_solicitados: formData.exames || "",
-        data_retorno: formData.retorno || null,
+        queixa_principal: (source.queixa || extracted.queixa || "").trim(),
+        historia_doenca_atual: (source.historia || extracted.historia || "").trim(),
+        diagnostico_principal: (source.diagnostico || extracted.diagnostico || "").trim(),
+        conduta: (source.conduta || extracted.conduta || "").trim(),
+      }
+      if (source.medicamentos || extracted.medicamentos) {
+        prontuarioPayload.medicamentos_uso = (source.medicamentos || extracted.medicamentos).trim()
+      }
+      if (source.alergias) prontuarioPayload.alergias = source.alergias
+      if (source.exames) prontuarioPayload.exames_solicitados = source.exames
+      if (source.retorno) prontuarioPayload.data_retorno = source.retorno
+
+      let prontuarioId = null
+      if (consultaId) {
+        try {
+          const result = await medicoService.criarProntuario(prontuarioPayload)
+          prontuarioId = result?.id || result?.data?.id
+        } catch (e) {
+          console.warn("Falha ao criar prontuário:", e)
+        }
       }
 
-      const result = await medicoService.criarProntuario(prontuarioPayload)
-      const prontuarioId = result?.id || result?.data?.id
-  
       // Gerar receita com base na sugestão do resumo e/ou nos campos preenchidos
       const hoje = new Date()
       const validade = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 7)
       const pad = (n) => String(n).padStart(2, "0")
       const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
-  
-      const medicamentos = formData.medicamentos || extracted.medicamentos || ""
-      const posologia = extracted.posologia || ""
-      const diagnostico = formData.diagnostico || extracted.diagnostico || ""
-      const conduta = formData.conduta || extracted.conduta || ""
-      const queixa = formData.queixa || extracted.queixa || ""
-      const historia = formData.historia || extracted.historia || ""
-  
+
+      const medicamentos = source.medicamentos || extracted.medicamentos || ""
+      const posologia = source.posologia || extracted.posologia || ""
+      const diagnostico = source.diagnostico || extracted.diagnostico || ""
+      const conduta = source.conduta || extracted.conduta || ""
+      const queixa = source.queixa || extracted.queixa || ""
+      const historia = source.historia || extracted.historia || ""
+
       if (consultaId && (medicamentos || posologia)) {
         try {
           await medicoService.criarReceita({
@@ -510,7 +650,7 @@ export default function IniciarConsulta() {
           console.warn("Falha ao criar receita automática:", e)
         }
       }
-  
+
       try { localStorage.removeItem(storageKey) } catch {}
       // Redireciona para a nova tela de resumo da consulta antes do preview da receita
       navigate(`/medico/paciente/${id}/consulta/resumo`, {
@@ -528,7 +668,7 @@ export default function IniciarConsulta() {
       const pad = (n) => String(n).padStart(2, "0")
       const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
       const medicamentos = formData.medicamentos || extracted.medicamentos || ""
-      const posologia = extracted.posologia || ""
+      const posologia = formData.posologia || extracted.posologia || ""
       const diagnostico = formData.diagnostico || extracted.diagnostico || ""
       const conduta = formData.conduta || extracted.conduta || ""
       const queixa = formData.queixa || extracted.queixa || ""

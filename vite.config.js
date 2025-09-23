@@ -8,7 +8,8 @@ export default defineConfig(({ mode }) => {
   const apiTarget = env.VITE_API_URL || 'http://127.0.0.1:8000';
   const apiBasePath = env.VITE_API_BASE_PATH || '/api';
   const enableMockReceita = String(env.VITE_MOCK_RECEITA ?? 'true').toLowerCase() !== 'false';
-  const enableMockMedicoCert = String(env.VITE_MOCK_MEDICO_CERTIFICADO ?? 'true').toLowerCase() !== 'false';
+  // Alterado: por padrão NÃO mockar certificado/assinatura. Só ativa se VITE_MOCK_MEDICO_CERTIFICADO=true
+  const enableMockMedicoCert = String(env.VITE_MOCK_MEDICO_CERTIFICADO ?? 'false').toLowerCase() === 'true';
 
   // Plugin para mockar endpoints de geração de receita em desenvolvimento
   const mockReceitaPlugin = () => ({
@@ -19,6 +20,12 @@ export default defineConfig(({ mode }) => {
         res.statusCode = status;
         Object.entries({ 'Content-Type': 'text/plain; charset=utf-8', ...headers }).forEach(([k, v]) => res.setHeader(k, v));
         res.end(body);
+      };
+      // Adiciona helper JSON
+      const json = (res, status, obj) => {
+        res.statusCode = status;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(obj));
       };
 
       const readJsonBody = async (req) => {
@@ -38,19 +45,193 @@ export default defineConfig(({ mode }) => {
         });
       };
 
+      // Estado em memória (apenas DEV)
+      const __mockDb = {
+        receitas: [],
+        prontuarios: [],
+        nextId: 1,
+      };
+
       server.middlewares.use(async (req, res, next) => {
         try {
           const method = (req.method || 'GET').toUpperCase();
           const url = req.url || '/';
           const pathname = url.split('?')[0];
 
-          const matchList = new Set([
-            `${apiBasePath.replace(/\/?$/, '/') }receitas/gerar-documento/`,
-            `${apiBasePath.replace(/\/?$/, '/') }receitas/gerar/`,
-            `${apiBasePath.replace(/\/?$/, '/') }receitas/pdf/`,
-          ]);
+          const base = apiBasePath.replace(/\/?$/, '/');
 
-          if (!matchList.has(pathname)) return next();
+          // IMPORTANTE: deixe criação/listagem de receitas e prontuários irem AO BACKEND REAL
+          const reBaseNoSlash = base.replace(/\/$/, '');
+          const isReceitasCRUD = (
+            pathname === `${base}receitas/` ||
+            pathname === '/receitas/' ||
+            pathname === `${base}receita/` ||
+            pathname === '/receita/' ||
+            new RegExp(`^${reBaseNoSlash}/consultas/[^/]+/receitas/?$`).test(pathname) ||
+            new RegExp(`^${reBaseNoSlash}/pacientes/[^/]+/receitas/?$`).test(pathname)
+          );
+          const isProntuariosCRUD = (
+            pathname === `${base}prontuarios/` || pathname === `${base}prontuario/` ||
+            pathname === '/prontuarios/' || pathname === '/prontuario/'
+          );
+          if (isReceitasCRUD || isProntuariosCRUD) {
+            return next();
+          }
+
+          // 1) Mock: criação/listagem de RECEITAS (CRUD mínimo)
+          if (pathname === `${base}receitas/` || pathname === '/receitas/') {
+            if (method === 'GET') {
+              // Suporta retorno paginado ou lista direta
+              return json(res, 200, { count: __mockDb.receitas.length, results: [...__mockDb.receitas].reverse() });
+            }
+            if (['POST', 'PUT', 'PATCH'].includes(method)) {
+              const data = await readJsonBody(req);
+              const id = String(__mockDb.nextId++);
+              const now = new Date().toISOString();
+              const rec = {
+                id,
+                paciente: data.paciente || data.paciente_id || data.pacienteUuid || null,
+                consulta: data.consulta || data.consulta_id || null,
+                medicamentos: data.medicamentos || data.medicamento || '',
+                validade: data.validade || data.validade_receita || '',
+                created_at: now,
+                updated_at: now,
+                ...data,
+              };
+              __mockDb.receitas.push(rec);
+              return json(res, 200, rec);
+            }
+            res.statusCode = 405;
+            res.setHeader('Allow', 'GET, POST, PUT, PATCH');
+            return res.end('Method Not Allowed');
+          }
+
+          if (pathname === `${base}receita/` || pathname === '/receita/') {
+            if (!['POST', 'PUT', 'PATCH'].includes(method)) {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'POST, PUT, PATCH');
+              return res.end('Method Not Allowed');
+            }
+            const data = await readJsonBody(req);
+            const id = String(__mockDb.nextId++);
+            const now = new Date().toISOString();
+            const rec = {
+              id,
+              paciente: data.paciente || data.paciente_id || null,
+              consulta: data.consulta || data.consulta_id || null,
+              medicamentos: data.medicamentos || data.medicamento || '',
+              validade: data.validade || data.validade_receita || '',
+              created_at: now,
+              updated_at: now,
+              ...data,
+            };
+            __mockDb.receitas.push(rec);
+            return json(res, 200, rec);
+          }
+
+          // POST em /consultas/:id/receitas/ ou /pacientes/:id/receitas/
+          // const reBaseNoSlash = base.replace(/\/$/, ''); // removido: já declarado acima
+          const mConsRec = pathname.match(new RegExp(`^${reBaseNoSlash}/consultas/([^/]+)/receitas/?$`));
+          if (mConsRec) {
+            if (!['POST', 'PUT', 'PATCH'].includes(method)) {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'POST, PUT, PATCH');
+              return res.end('Method Not Allowed');
+            }
+            const data = await readJsonBody(req);
+            const id = String(__mockDb.nextId++);
+            const now = new Date().toISOString();
+            const rec = {
+              id,
+              consulta: mConsRec[1],
+              paciente: data.paciente || data.paciente_id || null,
+              medicamentos: data.medicamentos || data.medicamento || '',
+              validade: data.validade || data.validade_receita || '',
+              created_at: now,
+              updated_at: now,
+              ...data,
+            };
+            __mockDb.receitas.push(rec);
+            return json(res, 200, rec);
+          }
+
+          const mPacRec = pathname.match(new RegExp(`^${reBaseNoSlash}/pacientes/([^/]+)/receitas/?$`));
+          if (mPacRec) {
+            if (!['POST', 'PUT', 'PATCH'].includes(method)) {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'POST, PUT, PATCH');
+              return res.end('Method Not Allowed');
+            }
+            const data = await readJsonBody(req);
+            const id = String(__mockDb.nextId++);
+            const now = new Date().toISOString();
+            const rec = {
+              id,
+              paciente: mPacRec[1],
+              consulta: data.consulta || data.consulta_id || null,
+              medicamentos: data.medicamentos || data.medicamento || '',
+              validade: data.validade || data.validade_receita || '',
+              created_at: now,
+              updated_at: now,
+              ...data,
+            };
+            __mockDb.receitas.push(rec);
+            return json(res, 200, rec);
+          }
+
+          // 2) Mock: ENVIAR RECEITA (suporta GET/POST/PUT e várias rotas)
+          const sendActionRegex = /(enviar|enviar-email|enviar_email|email|send-email|send)\/?$/i;
+          const isReceitaSend = (pathname.startsWith(`${base}receitas/`) || pathname.startsWith('/receitas/')) && sendActionRegex.test(pathname);
+          const isPacienteReceitaSend = (pathname.includes('/pacientes/') && pathname.includes('/receitas/') && sendActionRegex.test(pathname));
+          if (isReceitaSend || isPacienteReceitaSend) {
+            // Aceita métodos comuns
+            if (!['GET', 'POST', 'PUT'].includes(method)) {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'GET, POST, PUT');
+              return res.end('Method Not Allowed');
+            }
+            let email = null;
+            let receitaId = null;
+            try {
+              if (method === 'GET') {
+                const u = new URL(url, 'http://localhost');
+                email = u.searchParams.get('email') || u.searchParams.get('to') || u.searchParams.get('destinatario') || u.searchParams.get('paciente_email');
+                receitaId = u.searchParams.get('id') || u.searchParams.get('receita') || u.searchParams.get('receita_id');
+              } else {
+                const body = await readJsonBody(req);
+                email = body.email || body.to || body.destinatario || body.paciente_email || null;
+                receitaId = body.id || body.receita || body.receita_id || null;
+              }
+            } catch {}
+            return json(res, 200, { ok: true, sent: true, email, receitaId });
+          }
+
+          // 3) Mock: criação de PRONTUÁRIOS (POST/PUT/PATCH)
+          if (
+            pathname === `${base}prontuarios/` || pathname === `${base}prontuario/` ||
+            pathname === '/prontuarios/' || pathname === '/prontuario/'
+          ) {
+            if (!['POST', 'PUT', 'PATCH'].includes(method)) {
+              res.statusCode = 405;
+              res.setHeader('Allow', 'POST, PUT, PATCH');
+              return res.end('Method Not Allowed');
+            }
+            const data = await readJsonBody(req);
+            const id = String(__mockDb.nextId++);
+            const now = new Date().toISOString();
+            const pront = { id, created_at: now, updated_at: now, ...data };
+            __mockDb.prontuarios.push(pront);
+            return json(res, 200, pront);
+          }
+
+          // 4) Mock: geração de PDF de receita (aceita /gerar-documento, /gerar e /pdf)
+          const targets = [
+            `${base}receitas/gerar-documento/`,
+            `${base}receitas/gerar/`,
+            `${base}receitas/pdf/`,
+          ];
+          const isReceitaGenPath = targets.some((t) => pathname === t || pathname.startsWith(t));
+          if (!isReceitaGenPath) return next();
 
           if (!['POST', 'GET'].includes(method)) {
             res.statusCode = 405;
@@ -106,14 +287,17 @@ export default defineConfig(({ mode }) => {
           draw(`Validade: ${validade}`, 50, y); y -= 28;
           if (obs) { draw(`Observações: ${obs}`, 50, y); y -= 28; }
           draw(`Emitido por: ${medico} • CRM ${crm}`, 50, y); y -= 18;
-          draw('Assinado digitalmente (mock dev)', 50, y, 10);
+          // Evitar confusão: não afirmar assinatura aqui; assinatura real será feita no backend
+          draw('Documento gerado (DEV - pré-assinatura)', 50, y, 10);
 
-          const pdfBytes = await pdfDoc.save();
+          const pdfBytes = await PDFDocument.create().then(async () => await pdfDoc.save());
+          const buf = Buffer.from(pdfBytes);
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/pdf');
-          // inline para permitir pré-visualização/impressão
-          res.setHeader('Content-Disposition', 'inline; filename="Receita_Medica.pdf"');
-          return res.end(Buffer.from(pdfBytes));
+          // Ajuste: attachment para download correto + filename padronizado
+          res.setHeader('Content-Disposition', 'attachment; filename="receita.pdf"');
+          res.setHeader('Content-Length', String(buf.length));
+          return res.end(buf);
         } catch (e) {
           // Em caso de erro inesperado, não bloquear o proxy
           try { console.error('[mock-receita] erro:', e); } catch {}
@@ -260,10 +444,12 @@ export default defineConfig(({ mode }) => {
               page.drawText('Carimbo de assinatura mock', { x: 50, y: 60, size: 8, font, color: rgb(0.3,0.3,0.3) });
 
               const out = await pdfDoc.save();
+              const outBuf = Buffer.from(out);
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/pdf');
               res.setHeader('Content-Disposition', 'attachment; filename="documento_assinado_mock.pdf"');
-              res.end(Buffer.from(out));
+              res.setHeader('Content-Length', String(outBuf.length));
+              res.end(outBuf);
             } catch (e) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
@@ -283,7 +469,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      ...(enableMockReceita ? [mockReceitaPlugin()] : []),
+      mockReceitaPlugin(),
       ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
     ],
     resolve: {
@@ -322,6 +508,16 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
+      },
+      // Security headers (dev-friendly) para mitigar avisos do auditor
+      headers: {
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'no-store',
+        // CSP relaxada para ambiente de desenvolvimento (HMR precisa de unsafe-eval/inline)
+        'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; font-src-elem 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; frame-ancestors 'none';",
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        // Ajuste: permitir microfone/câmera em DEV para habilitar Web Speech / getUserMedia
+        'Permissions-Policy': 'geolocation=(self), camera=(self), microphone=(self)'
       },
     },
   };

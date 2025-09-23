@@ -270,22 +270,306 @@ export const medicoService = {
     }
   },
 
+  // NOVO: iniciar uma consulta (action do backend)
+  async iniciarConsulta(consultaId) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const base = "/consultas/"
+    const candidates = [
+      { method: "post", url: `${base}${consultaId}/iniciar/`, data: undefined },
+      { method: "post", url: `${base}${consultaId}/start/`, data: undefined },
+      { method: "patch", url: `${base}${consultaId}/`, data: { status: "em_andamento" } },
+      { method: "put", url: `${base}${consultaId}/iniciar/`, data: undefined },
+    ]
+    let lastErr = null
+    for (const c of candidates) {
+      try {
+        const res = await api[c.method](c.url, c.data)
+        return res.data
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr || new Error("Não foi possível iniciar a consulta")
+  },
+
   // NOVO: finalizar uma consulta (action do backend)
   async finalizarConsulta(consultaId) {
     if (!consultaId) throw new Error("consultaId é obrigatório")
-    const baseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
-    const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+    const base = "/consultas/"
     const url = `${base}${consultaId}/finalizar/`
     const res = await api.post(url)
     return res.data
   },
 
+  // NOVO: sumarizar consulta via backend (quando disponível)
+  async sumarizarConsulta(consultaId, payload = {}) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const base = "/consultas/"
+    const candidates = [
+      `${base}${consultaId}/sumarizar/`,
+      `${base}${consultaId}/resumir/`,
+      `${base}${consultaId}/summary/`,
+    ]
+    let lastErr = null
+    for (const url of candidates) {
+      try {
+        const { data } = await api.post(url, payload)
+        return data
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr || new Error("Endpoint de sumarização não disponível")
+  },
+
   // Criar prontuário (via consulta_id write-only no serializer)
   async criarProntuario(payload) {
-    // payload esperado: { consulta_id, queixa_principal, historia_doenca_atual, diagnostico_principal, conduta, ... }
-    const endpoint = import.meta.env.VITE_PRONTUARIOS_ENDPOINT || "/prontuarios/"
-    const { data } = await api.post(endpoint, payload)
-    return data
+    const endpointBase = (import.meta.env.VITE_PRONTUARIOS_ENDPOINT || "/prontuarios/").replace(/\/?$/, "/")
+
+    // 1) Normaliza e remove campos vazios para evitar 400 por validação
+    const p0 = { ...(payload || {}) }
+    const normalized = {}
+    for (const [k, v] of Object.entries(p0)) {
+      if (v === undefined || v === null) continue
+      if (typeof v === "string" && v.trim() === "") continue
+      normalized[k] = typeof v === "string" ? v.trim() : v
+    }
+
+    // Aceita sinônimos para consulta
+    const cid = normalized.consulta_id || normalized.consulta
+    if (cid) {
+      normalized.consulta_id = cid
+      normalized.consulta = cid
+    }
+
+    // 2) Candidatos de endpoints e métodos
+    const candidates = [
+      { method: "post", url: endpointBase },
+      { method: "put", url: endpointBase },
+      { method: "patch", url: endpointBase },
+    ]
+
+    // Alguns backends usam singular
+    const singular = endpointBase.replace(/prontuarios\/?$/i, "prontuario/")
+    if (singular !== endpointBase) {
+      candidates.push({ method: "post", url: singular })
+      candidates.push({ method: "put", url: singular })
+      candidates.push({ method: "patch", url: singular })
+    }
+
+    // 3) Tenta enviar; se 400/422, tenta payload minimal com chaves alternativas comuns
+    let lastErr = null
+    for (const c of candidates) {
+      try {
+        const { data } = await api[c.method](c.url, normalized)
+        return data
+      } catch (e) {
+        const st = e?.response?.status
+        if (st && [400, 422].includes(st)) {
+          // payload minimal
+          const minimal = {}
+          if (cid) { minimal.consulta_id = cid; minimal.consulta = cid }
+          const q = normalized.queixa_principal || normalized.queixa
+          const h = normalized.historia_doenca_atual || normalized.historia
+          const d = normalized.diagnostico_principal || normalized.diagnostico
+          const co = normalized.conduta || normalized.plano
+          const meds = normalized.medicamentos_uso || normalized.medicamentos
+          if (q) minimal.queixa_principal = q
+          if (h) minimal.historia_doenca_atual = h
+          if (d) minimal.diagnostico_principal = d
+          if (co) minimal.conduta = co
+          if (meds) minimal.medicamentos_uso = meds
+          if (normalized.alergias) minimal.alergias = normalized.alergias
+          if (normalized.exames_solicitados) minimal.exames_solicitados = normalized.exames_solicitados
+          if (normalized.data_retorno) minimal.data_retorno = normalized.data_retorno
+          try {
+            const { data } = await api[c.method](c.url, minimal)
+            return data
+          } catch (e2) {
+            lastErr = e2
+          }
+        } else if (st === 405) {
+          // tenta outros métodos
+          lastErr = e
+          continue
+        } else if (st === 404) {
+          lastErr = e
+          continue
+        } else {
+          lastErr = e
+          break
+        }
+      }
+    }
+
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao criar prontuário: nenhum endpoint compatível encontrado.")
+  },
+
+  // NOVO: criar receita no backend (persistência em banco)
+  async criarReceita(payload = {}) {
+    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const basePacientes = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
+    const baseConsultas = (import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/")
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
+
+    // Normaliza campos aceitando sinônimos (compat com backends variados)
+    const p0 = { ...payload }
+    const pacienteId = p0.paciente_id || p0.paciente
+    const consultaId = p0.consulta_id || p0.consulta
+    const normalized = { ...p0 }
+    if (!normalized.paciente_id && pacienteId) normalized.paciente_id = pacienteId
+    if (!normalized.paciente && pacienteId) normalized.paciente = pacienteId
+    if (!normalized.consulta_id && consultaId) normalized.consulta_id = consultaId
+    if (!normalized.consulta && consultaId) normalized.consulta = consultaId
+    if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
+    if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
+    if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
+
+    // Resolve automaticamente o ID do médico quando ausente
+    try {
+      const midResolved = normalized.medico_id || normalized.medico || await this._resolveMedicoId().catch(() => null)
+      if (midResolved) {
+        if (!normalized.medico_id) normalized.medico_id = midResolved
+        if (!normalized.medico) normalized.medico = midResolved
+      }
+    } catch {}
+
+    if (!normalized.consulta_id && !normalized.consulta && (normalized.paciente_id || normalized.paciente)) {
+      try {
+        const pid = normalized.paciente_id || normalized.paciente
+        const mid = normalized.medico_id || normalized.medico || null
+        const preferDate = (() => {
+          const today = new Date()
+          const y = today.getFullYear()
+          const m = String(today.getMonth() + 1).padStart(2, "0")
+          const d = String(today.getDate()).padStart(2, "0")
+          return `${y}-${m}-${d}`
+        })()
+        const ensured = await this._ensureConsultaId(pid, mid, preferDate)
+        if (ensured) {
+          normalized.consulta_id = ensured
+          normalized.consulta = ensured
+          if (VERBOSE) { try { console.debug("[medicoService.criarReceita] consulta_id resolvido automaticamente:", ensured) } catch {} }
+        }
+      } catch (e) {
+        if (VERBOSE) { try { console.warn("[medicoService.criarReceita] não foi possível resolver consulta_id automaticamente", e?.response?.status) } catch {} }
+      }
+    }
+
+    const candidates = []
+    const envCreate = (import.meta.env.VITE_CRIAR_RECEITA_ENDPOINT || "").trim()
+      if (envCreate) candidates.push(envCreate)
+
+    // PRIORIDADE: rotas gerais primeiro (evita 404 barulhento em /pacientes/:id/receitas/)
+    candidates.push(baseReceitas)
+    candidates.push(`${baseReceitas}criar/`)
+    candidates.push(`${baseReceitas}create/`)
+
+    // Variações singulares e nomes alternativos comuns em backends
+    const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
+    const altBases = Array.from(new Set([
+      singularBase,
+      "/receita/",
+      "/meu_app_receita/",
+    ].filter(Boolean)))
+    for (const b of altBases) {
+      const bb = b.replace(/\/?$/, "/")
+      candidates.push(bb)
+      candidates.push(`${bb}criar/`)
+      candidates.push(`${bb}create/`)
+    }
+
+    // Depois, rotas específicas por recurso (caso o backend as ofereça)
+    if (consultaId) candidates.push(`${baseConsultas}${consultaId}/receitas/`)
+    if (pacienteId) candidates.push(`${basePacientes}${pacienteId}/receitas/`)
+
+    if (VERBOSE) {
+      try { console.debug("[medicoService.criarReceita] payload:", normalized) } catch {}
+      try { console.debug("[medicoService.criarReceita] candidatos:", candidates) } catch {}
+    }
+
+    let lastErr = null
+    let lastTried = null
+    const retriedMinimal = new Set()
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      const methods = ["post", "put", "patch"]
+      for (const m of methods) {
+        lastTried = `${m.toUpperCase()} ${url}`
+        try {
+          if (VERBOSE) { try { console.debug("[medicoService.criarReceita] tentando:", lastTried) } catch {} }
+          const { data } = await api[m](url, normalized)
+          if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso:", lastTried, "→", data) } catch {} }
+          return data
+        } catch (e) {
+          const st = e?.response?.status
+          if (VERBOSE) {
+            try { console.warn("[medicoService.criarReceita] falhou:", lastTried, "status=", st, "detail=", e?.response?.data || e?.message) } catch {}
+          }
+          // Fallback: em caso de validação 400/422, tentar um payload minimal e nomes alternativos
+          if (st && [400, 422].includes(st)) {
+            const key = `${m}:${url}`
+            if (!retriedMinimal.has(key)) {
+              retriedMinimal.add(key)
+              const minimal = {}
+              const pid = normalized.paciente_id || normalized.paciente
+              const mid2 = normalized.medico_id || normalized.medico
+              const meds = normalized.medicamentos || normalized.medicamento
+              const val = normalized.validade || normalized.validade_receita
+              if (pid) { minimal.paciente = pid; minimal.paciente_id = pid }
+              if (mid2) { minimal.medico = mid2; minimal.medico_id = mid2 }
+              if (meds) { minimal.medicamentos = meds; minimal.medicamento = meds }
+              if (normalized.posologia) minimal.posologia = normalized.posologia
+              if (val) { minimal.validade = val }
+              if (normalized.observacoes) minimal.observacoes = normalized.observacoes
+              if (normalized.consulta_id || normalized.consulta) {
+                const cid = normalized.consulta_id || normalized.consulta
+                minimal.consulta = cid
+                minimal.consulta_id = cid
+              }
+              try {
+                if (VERBOSE) { try { console.debug("[medicoService.criarReceita] retry minimal:", m.toUpperCase(), url, minimal) } catch {} }
+                const { data } = await api[m](url, minimal)
+                if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso (minimal):", m.toUpperCase(), url, data) } catch {} }
+                return data
+              } catch (e2) {
+                if (VERBOSE) { try { console.warn("[medicoService.criarReceita] falhou (minimal):", m.toUpperCase(), url, e2?.response?.status, e2?.response?.data || e2?.message) } catch {} }
+                // Enriquecer mensagem mantendo response/config do Axios
+                try {
+                  const body = e2?.response?.data
+                  const detail = (typeof body === "string" && body) || body?.detail || body?.message || e2?.message || "Erro desconhecido"
+                  const bodyStr = body && typeof body === "object" ? ` | body=${JSON.stringify(body)}` : (typeof body === "string" ? ` | body=${body}` : "")
+                  e2.message = `Falha ao criar receita (minimal, última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`
+                } catch {}
+                throw e2
+              }
+            }
+            // Se já tentou minimal neste endpoint, ainda assim enriquecer a mensagem antes de propagar
+            try {
+              const body = e?.response?.data
+              const detail = (typeof body === "string" && body) || body?.detail || body?.message || e?.message || "Erro desconhecido"
+              const bodyStr = body && typeof body === "object" ? ` | body=${JSON.stringify(body)}` : (typeof body === "string" ? ` | body=${body}` : "")
+              e.message = `Falha ao criar receita (última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`
+            } catch {}
+          }
+          if (st === 404) { lastErr = e; break }
+          if (st === 405) { lastErr = e; continue }
+          if (st === 401) throw e
+          if (st && [400, 422].includes(st)) throw e
+          lastErr = e; break
+        }
+      }
+    }
+    if (lastErr) {
+      const st = lastErr?.response?.status
+      const body = lastErr?.response?.data
+      const detail = (typeof body === "string" && body) || body?.detail || body?.message || lastErr?.message || "Erro desconhecido"
+      const bodyStr = body && typeof body === "object" ? ` | body=${JSON.stringify(body)}` : ""
+      throw new Error(`Falha ao criar receita (última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`)
+    }
+    throw new Error("Falha ao criar receita: nenhum endpoint compatível encontrado.")
   },
 
   // Busca simplificada de pacientes por nome
@@ -332,6 +616,101 @@ export const medicoService = {
       }
     } catch {}
     return null
+  },
+
+  // NOVO helper: garantir consulta_id existente; busca por uma consulta do dia e cria se necessário
+  async _ensureConsultaId(pacienteId, medicoId = null, preferDate = null) {
+    try {
+      if (!pacienteId) return null
+      const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
+
+      // Data preferida (YYYY-MM-DD)
+      const day = (() => {
+        if (preferDate && /^\d{4}-\d{2}-\d{2}$/.test(String(preferDate))) return preferDate
+        const d = new Date()
+        const pad = (n) => String(n).padStart(2, "0")
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      })()
+
+      const baseConsultas = (import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/")
+
+      // 1) Tentar localizar consulta existente para o paciente (e médico, se disponível) no dia
+      try {
+        const params = {
+          paciente: pacienteId,
+          paciente_id: pacienteId,
+          date: day,
+          data: day,
+          dia: day,
+          "data__date": day,
+        }
+        const mid = medicoId || (await this._resolveMedicoId().catch(() => null))
+        if (mid) {
+          params.medico = mid
+          params.medico_id = mid
+        }
+        const res = await api.get(baseConsultas, { params })
+        const items = Array.isArray(res.data?.results) ? res.data.results : res.data
+        if (Array.isArray(items)) {
+          const found = items.find((c) => c?.id || c?.consulta_id || c?.uuid)
+          if (found) {
+            const cid = found.id || found.consulta_id || found.uuid
+            if (VERBOSE) { try { console.debug("[_ensureConsultaId] encontrada consulta existente:", cid) } catch {} }
+            return cid
+          }
+        }
+      } catch (e1) {
+        if (VERBOSE) { try { console.warn("[_ensureConsultaId] falha ao buscar consulta existente:", e1?.response?.status) } catch {} }
+      }
+
+      // 2) Não existe: tentar criar uma consulta mínima
+      try {
+        const mid = medicoId || (await this._resolveMedicoId().catch(() => null))
+        const body = {
+          paciente: pacienteId,
+          paciente_id: pacienteId,
+          data: day,
+          date: day,
+          dia: day,
+          "data__date": day,
+          data_hora: `${day}T00:00:00`,
+        }
+        if (mid) {
+          body.medico = mid
+          body.medico_id = mid
+        }
+
+        const endpoints = [
+          baseConsultas,
+          `${baseConsultas}criar/`,
+          `${baseConsultas}create/`,
+        ]
+
+        for (const urlRaw of endpoints) {
+          const url = urlRaw.endsWith("/") ? urlRaw : `${urlRaw}/`
+          try {
+            if (VERBOSE) { try { console.debug("[_ensureConsultaId] criando consulta em:", url, body) } catch {} }
+            const { data } = await api.post(url, body)
+            const cid = data?.id || data?.consulta_id || data?.uuid
+            if (cid) {
+              if (VERBOSE) { try { console.debug("[_ensureConsultaId] consulta criada:", cid) } catch {} }
+              return cid
+            }
+          } catch (e2) {
+            const st = e2?.response?.status
+            if (VERBOSE) { try { console.warn("[_ensureConsultaId] falha ao criar em", url, st, e2?.response?.data || e2?.message) } catch {} }
+            if ([401, 404, 405].includes(st)) continue // tenta próximo endpoint
+            // para 400/422 tenta próximo também
+          }
+        }
+      } catch (eCreate) {
+        if (VERBOSE) { try { console.warn("[_ensureConsultaId] erro inesperado na criação:", eCreate?.message) } catch {} }
+      }
+
+      return null
+    } catch {
+      return null
+    }
   },
 
   async getCertificadoInfo() {
@@ -462,19 +841,62 @@ export const medicoService = {
 
   // NOVO: enviar receita (permite anexar arquivo assinado e/ou referenciar uma receita existente)
   async enviarReceita({ receitaId, pacienteId, email, formato = "pdf", file, filename }) {
-    if (!email) throw new Error("email do paciente é obrigatório para envio")
+    if (!email && !pacienteId && !receitaId && !file) {
+      throw new Error("Forneça ao menos email, pacienteId, receitaId ou arquivo para envio.")
+    }
+
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+
+    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const basePacientes = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
+
+    // Se não veio receitaId, tentar descobrir a última receita do paciente
+    if (!receitaId && pacienteId) {
+      const tryFindId = async (params) => {
+        try {
+          const res = await api.get(baseReceitas, { params })
+          const data = res?.data
+          const list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+          const first = list?.[0]
+          const found = first?.id || first?.pk || first?.uuid || first?.receita?.id
+          if (found) return String(found)
+        } catch (_) {}
+        return null
+      }
+      const paramVariants = []
+      const ords = ["-created_at", "-created", "-data", "-date", "-id", "-pk"]
+      for (const o of ords) {
+        paramVariants.push({ paciente: pacienteId, ordering: o, page_size: 1, limit: 1 })
+        paramVariants.push({ paciente_id: pacienteId, ordering: o, page_size: 1, limit: 1 })
+      }
+      for (const p of paramVariants) {
+        // eslint-disable-next-line no-await-in-loop
+        const fid = await tryFindId(p)
+        if (fid) { receitaId = fid; break }
+      }
+      if (VERBOSE && receitaId) {
+        // eslint-disable-next-line no-console
+        console.debug("[medicoService.enviarReceita] receitaId inferido via listagem:", receitaId)
+      }
+    }
 
     // Monta FormData (preferimos multipart para suportar arquivo quando presente)
     const formData = new FormData()
     if (file) {
-      const fname = filename || (file.name || "receita.pdf")
+      const fname = filename || (file.name || `receita.${formato || "pdf"}`)
       formData.append("file", file, fname)
       formData.append("pdf", file, fname)
       formData.append("documento", file, fname)
     }
-    if (email) formData.append("email", email)
+    if (email) {
+      formData.append("email", email)
+      formData.append("to", email)
+      formData.append("destinatario", email)
+      formData.append("paciente_email", email)
+    }
     if (formato) formData.append("formato", formato)
     if (receitaId) {
+      formData.append("id", receitaId)
       formData.append("receita", receitaId)
       formData.append("receita_id", receitaId)
     }
@@ -485,54 +907,156 @@ export const medicoService = {
     // Sugere ao backend assinar caso ele faça isso server-side
     formData.append("assinar", "true")
 
+    // Também preparar payload JSON como fallback
+    const jsonPayload = {
+      email,
+      to: email,
+      destinatario: email,
+      paciente_email: email,
+      formato,
+      id: receitaId,
+      receita: receitaId,
+      receita_id: receitaId,
+      paciente: pacienteId,
+      paciente_id: pacienteId,
+      assinar: true,
+    }
+
     // Candidatos de endpoints
     const candidates = []
     const envSend = (import.meta.env.VITE_ENVIAR_RECEITA_ENDPOINT || "").trim()
     if (envSend) candidates.push(envSend)
-
-    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
-    const basePacientes = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
 
     if (receitaId) {
       candidates.push(`${baseReceitas}${receitaId}/enviar/`)
       candidates.push(`${baseReceitas}${receitaId}/enviar-email/`)
       candidates.push(`${baseReceitas}${receitaId}/enviar_email/`)
       candidates.push(`${baseReceitas}${receitaId}/email/`)
+      candidates.push(`${baseReceitas}${receitaId}/send-email/`)
+      candidates.push(`${baseReceitas}${receitaId}/send/`)
     }
     candidates.push(`${baseReceitas}enviar/`)
     candidates.push(`${baseReceitas}enviar-email/`)
     candidates.push(`${baseReceitas}enviar_email/`)
+    candidates.push(`${baseReceitas}email/`)
+    candidates.push(`${baseReceitas}send-email/`)
+    candidates.push(`${baseReceitas}send/`)
     candidates.push(`/email/receitas/`)
     candidates.push(`/receitas/email/`)
+    candidates.push(`/email/send/`)
+    candidates.push(`/send-email/`)
 
     if (pacienteId) {
       candidates.push(`${basePacientes}${pacienteId}/receitas/enviar/`)
       candidates.push(`${basePacientes}${pacienteId}/receitas/email/`)
+      candidates.push(`${basePacientes}${pacienteId}/receitas/send/`)
+      if (receitaId) {
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar/`)
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar-email/`)
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar_email/`)
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/email/`)
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/send-email/`)
+        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/send/`)
+      }
     }
 
     let lastErr = null
     for (const raw of candidates) {
       if (!raw) continue
       const url = raw.endsWith("/") ? raw : `${raw}/`
-      const methods = ["post", "put"]
-      for (const m of methods) {
-        try {
-          const { data } = await api[m](url, formData)
-          return data
-        } catch (e) {
-          const st = e?.response?.status
-          if (st === 404) {
-            lastErr = e; break
-          }
-          if (st === 405) { lastErr = e; continue }
-          if (st === 401) throw e
-          if (st && [400, 422].includes(st)) throw e
-          lastErr = e; break
+
+      const logTry = (method) => {
+        if (VERBOSE) {
+          // eslint-disable-next-line no-console
+          console.debug(`[medicoService.enviarReceita] ${method} ->`, url, { receitaId, pacienteId, email, formato })
         }
       }
+
+      // Alguns backends expõem ação de envio via GET em rotas de ação
+      const looksLikeAction = /\/(enviar|email|send(-email)?)\/?$/i.test(url)
+      if (looksLikeAction) {
+        try {
+          logTry("GET")
+          const params = {
+            email,
+            formato,
+            id: receitaId,
+            receita: receitaId,
+            receita_id: receitaId,
+            paciente: pacienteId,
+            paciente_id: pacienteId,
+            assinar: true,
+          }
+          const { data } = await api.get(url, { params })
+          return data
+        } catch (eGETfirst) {
+          lastErr = eGETfirst
+          const st = eGETfirst?.response?.status
+          if (st === 401) throw eGETfirst
+          // Continua para tentar POST/PUT abaixo
+        }
+      }
+
+      // 1) Tenta POST multipart
+      try {
+        logTry("POST multipart")
+        const { data } = await api.post(url, formData)
+        return data
+      } catch (e1) {
+        const st1 = e1?.response?.status
+        if (st1 === 401) throw e1
+        if (st1 && [400, 422].includes(st1)) lastErr = e1 // guarda erro de validação
+        else lastErr = e1
+      }
+
+      // 2) Tenta POST com JSON body
+      try {
+        logTry("POST json")
+        const { data } = await api.post(url, jsonPayload)
+        return data
+      } catch (e2) {
+        const st2 = e2?.response?.status
+        if (st2 === 401) throw e2
+        if (st2 && [400, 422].includes(st2)) lastErr = e2
+        else lastErr = e2
+      }
+
+      // 3) Tenta PUT multipart
+      try {
+        logTry("PUT multipart")
+        const { data } = await api.put(url, formData)
+        return data
+      } catch (e3) {
+        const st3 = e3?.response?.status
+        if (st3 === 401) throw e3
+        if (st3 && [400, 422].includes(st3)) lastErr = e3
+        else lastErr = e3
+      }
+
+      // 4) Tenta GET com query params (fallback geral)
+      try {
+        logTry("GET fallback")
+        const params = {
+          email,
+          formato,
+          id: receitaId,
+          receita: receitaId,
+          receita_id: receitaId,
+          paciente: pacienteId,
+          paciente_id: pacienteId,
+          assinar: true,
+        }
+        const { data } = await api.get(url, { params })
+        return data
+      } catch (e4) {
+        const st4 = e4?.response?.status
+        if (st4 === 401) throw e4
+        lastErr = e4
+      }
     }
+
     if (lastErr) throw lastErr
-    throw new Error("Falha ao enviar receita: nenhum endpoint compatível para envio encontrado.")
+    throw new Error("Falha ao enviar receita: nenhum endpoint compatível encontrado.")
   },
 
   // NOVO: assinar documento (PDF) com o certificado do médico
@@ -556,6 +1080,23 @@ export const medicoService = {
     if (reason) formData.append("reason", reason), formData.append("motivo", reason)
     if (location) formData.append("location", location), formData.append("local", location)
 
+    // NOVO: suporte a certificado efêmero (.pfx + senha) sem persistência
+    if (meta && meta.pfxFile instanceof File) {
+      formData.append("pfx", meta.pfxFile)
+      formData.append("certificado", meta.pfxFile)
+      formData.append("pkcs12", meta.pfxFile)
+    }
+    // Senha: enviar também quando vazia (certificado sem senha)
+    if (meta && typeof meta.pfxPassword === "string") {
+      const pw = meta.pfxPassword
+      formData.append("pfx_password", pw)
+      formData.append("senha", pw)
+      formData.append("password", pw)
+    }
+    // Flags de orientação ao backend (backwards-compatible)
+    formData.append("no_persist", "true")
+    formData.append("ephemeral", "true")
+
     const candidates = []
     const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
     if (envSign) candidates.push(envSign)
@@ -563,11 +1104,191 @@ export const medicoService = {
     const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
     const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
 
-    // Rotas comuns
+    // Rotas preferenciais e mais prováveis
+    candidates.push(`/api/assinatura/assinar/`)
+    candidates.push(`/assinatura/assinar/`)
+    candidates.push(`/documentos/assinar/`)
+    candidates.push(`/receitas/assinar/`)
+    // Específicas do médico
     candidates.push(`${medBase}me/assinar/`)
     candidates.push(`${medBase}assinar/`)
+    // Rotas com ID
+    let medicoId = null
+    try { medicoId = await this._resolveMedicoId() } catch {}
+    if (medicoId) {
+      candidates.push(`${medBase}${medicoId}/assinar/`)
+      candidates.push(`${medBase}${medicoId}/assinatura/`)
+    }
+
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      const methods = ["post", "put"]
+      for (const m of methods) {
+        try {
+          const res = await api[m](url, formData, { responseType: "blob" })
+          const contentDisposition = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+          let filename = "documento_assinado.pdf"
+          if (contentDisposition) {
+            const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
+            filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
+          }
+          const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
+          return { filename, blob }
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 404) { lastErr = e; break }
+          if (st === 405) { lastErr = e; continue }
+          if (st === 401) throw e
+          if (st && [400, 422].includes(st)) throw e
+          lastErr = e; break
+        }
+      }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
+  },
+  // ... existing code ...
+  // NOVO: gerar documento de receita (PDF) com fallbacks de endpoints e métodos
+  async gerarDocumentoReceita(payload = {}) {
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
+    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+  
+    // Normalizar campos esperados pelo backend
+    const p0 = { ...payload }
+    const normalized = { ...p0 }
+    // Campo "formato" padrão para PDF
+    const fmt = String(p0.formato || p0.format || "pdf").toLowerCase()
+    normalized.formato = fmt
+    if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
+    if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
+    if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
+    if (!normalized.paciente_id && p0.paciente) normalized.paciente_id = p0.paciente
+    if (!normalized.paciente && p0.paciente_id) normalized.paciente = p0.paciente_id
+    if (!normalized.consulta_id && p0.consulta) normalized.consulta_id = p0.consulta
+    if (!normalized.consulta && p0.consulta_id) normalized.consulta = p0.consulta_id
+  
+    const candidates = []
+    const envGen = (import.meta.env.VITE_GERAR_RECEITA_ENDPOINT || "").trim()
+    if (envGen) candidates.push(envGen)
+  
+    // Rotas comuns
+    candidates.push(`${baseReceitas}gerar-documento/`)
+    candidates.push(`${baseReceitas}gerar/`)
+    candidates.push(`${baseReceitas}pdf/`)
+    candidates.push(`${baseReceitas}documento/`)
+  
+    // Variações singulares
+    const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
+    candidates.push(`${singularBase}gerar-documento/`)
+    candidates.push(`${singularBase}gerar/`)
+    candidates.push(`${singularBase}pdf/`)
+  
+    // Fallbacks com /api quando houver normalização diferente no backend
+    candidates.push(`/api/receitas/gerar-documento/`)
+    candidates.push(`/api/receitas/gerar/`)
+    candidates.push(`/api/receitas/pdf/`)
+  
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      // 1) Tentar POST JSON retornando blob
+      try {
+        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] POST", url, normalized) } catch {} }
+        const res = await api.post(url, normalized, { responseType: "blob" })
+        const contentDisposition = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+        let filename = "Receita.pdf"
+        if (contentDisposition) {
+          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
+          filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
+        }
+        const blob = res?.data instanceof Blob ? res.data : new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
+        return { filename, blob }
+      } catch (e1) {
+        const st = e1?.response?.status
+        if (VERBOSE) { try { console.warn("[gerarDocumentoReceita] POST falhou", url, st, e1?.response?.data || e1?.message) } catch {} }
+        if (st === 401) throw e1
+        // Em 405/404 tentar GET com query params
+        if (![404, 405].includes(st)) lastErr = e1
+      }
+  
+      // 2) GET com query params (alguns backends geram via GET)
+      try {
+        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] GET", url, normalized) } catch {} }
+        const { data, headers } = await api.get(url, { params: normalized, responseType: "blob" })
+        const contentDisposition = headers?.["content-disposition"] || headers?.get?.("content-disposition")
+        let filename = "Receita.pdf"
+        if (contentDisposition) {
+          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
+          filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
+        }
+        const blob = data instanceof Blob ? data : new Blob([data], { type: headers?.["content-type"] || "application/pdf" })
+        return { filename, blob }
+      } catch (e2) {
+        const st2 = e2?.response?.status
+        if (VERBOSE) { try { console.warn("[gerarDocumentoReceita] GET falhou", url, st2, e2?.response?.data || e2?.message) } catch {} }
+        if (st2 === 401) throw e2
+        lastErr = e2
+      }
+    }
+  
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao gerar documento da receita: nenhum endpoint compatível.")
+  },
+  async signDocumento(fileOrForm, meta = {}) {
+    // fileOrForm pode ser File (PDF) ou FormData
+    let formData
+    if (fileOrForm instanceof FormData) {
+      formData = fileOrForm
+    } else if (fileOrForm && fileOrForm.name) {
+      formData = new FormData()
+      formData.append("file", fileOrForm)
+      formData.append("documento", fileOrForm)
+      formData.append("pdf", fileOrForm)
+    } else {
+      throw new Error("Parâmetro inválido: é esperado FormData ou File PDF.")
+    }
+
+    // Metadados opcionais (motivo, local, contact etc.)
+    const reason = meta.reason || meta.motivo
+    const location = meta.location || meta.local
+    if (reason) formData.append("reason", reason), formData.append("motivo", reason)
+    if (location) formData.append("location", location), formData.append("local", location)
+
+    // NOVO: suporte a certificado efêmero (.pfx + senha) sem persistência
+    if (meta && meta.pfxFile instanceof File) {
+      formData.append("pfx", meta.pfxFile)
+      formData.append("certificado", meta.pfxFile)
+      formData.append("pkcs12", meta.pfxFile)
+    }
+    // Senha: enviar também quando vazia (certificado sem senha)
+    if (meta && typeof meta.pfxPassword === "string") {
+      const pw = meta.pfxPassword
+      formData.append("pfx_password", pw)
+      formData.append("senha", pw)
+      formData.append("password", pw)
+    }
+    // Flags de orientação ao backend (backwards-compatible)
+    formData.append("no_persist", "true")
+    formData.append("ephemeral", "true")
+
+    const candidates = []
+    const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
+    if (envSign) candidates.push(envSign)
+
+    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+
+    // Rotas preferenciais e mais prováveis
+    candidates.push(`/api/assinatura/assinar/`)
     candidates.push(`/assinatura/assinar/`)
-    candidates.push(`/medico/assinar/`)
+    candidates.push(`/documentos/assinar/`)
+    candidates.push(`/receitas/assinar/`)
+    // Específicas do médico
+    candidates.push(`${medBase}me/assinar/`)
+    candidates.push(`${medBase}assinar/`)
 
     // Rotas com ID
     let medicoId = null

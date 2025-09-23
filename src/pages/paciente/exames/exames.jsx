@@ -329,7 +329,8 @@ const handleDownloadFile = async (item) => {
     document.body.appendChild(link)
     link.click()
     link.remove()
-    URL.revokeObjectURL(link.href)
+    // Adiar revoke para evitar erro de rede durante download
+    setTimeout(() => URL.revokeObjectURL(link.href), 2000)
   } catch (err) {
     console.warn("[Exames] download falhou:", err?.response?.status)
     alert("Não foi possível baixar o resultado. Tente novamente.")

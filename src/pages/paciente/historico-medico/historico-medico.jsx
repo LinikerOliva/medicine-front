@@ -416,7 +416,8 @@ const handleDownloadFile = async (item) => {
     document.body.appendChild(link)
     link.click()
     link.remove()
-    URL.revokeObjectURL(link.href)
+    // Adia a revogação para evitar abort do download em alguns navegadores
+    setTimeout(() => URL.revokeObjectURL(link.href), 2000)
   } catch (err) {
     console.warn("[Historico Medico] download falhou:", err?.response?.status)
     alert("Não foi possível baixar o resultado. Tente novamente.")

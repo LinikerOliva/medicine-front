@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectLabel } from "@/components/ui/select"
+import api from "@/services/api"
 
 export default function ReceitasPaciente() {
   const { toast } = useToast()
@@ -112,6 +113,94 @@ export default function ReceitasPaciente() {
     }
   }
 
+  // Download autenticado do PDF assinado
+  const handleDownloadAssinado = async (url, r) => {
+    try {
+      if (!url) return
+
+      const downloadBlob = (blob, filename) => {
+        const link = document.createElement("a")
+        const objUrl = URL.createObjectURL(blob)
+        link.href = objUrl
+        link.download = decodeURIComponent(filename)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        setTimeout(() => URL.revokeObjectURL(objUrl), 2000)
+      }
+
+      const ensurePdfExt = (name, fallback = "Receita_Medica.pdf") => {
+        let n = name || fallback
+        if (!/\.[a-z0-9]+$/i.test(n)) n += ".pdf"
+        return n
+      }
+
+      // data: URL -> converter em Blob e baixar
+      if (/^data:/i.test(url)) {
+        try {
+          const arr = url.split(",")
+          const header = arr[0] || ""
+          const base64 = arr.slice(1).join(",")
+          const mime = (header.match(/data:([^;]+)/i) || [])[1] || "application/pdf"
+          const binary = atob(base64)
+          const len = binary.length
+          const bytes = new Uint8Array(len)
+          for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+          const blob = new Blob([bytes], { type: mime })
+          const baseName = `Receita_${r?.id || "documento"}`
+          const filename = ensurePdfExt(baseName)
+          downloadBlob(blob, filename)
+          return
+        } catch (e) {
+          console.error("[Receitas] Falha ao processar data URL:", e)
+          toast({ title: "Falha no download", description: "Arquivo inválido ou corrompido.", variant: "destructive" })
+          return
+        }
+      }
+
+      // blob: URL -> tentar fetch para reidratar. Se não for do mesmo contexto, avisa o usuário.
+      if (/^blob:/i.test(url)) {
+        try {
+          const resp = await fetch(url)
+          const blob = await resp.blob()
+          const baseName = `Receita_${r?.id || "documento"}`
+          const filename = ensurePdfExt(baseName)
+          downloadBlob(blob, filename)
+          return
+        } catch (e) {
+          console.error("[Receitas] Blob URL indisponível (provavelmente de outra aba/sessão):", e)
+          toast({ title: "Arquivo indisponível", description: "Essa receita foi gerada em outra aba/sessão. Gere novamente para baixar.", variant: "destructive" })
+          return
+        }
+      }
+
+      // Se relativo, prefixa com API base
+      if (!/^https?:\/\//i.test(url)) {
+        const base = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")
+        url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
+      }
+      const res = await api.get(url, { responseType: "blob", baseURL: "" })
+      const blob = new Blob([res.data], { type: res.headers["content-type"] || "application/pdf" })
+      const cd = res.headers["content-disposition"] || ""
+      const match = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(cd)
+      let filename = match?.[1] || match?.[2]
+      if (!filename) {
+        try {
+          const u = new URL(url)
+          filename = decodeURIComponent(u.pathname.split('/').pop() || "")
+        } catch {
+          filename = ""
+        }
+      }
+      if (!filename) filename = `Receita_${r?.id || "documento"}.pdf`
+      filename = ensurePdfExt(filename)
+      downloadBlob(blob, filename)
+    } catch (e) {
+      console.error("[Receitas] Falha ao baixar PDF assinado:", e?.response?.status || e)
+      toast({ title: "Falha no download", description: "Não foi possível baixar o arquivo. Tente novamente.", variant: "destructive" })
+    }
+  }
+
   // Abas do paciente (mesmo padrão das outras telas)
   const pacienteTabs = [
     { label: "Resumo", href: "/paciente/perfil" },
@@ -200,26 +289,26 @@ export default function ReceitasPaciente() {
                 ) : null}
                 {r.arquivo_assinado ? (
                   <div className="mt-3">
-                    {/^data:|^blob:/i.test(r.arquivo_assinado) ? (
-                      <a
-                        className="text-blue-600 underline"
-                        href={r.arquivo_assinado}
-                        download={`Receita_${r.id || "documento"}.pdf`}
-                      >
-                        Baixar PDF assinado
-                      </a>
-                    ) : (
-                      <a
-                        className="text-blue-600 underline"
-                        href={/^https?:\/\//i.test(r.arquivo_assinado) ? r.arquivo_assinado : `${(import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")}${r.arquivo_assinado.startsWith("/") ? "" : "/"}${r.arquivo_assinado}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Baixar PDF assinado
-                      </a>
-                    )}
+                    <button
+                      type="button"
+                      className="text-blue-600 underline"
+                      onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}
+                    >
+                      Baixar PDF assinado
+                    </button>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      className="text-blue-600 underline"
+                      onClick={() => handleDownloadGerado(r)}
+                    >
+                      Baixar PDF (gerado)
+                    </button>
+                    <div className="text-xs text-muted-foreground mt-1">Nenhum arquivo assinado disponível para esta receita.</div>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -284,4 +373,65 @@ export default function ReceitasPaciente() {
       ) : null}
     </div>
   )
+}
+
+// Fallback: gerar um PDF simples no cliente quando não houver arquivo assinado
+const handleDownloadGerado = async (r) => {
+  try {
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+
+    const pdfDoc = await PDFDocument.create()
+    const page = pdfDoc.addPage([595.28, 841.89]) // A4
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+
+    const draw = (text, x, y, size = 12, color = rgb(0, 0, 0)) => {
+      page.drawText(String(text || ""), { x, y, size, font, color })
+    }
+
+    let y = 800
+    draw("Receita Médica (não assinada)", 50, y, 16)
+    y -= 30
+
+    const fmt = (label, val) => `${label}: ${val ?? ""}`
+    draw(fmt("Emitida em", r?.created_at || r?.data_emissao || ""), 50, y); y -= 18
+    draw(fmt("Médico", r?.medico_nome || r?.medico || r?.medico_id || ""), 50, y); y -= 18
+    draw(fmt("Paciente", r?.paciente_nome || r?.paciente || r?.paciente_id || ""), 50, y); y -= 24
+
+    draw("Medicamentos", 50, y, 14); y -= 18
+    draw(String(r?.medicamentos || r?.itens || r?.descricao || ""), 50, y); y -= 36
+
+    draw("Posologia", 50, y, 14); y -= 18
+    draw(String(r?.posologia || r?.orientacoes || ""), 50, y); y -= 36
+
+    if (r?.observacoes) {
+      draw("Observações", 50, y, 14); y -= 18
+      draw(String(r?.observacoes), 50, y); y -= 36
+    }
+
+    if (Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length) {
+      draw("Itens estruturados", 50, y, 14); y -= 18
+      r.itens_estruturados.forEach((it) => {
+        const line = Object.values(it || {}).filter(Boolean).join(" · ")
+        draw(`• ${line}`, 60, y)
+        y -= 16
+      })
+      y -= 10
+    }
+
+    const pdfBytes = await pdfDoc.save()
+    const blob = new Blob([pdfBytes], { type: "application/pdf" })
+    const filename = `Receita_${r?.id || "documento"}.pdf`
+
+    const link = document.createElement("a")
+    const objUrl = URL.createObjectURL(blob)
+    link.href = objUrl
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(objUrl), 2000)
+  } catch (e) {
+    console.error("[Receitas] Falha ao gerar PDF local:", e)
+    toast({ title: "Falha ao gerar PDF", description: "Tente novamente.", variant: "destructive" })
+  }
 }
