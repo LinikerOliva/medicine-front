@@ -11,6 +11,12 @@ import api from "@/services/api"
 import { medicoService } from "@/services/medicoService"
 
 export default function PreviewReceitaMedico() {
+  // Estado para controlar assinatura obrigatória e blobs
+  const [isSigned, setIsSigned] = useState(false)
+  const [signedBlob, setSignedBlob] = useState(null)
+  const [signedFilename, setSignedFilename] = useState("")
+  const [lastGeneratedBlob, setLastGeneratedBlob] = useState(null)
+  const [lastGeneratedFilename, setLastGeneratedFilename] = useState("")
   const { id } = useParams()
   const location = useLocation()
   const { toast } = useToast()
@@ -37,6 +43,16 @@ export default function PreviewReceitaMedico() {
   }
 
   const todayStr = useMemo(() => new Date().toLocaleDateString(), [])
+
+  // Helper: pegar o primeiro valor não vazio de uma lista de possíveis chaves
+  const firstNonEmpty = (arr) => {
+    for (const v of arr) {
+      if (v === undefined || v === null) continue
+      const s = typeof v === "string" ? v.trim() : v
+      if (s) return typeof s === "string" ? s : String(s)
+    }
+    return ""
+  }
 
   // Estado do formulário
   const [form, setForm] = useState({
@@ -72,29 +88,102 @@ export default function PreviewReceitaMedico() {
         // Perfil do médico
         try {
           const perfil = await medicoService.getPerfil()
-          const medicoNome = perfil?.user
-            ? `${perfil.user.first_name || ""} ${perfil.user.last_name || ""}`.trim()
-            : perfil?.nome || "Médico"
-          const crm = perfil?.crm || ""
-          if (mounted) {
+          const user = perfil?.user || perfil?.usuario || {}
+          const medicoNome = firstNonEmpty([
+            `${(user?.first_name || "")} ${(user?.last_name || "")}`.trim(),
+            perfil?.nome,
+            perfil?.nome_completo,
+            perfil?.full_name,
+            perfil?.name,
+          ])
+          const crm = firstNonEmpty([
+            perfil?.crm,
+            perfil?.matricula,
+            perfil?.registro,
+            perfil?.crm_numero,
+            user?.crm,
+          ])
+          const enderecoMedico = firstNonEmpty([
+            perfil?.endereco_consultorio,
+            perfil?.consultorio_endereco,
+            perfil?.endereco,
+            user?.endereco,
+            perfil?.clinica?.endereco,
+          ])
+          const telefoneMedico = firstNonEmpty([
+            perfil?.telefone_consultorio,
+            perfil?.consultorio_telefone,
+            perfil?.telefone,
+            user?.telefone,
+            user?.phone,
+            perfil?.clinica?.telefone,
+            perfil?.celular,
+          ])
+      
+          // Ajuste: se temos qualquer perfil, preenche com o que estiver disponível (não zerar se faltar CRM)
+          if (mounted && perfil) {
             setForm((f) => ({
               ...f,
               medico: medicoNome || f.medico,
               crm: crm || f.crm,
-              endereco_consultorio: perfil?.endereco || f.endereco_consultorio || "",
-              telefone_consultorio: perfil?.telefone || f.telefone_consultorio || "",
+              endereco_consultorio: enderecoMedico || f.endereco_consultorio || "",
+              telefone_consultorio: telefoneMedico || f.telefone_consultorio || "",
             }))
           }
-        } catch {}
-
-        // Paciente por ID
+        } catch (e) {
+          // Mantém campos existentes se falhar
+        }
+      
+      // Paciente por ID (com fallbacks robustos)
+      try {
+        const base = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
+        let data = null
+      
+        // 1) Tentativa direta /pacientes/:id/
         try {
-          const base = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
-          const { data } = await api.get(`${base}${id}/`)
-          const user = data?.user || {}
-          const nome = [user.first_name, user.last_name].filter(Boolean).join(" ") || data?.nome || ""
-          const nasc = toInputDate(data?.data_nascimento || data?.nascimento || "")
-          const rg = data?.rg || data?.documento || ""
+          const { data: d1 } = await api.get(`${base}${id}/`)
+          data = d1
+        } catch {}
+      
+        // 2) Fallback por query params comuns
+        if (!data) {
+          const candidates = [
+            { id },
+            { paciente_id: id },
+            { user: id },
+            { usuario: id },
+            { user__id: id },
+            { usuario_id: id },
+          ]
+          for (const params of candidates) {
+            try {
+              const { data: d2 } = await api.get(base, { params })
+              const list = Array.isArray(d2?.results) ? d2.results : (Array.isArray(d2) ? d2 : [])
+              if (list?.length) { data = list[0]; break }
+              if (d2?.id) { data = d2; break }
+            } catch {}
+          }
+        }
+      
+        // 3) Fallback via consulta quando disponível
+        if (!data && consultaId) {
+          try {
+            const { data: c } = await api.get(`/consultas/${consultaId}/`)
+            const pac = c?.paciente || (c?.paciente_id ? { id: c.paciente_id } : null)
+            if (pac) data = pac
+          } catch {}
+        }
+      
+        // 4) Fallback: dados presentes em fromConsulta
+        if (!data && fromConsulta?.paciente) {
+          data = fromConsulta.paciente
+        }
+      
+        if (mounted && data) {
+          const user = data?.user || data?.usuario || {}
+          const nome = [user.first_name, user.last_name].filter(Boolean).join(" ") || data?.nome || data?.nome_completo || data?.name || ""
+          const nasc = toInputDate(data?.data_nascimento || data?.nascimento || data?.dob || "")
+          const rg = data?.rg || data?.documento || data?.doc || ""
           const email = user?.email || data?.email || ""
           let idade = ""
           if (nasc) {
@@ -107,24 +196,23 @@ export default function PreviewReceitaMedico() {
               idade = String(years)
             }
           }
-          if (mounted) {
-            setForm((f) => ({
-              ...f,
-              nome_paciente: nome || f.nome_paciente,
-              data_nascimento: nasc || f.data_nascimento,
-              rg: f.rg || rg,
-              idade: f.idade || idade,
-              email_paciente: f.email_paciente || email,
-            }))
-          }
-        } catch {}
-      } finally {
-        if (mounted) setLoading(false)
-      }
+          setForm((f) => ({
+            ...f,
+            nome_paciente: nome || f.nome_paciente,
+            data_nascimento: nasc || f.data_nascimento,
+            rg: f.rg || rg,
+            idade: f.idade || idade,
+            email_paciente: f.email_paciente || email,
+          }))
+        }
+      } catch {}
+    } finally {
+      if (mounted) setLoading(false)
     }
-    load()
-    return () => { mounted = false }
-  }, [id])
+  }
+  load()
+  return () => { mounted = false }
+}, [id])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -181,30 +269,44 @@ export default function PreviewReceitaMedico() {
       // 2) Se for PDF, tentar assinar digitalmente usando o certificado do médico
       let finalBlob = originalBlob
       let finalFilename = baseFilename
+      let signedOk = false
       if (String(form.formato).toLowerCase() === "pdf") {
-        const shouldSign = !!pfxFile
-        if (shouldSign) {
-          try {
-            const pdfFile = new File([originalBlob], finalFilename, { type: "application/pdf" })
-            const signMeta = {
-              reason: "Receita Médica",
-              location: form.endereco_consultorio || undefined,
-              pfxFile: pfxFile || undefined,
-              // Certificado sem senha: enviar string vazia
-              pfxPassword: pfxPassword ?? "",
-            }
-            const signed = await medicoService.signDocumento(pdfFile, signMeta)
-            if (signed?.blob instanceof Blob) {
-              finalBlob = signed.blob
-              if (signed.filename) finalFilename = signed.filename
-            }
-          } catch (e) {
-            const st = e?.response?.status
-            const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita. Continuaremos sem assinatura."
-            console.warn("[PreviewReceita] Falha ao assinar PDF:", st, msg)
-            toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
-          }
+        // Assinar automaticamente: usar PFX efêmero se fornecido OU deixar backend escolher certificado do médico
+        const signMeta = {
+          reason: "Receita Médica",
+          location: form.endereco_consultorio || undefined,
+          pfxFile: pfxFile || undefined,
+          pfxPassword: pfxPassword ?? "",
         }
+        try {
+          const pdfFile = new File([originalBlob], finalFilename, { type: "application/pdf" })
+          const signed = await medicoService.signDocumento(pdfFile, signMeta)
+          if (signed?.blob instanceof Blob) {
+            finalBlob = signed.blob
+            if (signed.filename) finalFilename = signed.filename
+            signedOk = true
+          }
+        } catch (e) {
+          const st = e?.response?.status
+          const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita. Continuaremos sem assinatura."
+          console.warn("[PreviewReceita] Falha ao assinar PDF:", st, msg)
+          toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
+        }
+      }
+
+      // Atualiza estados com o último PDF gerado
+      setLastGeneratedBlob(finalBlob)
+      setLastGeneratedFilename(finalFilename)
+
+      // Atualiza estados de assinatura conforme resultado
+      if (signedOk) {
+        setIsSigned(true)
+        setSignedBlob(finalBlob)
+        setSignedFilename(finalFilename)
+      } else {
+        setIsSigned(false)
+        setSignedBlob(null)
+        setSignedFilename("")
       }
 
       // 3) Imprimir ou baixar usando o arquivo final (assinado quando possível)
@@ -231,10 +333,50 @@ export default function PreviewReceitaMedico() {
     }
   }
 
+  // Ação dedicada para assinatura digital, agora dentro do componente
+  const handleAssinarReceita = async () => {
+    try {
+      if (!lastGeneratedBlob) {
+        await handleGerarDocumento()
+      }
+      if (!lastGeneratedBlob) {
+        toast({ title: "Falha ao gerar", description: "Não foi possível gerar o documento para assinatura.", variant: "destructive" })
+        return
+      }
+
+      const signMeta = { reason: "Assinatura de prescrição", location: form.endereco_consultorio || "" }
+      const pdfFile = new File([lastGeneratedBlob], lastGeneratedFilename || "receita.pdf", { type: "application/pdf" })
+      const signed = await medicoService.signDocumento(pdfFile, signMeta)
+      if (signed?.blob instanceof Blob) {
+        setSignedBlob(signed.blob)
+        setSignedFilename(signed.filename || lastGeneratedFilename || "receita_assinada.pdf")
+        setIsSigned(true)
+        toast({ title: "Receita assinada", description: "A assinatura digital foi aplicada com sucesso." })
+      } else {
+        setIsSigned(false)
+        setSignedBlob(null)
+        setSignedFilename("")
+        toast({ title: "Assinatura falhou", description: "Não foi possível aplicar a assinatura digital.", variant: "destructive" })
+      }
+    } catch (e) {
+      const st = e?.response?.status
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita."
+      console.warn("[PreviewReceita] Falha ao assinar PDF:", st, msg)
+      setIsSigned(false)
+      setSignedBlob(null)
+      setSignedFilename("")
+      toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
+    }
+  }
+
   async function handleEnviarPaciente() {
+    if (!isSigned || !(signedBlob instanceof Blob)) {
+      toast({ title: "Assinatura obrigatória", description: "Assine a receita antes de enviar ao paciente.", variant: "destructive" })
+      return
+    }
     setSubmitLoading(true)
     try {
-      // 1) Salvar/registrar a receita no backend (sem envio ainda)
+      // Registrar a receita e obter o ID
       const payloadSave = {
         paciente: id,
         paciente_id: id,
@@ -246,65 +388,11 @@ export default function PreviewReceitaMedico() {
         validade_receita: toInputDate(form.validade_receita),
         observacoes: form.observacoes,
       }
-
       const created = await medicoService.criarReceita(payloadSave)
       const rid = created?.id || created?.pk || created?.uuid
 
-      // 2) Gerar o documento PDF da receita (no backend)
-      const payloadDoc = {
-        nome_paciente: form.nome_paciente,
-        idade: form.idade,
-        rg: form.rg,
-        data_nascimento: toInputDate(form.data_nascimento),
-        medicamento: form.medicamento,
-        medicamentos: form.medicamento,
-        posologia: form.posologia,
-        medico: form.medico,
-        crm: form.crm,
-        endereco_consultorio: form.endereco_consultorio,
-        telefone_consultorio: form.telefone_consultorio,
-        validade_receita: toInputDate(form.validade_receita),
-        observacoes: form.observacoes,
-        formato: "pdf",
-        paciente: id,
-        paciente_id: id,
-        consulta: consultaId || undefined,
-        consulta_id: consultaId || undefined,
-      }
-
-      const generated = await medicoService.gerarDocumentoReceita(payloadDoc)
-      const originalBlob = generated?.blob
-      const baseFilename = generated?.filename || `Receita_${form.nome_paciente || "Medica"}.pdf`
-      if (!(originalBlob instanceof Blob)) throw new Error("Resposta inválida do servidor ao gerar PDF.")
-
-      // 3) Assinar digitalmente o PDF com o certificado do médico (no backend de assinatura)
-      const pdfFile = new File([originalBlob], baseFilename, { type: "application/pdf" })
-      let signed = null
-      const shouldSign = !!pfxFile
-      if (shouldSign) {
-        try {
-          signed = await medicoService.signDocumento(pdfFile, {
-            reason: "Receita Médica",
-            location: form.endereco_consultorio || undefined,
-            pfxFile: pfxFile || undefined,
-            // Se o certificado não tiver senha, enviamos string vazia explicitamente
-            pfxPassword: pfxPassword ?? "",
-          })
-        } catch (e) {
-          const st = e?.response?.status
-          const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita. Enviaremos sem assinatura."
-          toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
-          signed = null
-        }
-        // Caso a API retorne sem blob válido, prosseguir sem assinatura
-        if (!(signed?.blob instanceof Blob)) {
-          signed = null
-        }
-      }
-
-      // 4) Enviar a receita (assinada, se disponível) ao paciente
-      const fileToSend = signed?.blob || originalBlob
-      const filenameToSend = signed?.filename || baseFilename
+      const fileToSend = signedBlob
+      const filenameToSend = signedFilename || lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}_assinada.pdf`
       await medicoService.enviarReceita({
         receitaId: rid,
         pacienteId: id,
@@ -314,7 +402,7 @@ export default function PreviewReceitaMedico() {
         filename: filenameToSend,
       })
 
-      toast({ title: "Receita enviada", description: signed ? "A receita assinada foi enviada ao paciente com sucesso." : "A receita foi enviada sem assinatura (certificado ausente ou senha inválida)." })
+      toast({ title: "Receita enviada", description: "A receita assinada foi enviada ao paciente com sucesso." })
     } catch (e) {
       const st = e?.response?.status
       const msg = e?.response?.data?.detail || e?.message || "Falha ao enviar a receita assinada"
@@ -410,21 +498,17 @@ export default function PreviewReceitaMedico() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Endereço do Consultório</Label>
-                <Input name="endereco_consultorio" value={form.endereco_consultorio} onChange={handleChange} placeholder="Rua das Flores, 123" />
+                <Input name="endereco_consultorio" value={form.endereco_consultorio} onChange={handleChange} placeholder="" />
               </div>
               <div>
                 <Label>Telefone</Label>
-                <Input name="telefone_consultorio" value={form.telefone_consultorio} onChange={handleChange} placeholder="(11) 91234-5678" />
+                <Input name="telefone_consultorio" value={form.telefone_consultorio} onChange={handleChange} placeholder="" />
               </div>
             </div>
 
             <div>
               <Label>Observações (opcional)</Label>
               <Textarea name="observacoes" rows={2} value={form.observacoes} onChange={handleChange} placeholder="Orientações adicionais ao paciente" />
-            </div>
-
-            <div className="rounded-md bg-amber-50 text-amber-900 border border-amber-200 p-3 text-sm">
-              Ao gerar PDF, a assinatura digital será aplicada usando seu arquivo .pfx carregado no momento. O certificado é usado apenas em memória e descartado após a assinatura. Você pode validar seu certificado nas Configurações.
             </div>
 
             {/* NOVO: campos para certificado efêmero */}
@@ -439,7 +523,6 @@ export default function PreviewReceitaMedico() {
               <div>
                 <Label>Senha do PFX</Label>
                 <Input type="password" value={pfxPassword} onChange={(e) => setPfxPassword(e.target.value)} placeholder="Informe a senha" />
-                <p className="text-xs text-muted-foreground">Usado apenas durante a assinatura. Não armazenamos esta informação.</p>
               </div>
             </div>
 
@@ -450,10 +533,15 @@ export default function PreviewReceitaMedico() {
               <Button type="button" onClick={handleGerarDocumento} disabled={submitLoading}>
                 <Printer className="h-4 w-4 mr-2" /> {submitLoading ? (form.acao === "imprimir" ? "Imprimindo..." : "Gerando...") : (form.acao === "imprimir" ? "Imprimir" : "Baixar")}
               </Button>
-              <Button type="button" variant="secondary" onClick={handleEnviarPaciente} disabled={submitLoading} title="Este botão salva a receita no sistema (envio por e-mail desativado temporariamente)">
+              <Button type="button" variant="default" onClick={handleAssinarReceita} disabled={submitLoading}>
+                 Assinar Receita
+               </Button>
+              <Button type="button" variant="secondary" onClick={handleEnviarPaciente} disabled={submitLoading || !isSigned}>
                 <Mail className="h-4 w-4 mr-2" /> Enviar ao paciente
               </Button>
             </div>
+
+
           </CardContent>
         </Card>
 
@@ -465,8 +553,8 @@ export default function PreviewReceitaMedico() {
             <div className="mx-auto bg-white shadow-md border rounded-md p-6 max-w-[800px] aspect-[1/1.414] overflow-auto">
               <div className="text-center border-b pb-3">
                 <div className="font-bold text-lg">Consultório Médico</div>
-                <div className="font-semibold">{form.medico || "Dr(a)."}</div>
-                <div>CRM: {form.crm}</div>
+                <div className="font-semibold">{form.medico}</div>
+                {form.crm && <div>CRM: {form.crm}</div>}
                 <div className="text-sm text-muted-foreground">{form.endereco_consultorio}</div>
                 <div className="text-sm text-muted-foreground">Telefone: {form.telefone_consultorio}</div>
               </div>
@@ -494,7 +582,9 @@ export default function PreviewReceitaMedico() {
 
               <div className="text-center mt-10">
                 <div className="mx-auto w-64 border-t pt-1">&nbsp;</div>
-                <div>Dr(a). {form.medico} • CRM {form.crm}</div>
+                {form.medico && (
+                  <div>Dr(a). {form.medico}{form.crm ? ` • CRM ${form.crm}` : ""}</div>
+                )}
                 <div className="text-xs text-muted-foreground mt-1">Assinado digitalmente com certificado ICP-Brasil (backend)</div>
               </div>
             </div>

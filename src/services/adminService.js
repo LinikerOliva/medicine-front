@@ -223,59 +223,13 @@ export const adminService = {
   },
 
   async getUsuarios(params = {}) {
-    // Novo: usar probing de endpoints e normalizar parâmetros
-    const bases = getUserBaseCandidates()
+    // Simplificado: usar APENAS o endpoint /users/ com os parâmetros normalizados
     const normalized = sanitizeListParams(normalizeParams(params))
-
-    let lastErr
-    for (const base of bases) {
-      const baseUrl = ensureTrailingSlash(base)
-      const endpointsToTry = STRICT
-        ? [baseUrl]
-        : [baseUrl, baseUrl + "listar/", baseUrl + "list/", baseUrl + "todas/", baseUrl + "all/"]
-
-      const paramVariants = []
-      paramVariants.push(normalized)
-      if (!STRICT && normalized?.ordering) {
-        const { ordering, ...rest } = normalized
-        paramVariants.push(rest)
-      }
-      if (!STRICT) {
-        const pageOnly = {}
-        if (normalized.page_size != null) pageOnly.page_size = normalized.page_size
-        if (normalized.limit != null) pageOnly.limit = normalized.limit
-        if (normalized.page != null) pageOnly.page = normalized.page
-        if (normalized.offset != null) pageOnly.offset = normalized.offset
-        if (Object.keys(pageOnly).length) paramVariants.push(pageOnly)
-      }
-      if (Object.keys(normalized).length) paramVariants.push({})
-
-      for (const endpoint of endpointsToTry) {
-        for (const p of paramVariants) {
-          try {
-            if (VERBOSE) console.debug("[adminService.getUsuarios] GET", endpoint, p)
-            const response = await api.get(endpoint, { params: p })
-            const data = response.data
-            const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
-            const count = typeof data?.count === "number" ? data.count : list.length
-            if (VERBOSE) console.debug("[adminService.getUsuarios] OK", endpoint, `items=${list.length}`)
-            return { results: list, count }
-          } catch (err) {
-            const st = err?.response?.status
-            if (VERBOSE) console.warn("[adminService.getUsuarios] Falhou", endpoint, "status=", st, "params=", p)
-            if (st === 401) { throw err }
-            lastErr = err
-            continue
-          }
-        }
-      }
-      continue
-    }
-
-    if (!VERBOSE && import.meta.env.DEV) {
-      console.info("[adminService.getUsuarios] Nenhum endpoint respondeu. Retornando lista vazia.")
-    }
-    return { results: [], count: 0 }
+    const response = await api.get("/users/", { params: normalized })
+    const data = response.data
+    const results = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+    const count = typeof data?.count === "number" ? data.count : results.length
+    return { results, count }
   },
 
   async getClinicas(params = {}) {

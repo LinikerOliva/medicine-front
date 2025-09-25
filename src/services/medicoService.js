@@ -2,7 +2,6 @@ import api from "./api"
 import { authService } from "./authService"
 
 export const medicoService = {
-  // Resolve o perfil do médico evitando 404 desnecessários e mapeando a partir do usuário
   async getPerfil() {
     const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
     const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
@@ -18,8 +17,8 @@ export const medicoService = {
       try {
         const refreshed = await authService.refreshCurrentUser()
         if (refreshed?.id) localUser = refreshed
-      } catch {}
-    }
+      } catch {};
+    };
     if (localUser?.id) {
       // Tentar diferentes chaves de filtro por usuário (configuráveis por env)
       const keysRaw = (import.meta.env.VITE_MEDICOS_USER_FILTER_KEYS || "user,user__id,user_id,usuario,usuario_id")
@@ -30,8 +29,34 @@ export const medicoService = {
         try {
           const res = await api.get(medBase, { params: { [key]: localUser.id } })
           const items = Array.isArray(res.data?.results) ? res.data.results : res.data
-          if (items?.[0]) return items[0]
-        } catch {}
+          // Antes retornava items[0] sem validar; agora valida correspondência com o usuário logado
+          if (Array.isArray(items)) {
+            const match = items.find(
+              (m) => (
+                m?.user?.id === localUser.id ||
+                m?.usuario?.id === localUser.id ||
+                m?.user === localUser.id ||
+                m?.usuario === localUser.id
+              )
+            )
+            if (match) return match
+            // se não houver correspondência, continua tentando com a próxima chave
+            continue
+          };
+          if (items && typeof items === "object") {
+            const obj = items
+            if (
+              obj?.user?.id === localUser.id ||
+              obj?.usuario?.id === localUser.id ||
+              obj?.user === localUser.id ||
+              obj?.usuario === localUser.id
+            ) {
+              return obj
+            };
+            // objeto sem correspondência; continua
+            continue
+          };
+        } catch {};
       }
     }
 
@@ -92,7 +117,8 @@ export const medicoService = {
           const found = items.find((m) => m?.user?.id === uid || m?.usuario?.id === uid)
           if (found) return found
         }
-        return items[0]
+        // Não retorne um médico aleatório: se não houver correspondência com o usuário logado, considere que NÃO é médico.
+        return null
       }
     } catch {}
 
@@ -611,7 +637,28 @@ export const medicoService = {
         try {
           const res = await api.get(medBase, { params: { [key]: uid } })
           const items = Array.isArray(res.data?.results) ? res.data.results : res.data
-          if (items?.[0]?.id) return items[0].id
+          if (Array.isArray(items)) {
+            const match = items.find(
+              (m) => (
+                m?.user?.id === uid ||
+                m?.usuario?.id === uid ||
+                m?.user === uid ||
+                m?.usuario === uid
+              )
+            )
+            if (match?.id) return match.id
+            continue
+          }
+          if (items && typeof items === "object") {
+            const obj = items
+            if (
+              (obj?.user?.id === uid || obj?.usuario?.id === uid || obj?.user === uid || obj?.usuario === uid) &&
+              obj?.id
+            ) {
+              return obj.id
+            }
+            continue
+          }
         } catch {}
       }
     } catch {}
@@ -1149,94 +1196,6 @@ export const medicoService = {
     if (lastErr) throw lastErr
     throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
   },
-  // ... existing code ...
-  // NOVO: gerar documento de receita (PDF) com fallbacks de endpoints e métodos
-  async gerarDocumentoReceita(payload = {}) {
-    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
-    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
-  
-    // Normalizar campos esperados pelo backend
-    const p0 = { ...payload }
-    const normalized = { ...p0 }
-    // Campo "formato" padrão para PDF
-    const fmt = String(p0.formato || p0.format || "pdf").toLowerCase()
-    normalized.formato = fmt
-    if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
-    if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
-    if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
-    if (!normalized.paciente_id && p0.paciente) normalized.paciente_id = p0.paciente
-    if (!normalized.paciente && p0.paciente_id) normalized.paciente = p0.paciente_id
-    if (!normalized.consulta_id && p0.consulta) normalized.consulta_id = p0.consulta
-    if (!normalized.consulta && p0.consulta_id) normalized.consulta = p0.consulta_id
-  
-    const candidates = []
-    const envGen = (import.meta.env.VITE_GERAR_RECEITA_ENDPOINT || "").trim()
-    if (envGen) candidates.push(envGen)
-  
-    // Rotas comuns
-    candidates.push(`${baseReceitas}gerar-documento/`)
-    candidates.push(`${baseReceitas}gerar/`)
-    candidates.push(`${baseReceitas}pdf/`)
-    candidates.push(`${baseReceitas}documento/`)
-  
-    // Variações singulares
-    const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
-    candidates.push(`${singularBase}gerar-documento/`)
-    candidates.push(`${singularBase}gerar/`)
-    candidates.push(`${singularBase}pdf/`)
-  
-    // Fallbacks com /api quando houver normalização diferente no backend
-    candidates.push(`/api/receitas/gerar-documento/`)
-    candidates.push(`/api/receitas/gerar/`)
-    candidates.push(`/api/receitas/pdf/`)
-  
-    let lastErr = null
-    for (const raw of candidates) {
-      if (!raw) continue
-      const url = raw.endsWith("/") ? raw : `${raw}/`
-      // 1) Tentar POST JSON retornando blob
-      try {
-        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] POST", url, normalized) } catch {} }
-        const res = await api.post(url, normalized, { responseType: "blob" })
-        const contentDisposition = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-        let filename = "Receita.pdf"
-        if (contentDisposition) {
-          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
-          filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
-        }
-        const blob = res?.data instanceof Blob ? res.data : new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
-        return { filename, blob }
-      } catch (e1) {
-        const st = e1?.response?.status
-        if (VERBOSE) { try { console.warn("[gerarDocumentoReceita] POST falhou", url, st, e1?.response?.data || e1?.message) } catch {} }
-        if (st === 401) throw e1
-        // Em 405/404 tentar GET com query params
-        if (![404, 405].includes(st)) lastErr = e1
-      }
-  
-      // 2) GET com query params (alguns backends geram via GET)
-      try {
-        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] GET", url, normalized) } catch {} }
-        const { data, headers } = await api.get(url, { params: normalized, responseType: "blob" })
-        const contentDisposition = headers?.["content-disposition"] || headers?.get?.("content-disposition")
-        let filename = "Receita.pdf"
-        if (contentDisposition) {
-          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
-          filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
-        }
-        const blob = data instanceof Blob ? data : new Blob([data], { type: headers?.["content-type"] || "application/pdf" })
-        return { filename, blob }
-      } catch (e2) {
-        const st2 = e2?.response?.status
-        if (VERBOSE) { try { console.warn("[gerarDocumentoReceita] GET falhou", url, st2, e2?.response?.data || e2?.message) } catch {} }
-        if (st2 === 401) throw e2
-        lastErr = e2
-      }
-    }
-  
-    if (lastErr) throw lastErr
-    throw new Error("Falha ao gerar documento da receita: nenhum endpoint compatível.")
-  },
   async signDocumento(fileOrForm, meta = {}) {
     // fileOrForm pode ser File (PDF) ou FormData
     let formData
@@ -1327,4 +1286,4 @@ export const medicoService = {
     if (lastErr) throw lastErr
     throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
   },
-}
+};

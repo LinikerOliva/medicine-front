@@ -430,7 +430,7 @@ export default function Configuracao() {
         )}
 
         <Tabs defaultValue="perfil" className="space-y-6">
-          <TabsList className={`grid w-full ${isMedico ? "grid-cols-4" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full ${isMedico ? "grid-cols-5" : "grid-cols-3"}`}>
             <TabsTrigger value="perfil" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
@@ -444,10 +444,16 @@ export default function Configuracao() {
               Notificações
             </TabsTrigger>
             {isMedico && (
-              <TabsTrigger value="certificado" className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Certificado Digital
-              </TabsTrigger>
+              <>
+                <TabsTrigger value="certificado" className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Certificado Digital
+                </TabsTrigger>
+                <TabsTrigger value="dados_medico" className="flex items-center gap-2">
+                  <Stethoscope className="h-4 w-4" />
+                  Dados do Médico
+                </TabsTrigger>
+              </>
             )}
           </TabsList>
 
@@ -818,3 +824,308 @@ export default function Configuracao() {
     </div>
   )
 }
+
+// ...existing code ...
+
+// NOVO: Dados do Médico (somente leitura)
+const [medicoInfo, setMedicoInfo] = useState({
+  nome: "",
+  crm: "",
+  especialidade: "",
+  telefone: "",
+  endereco: "",
+})
+
+useEffect(() => {
+  if (!isMedico) return
+  // Carregar perfil do médico para exibição
+  ;(async () => {
+    try {
+      const perfil = await medicoService.getPerfil()
+      if (!perfil) return
+      const nome = (
+        perfil?.nome ||
+        (perfil?.user?.first_name || perfil?.user?.last_name
+          ? `${perfil?.user?.first_name || ""} ${perfil?.user?.last_name || ""}`.trim()
+          : perfil?.user?.nome || perfil?.user?.name || "")
+      ) || ""
+      const crm = perfil?.crm || perfil?.crm_numero || perfil?.crm_registro || perfil?.user?.crm || ""
+      let especialidade = ""
+      if (typeof perfil?.especialidade === "string") especialidade = perfil.especialidade
+      else if (perfil?.especialidade && typeof perfil.especialidade === "object") {
+        especialidade = perfil.especialidade.nome || perfil.especialidade.label || perfil.especialidade.titulo || ""
+      }
+      const telefone = perfil?.telefone || perfil?.celular || perfil?.user?.phone || perfil?.user?.telefone || perfil?.contato?.telefone || ""
+      let enderecoSrc = perfil?.endereco || perfil?.user?.endereco || perfil?.clinica?.endereco || ""
+      let endereco = ""
+      if (typeof enderecoSrc === "string") endereco = enderecoSrc
+      else if (enderecoSrc && typeof enderecoSrc === "object") {
+        endereco = `${enderecoSrc.logradouro || enderecoSrc.rua || ""} ${enderecoSrc.numero || ""} ${enderecoSrc.bairro || ""} ${enderecoSrc.cidade || ""} ${enderecoSrc.estado || ""}`.trim()
+      }
+      setMedicoInfo({ nome, crm, especialidade, telefone, endereco })
+    } catch {}
+  })()
+}, [isMedico])
+
+{isMedico && (
+  <TabsContent value="dados_medico">
+    <Card>
+      <CardHeader>
+        <CardTitle>Dados do Médico</CardTitle>
+        <CardDescription>Informações utilizadas em documentos e prescrições</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Nome</Label>
+            <Input value={medicoInfo.nome} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label>CRM</Label>
+            <Input value={medicoInfo.crm} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label>Especialidade</Label>
+            <Input value={medicoInfo.especialidade} disabled />
+          </div>
+          <div className="space-y-2">
+            <Label>Telefone do Consultório</Label>
+            <Input value={medicoInfo.telefone} disabled />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label>Endereço do Consultório</Label>
+          <Textarea value={medicoInfo.endereco} disabled />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Esses dados são carregados automaticamente do seu perfil médico. Caso estejam incorretos, atualize-os na área de cadastro de médico.
+        </p>
+      </CardContent>
+    </Card>
+  </TabsContent>
+)}
+
+
+
+
+
+
+{isMedico && (
+  <TabsContent value="certificado">
+    <Card>
+      <CardHeader>
+        <CardTitle>Configuração de Certificado Digital</CardTitle>
+        <CardDescription>
+          Envie seu certificado (.pfx/.p12 ou .crt/.cer/.pem). O arquivo é enviado com segurança ao servidor.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Status atual */}
+        <div className="rounded-lg border p-4 bg-muted/30">
+          {loadingCert ? (
+            <p className="text-muted-foreground">Carregando informações do certificado...</p>
+          ) : exists ? (
+            <div className="space-y-1">
+              <p className="font-medium">Certificado cadastrado</p>
+              <p className="text-sm text-muted-foreground">
+                Titular: {certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Emitente: {certInfo?.issuer || certInfo?.issuer_name || certInfo?.emitente || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Validade: {certInfo?.valid_from || certInfo?.validade_inicio || "?"} — {certInfo?.valid_to || certInfo?.validade_fim || "?"}
+              </p>
+              {daysToExpire != null && (
+                <p className={`text-sm ${daysToExpire <= 0 ? "text-destructive" : daysToExpire < 30 ? "text-amber-600" : "text-emerald-600"}`}>
+                  {daysToExpire <= 0 ? "Expirado" : `Expira em ${daysToExpire} dia(s)`}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nenhum certificado cadastrado para este médico.</p>
+          )}
+          <div className="mt-3">
+            <Button variant="outline" size="sm" onClick={handleFetchCertInfo} disabled={loadingCert}>
+              {loadingCert ? "Validando..." : "Validar agora"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Upload */}
+        <div className="space-y-2">
+          <Label>Arquivo do certificado</Label>
+          <Input
+            type="file"
+            accept=".pfx,.p12,.crt,.cer,.pem"
+            onChange={(e) => setSelectedCertFile(e.target.files?.[0] || null)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Aceita: .pfx, .p12, .crt, .cer, .pem. Tamanho máximo: 15MB.
+          </p>
+          {selectedCertFile && (
+            <p className="text-xs">Selecionado: {selectedCertFile.name} ({Math.ceil(selectedCertFile.size / 1024)} KB)</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Senha do certificado (se aplicável)</Label>
+          <Input
+            type="password"
+            value={certPassword}
+            onChange={(e) => setCertPassword(e.target.value)}
+            placeholder="Senha do .pfx (opcional)"
+          />
+          <p className="text-xs text-muted-foreground">A senha não é armazenada no navegador; é usada apenas durante o processamento.</p>
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <Button onClick={handleUploadCert} disabled={uploadingCert}>
+            {uploadingCert ? "Enviando..." : "Enviar Certificado"}
+          </Button>
+        </div>
+
+        <Separator />
+
+        {/* Assinatura de Documento */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Arquivo PDF para assinar</Label>
+            <Input type="file" accept=".pdf" onChange={(e) => setSignFile(e.target.files?.[0] || null)} />
+            {signFile && (
+              <p className="text-xs">Selecionado: {signFile.name} ({Math.ceil(signFile.size / 1024)} KB)</p>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Motivo (opcional)</Label>
+              <Input value={signReason} onChange={(e) => setSignReason(e.target.value)} placeholder="Ex.: Assinatura de prescrição" />
+            </div>
+            <div className="space-y-2">
+              <Label>Local (opcional)</Label>
+              <Input value={signLocation} onChange={(e) => setSignLocation(e.target.value)} placeholder="Ex.: São Paulo - SP" />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button onClick={handleSignDocument} disabled={signLoading || !signFile}>
+              {signLoading ? "Assinando..." : "Assinar e Baixar"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </TabsContent>
+)}
+
+{isMedico && (
+  <TabsContent value="certificado">
+    <Card>
+      <CardHeader>
+        <CardTitle>Configuração de Certificado Digital</CardTitle>
+        <CardDescription>
+          Envie seu certificado (.pfx/.p12 ou .crt/.cer/.pem). O arquivo é enviado com segurança ao servidor.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Status atual */}
+        <div className="rounded-lg border p-4 bg-muted/30">
+          {loadingCert ? (
+            <p className="text-muted-foreground">Carregando informações do certificado...</p>
+          ) : exists ? (
+            <div className="space-y-1">
+              <p className="font-medium">Certificado cadastrado</p>
+              <p className="text-sm text-muted-foreground">
+                Titular: {certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Emitente: {certInfo?.issuer || certInfo?.issuer_name || certInfo?.emitente || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Validade: {certInfo?.valid_from || certInfo?.validade_inicio || "?"} — {certInfo?.valid_to || certInfo?.validade_fim || "?"}
+              </p>
+              {daysToExpire != null && (
+                <p className={`text-sm ${daysToExpire <= 0 ? "text-destructive" : daysToExpire < 30 ? "text-amber-600" : "text-emerald-600"}`}>
+                  {daysToExpire <= 0 ? "Expirado" : `Expira em ${daysToExpire} dia(s)`}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nenhum certificado cadastrado para este médico.</p>
+          )}
+          <div className="mt-3">
+            <Button variant="outline" size="sm" onClick={handleFetchCertInfo} disabled={loadingCert}>
+              {loadingCert ? "Validando..." : "Validar agora"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Upload */}
+        <div className="space-y-2">
+          <Label>Arquivo do certificado</Label>
+          <Input
+            type="file"
+            accept=".pfx,.p12,.crt,.cer,.pem"
+            onChange={(e) => setSelectedCertFile(e.target.files?.[0] || null)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Aceita: .pfx, .p12, .crt, .cer, .pem. Tamanho máximo: 15MB.
+          </p>
+          {selectedCertFile && (
+            <p className="text-xs">Selecionado: {selectedCertFile.name} ({Math.ceil(selectedCertFile.size / 1024)} KB)</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Senha do certificado (se aplicável)</Label>
+          <Input
+            type="password"
+            value={certPassword}
+            onChange={(e) => setCertPassword(e.target.value)}
+            placeholder="Senha do .pfx (opcional)"
+          />
+          <p className="text-xs text-muted-foreground">A senha não é armazenada no navegador; é usada apenas durante o processamento.</p>
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <Button onClick={handleUploadCert} disabled={uploadingCert}>
+            {uploadingCert ? "Enviando..." : "Enviar Certificado"}
+          </Button>
+        </div>
+
+        <Separator />
+
+        {/* Assinatura de Documento */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Arquivo PDF para assinar</Label>
+            <Input type="file" accept=".pdf" onChange={(e) => setSignFile(e.target.files?.[0] || null)} />
+            {signFile && (
+              <p className="text-xs">Selecionado: {signFile.name} ({Math.ceil(signFile.size / 1024)} KB)</p>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Motivo (opcional)</Label>
+              <Input value={signReason} onChange={(e) => setSignReason(e.target.value)} placeholder="Ex.: Assinatura de prescrição" />
+            </div>
+            <div className="space-y-2">
+              <Label>Local (opcional)</Label>
+              <Input value={signLocation} onChange={(e) => setSignLocation(e.target.value)} placeholder="Ex.: São Paulo - SP" />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button onClick={handleSignDocument} disabled={signLoading || !signFile}>
+              {signLoading ? "Assinando..." : "Assinar e Baixar"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </TabsContent>
+)}
+
+{isMedico && (
+  <TabsContent value="certificado">
+    <Card>
+      <CardHeader>
+        <CardTitle>Configuração de Certificado Digital</CardTitle>

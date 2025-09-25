@@ -42,23 +42,23 @@ export default function PacientePerfil() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Nome</p>
-                  <p>João Silva</p>
+                  <p className="text-muted-foreground">—</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Data de Nascimento</p>
-                  <p>15/05/1985 (38 anos)</p>
+                  <p className="text-muted-foreground">—</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">CPF</p>
-                  <p>123.456.789-00</p>
+                  <p className="text-muted-foreground">—</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Telefone</p>
-                  <p>(11) 98765-4321</p>
+                  <p className="text-muted-foreground">—</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-sm font-medium text-muted-foreground">Endereço</p>
-                  <p>Rua das Flores, 123 - São Paulo, SP</p>
+                  <p className="text-muted-foreground">—</p>
                 </div>
               </div>
             </div>
