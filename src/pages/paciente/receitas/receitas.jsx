@@ -389,7 +389,7 @@ const handleDownloadGerado = async (r) => {
     }
 
     let y = 800
-    draw("Receita Médica (não assinada)", 50, y, 16)
+    draw("Receita Médica (pré-assinatura, não assinada)", 50, y, 16)
     y -= 30
 
     const fmt = (label, val) => `${label}: ${val ?? ""}`

@@ -13,6 +13,13 @@ export function UserProvider({ children }) {
     isClinica: false,
     medicoStatus: "none", // none, pending, approved, rejected
   })
+  // Ephemeral certificado para assinatura (não persistir)
+  const [ephemeralCertFile, setEphemeralCertFile] = useState(null)
+  const [ephemeralCertPassword, setEphemeralCertPassword] = useState("")
+  const clearEphemeralCert = () => {
+    setEphemeralCertFile(null)
+    setEphemeralCertPassword("")
+  }
 
   const toggleRole = () => {
     // Só permite alternar se o usuário tem permissão de médico
@@ -36,6 +43,7 @@ export function UserProvider({ children }) {
       isClinica: false,
       medicoStatus: "none",
     })
+    clearEphemeralCert()
   }
 
   return (
@@ -49,6 +57,12 @@ export function UserProvider({ children }) {
         setUserPermissions,
         login,
         logout,
+        // Ephemeral certificado
+        ephemeralCertFile,
+        setEphemeralCertFile,
+        ephemeralCertPassword,
+        setEphemeralCertPassword,
+        clearEphemeralCert,
       }}
     >
       {children}

@@ -80,20 +80,39 @@ export function Sidebar({ role = "paciente" }) {
 
   const displayName = useMemo(() => {
     const composedPatient =
-      [patient?.user?.first_name || patient?.first_name, patient?.user?.last_name || patient?.last_name]
+      [
+        patient?.user?.display_name,
+        [patient?.user?.first_name || patient?.first_name, patient?.user?.last_name || patient?.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim(),
+      ]
         .filter(Boolean)
-        .join(" ")
-        .trim()
+        .shift()
+
     return (
       patient?.nome ||
+      patient?.display_name ||
       composedPatient ||
+      user?.display_name ||
       user?.nome ||
+      [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
       user?.name ||
       "Usuário"
     )
   }, [patient, user])
 
-  const secondaryLine = patient?.plano_saude || user?.email || ""
+  const cpf = useMemo(() => {
+    return (
+      patient?.cpf ||
+      patient?.user?.cpf ||
+      user?.cpf ||
+      user?.profile?.cpf ||
+      ""
+    )
+  }, [patient, user])
+
+  const secondaryLine = cpf || patient?.plano_saude || user?.email || ""
 
   return (
     <UISidebar variant="floating" className={cn("sidebar-green")}> {/* mantém o tema atual */}

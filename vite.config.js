@@ -266,7 +266,7 @@ export default defineConfig(({ mode }) => {
 
           const nome = data.nome_paciente || 'Paciente';
           const idade = data.idade ? `${data.idade} anos` : '';
-          const rg = data.rg || '';
+          const rg = data.rg || data.cpf || data.documento || data.doc || "";
           const nasc = data.data_nascimento || '';
           const meds = data.medicamento || data.medicamentos || '';
           const posologia = data.posologia || '';
@@ -278,7 +278,7 @@ export default defineConfig(({ mode }) => {
           let y = 760;
           draw(`Nome: ${nome}`, 50, y); y -= 18;
           draw(`Idade: ${idade}`, 50, y); y -= 18;
-          draw(`RG: ${rg}`, 50, y); y -= 18;
+          draw(`CPF: ${rg}`, 50, y); y -= 18;
           draw(`Nascimento: ${nasc}`, 50, y); y -= 28;
           draw('Prescrição:', 50, y); y -= 18;
           draw(meds, 60, y); y -= 18;

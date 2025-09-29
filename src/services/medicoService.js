@@ -598,6 +598,136 @@ export const medicoService = {
     throw new Error("Falha ao criar receita: nenhum endpoint compatível encontrado.")
   },
 
+  // NOVO: gerar documento de receita (PDF/DOCX) com múltiplos fallbacks de endpoint
+  async gerarDocumentoReceita(payload = {}) {
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const baseConsultas = (import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/")
+    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+
+    // Normaliza campos aceitando sinônimos
+    const p0 = { ...payload }
+    const pacienteId = p0.paciente_id || p0.paciente
+    const consultaId = p0.consulta_id || p0.consulta
+    const formato = (p0.formato || "pdf").toLowerCase()
+    const normalized = { ...p0 }
+    if (!normalized.paciente_id && pacienteId) normalized.paciente_id = pacienteId
+    if (!normalized.paciente && pacienteId) normalized.paciente = pacienteId
+    if (!normalized.consulta_id && consultaId) normalized.consulta_id = consultaId
+    if (!normalized.consulta && consultaId) normalized.consulta = consultaId
+    if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
+    if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
+    if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
+    normalized.formato = formato
+
+    // Resolve automaticamente o ID do médico quando ausente
+    try {
+      const midResolved = normalized.medico_id || normalized.medico || await this._resolveMedicoId().catch(() => null)
+      if (midResolved) {
+        if (!normalized.medico_id) normalized.medico_id = midResolved
+        if (!normalized.medico) normalized.medico = midResolved
+      }
+    } catch {}
+
+    const candidates = []
+    const envGen = (import.meta.env.VITE_GERAR_RECEITA_ENDPOINT || "").trim()
+    if (envGen) candidates.push(envGen)
+
+    // Endpoints comuns
+    const pushCommon = (b) => {
+      const bb = b.replace(/\/?$/, "/")
+      candidates.push(`${bb}gerar/`)
+      candidates.push(`${bb}generate/`)
+      candidates.push(`${bb}documento/`)
+      candidates.push(`${bb}pdf/`)
+      candidates.push(`${bb}preview/`)
+    }
+    pushCommon(baseReceitas)
+    // singular e alternativos
+    const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
+    ;[singularBase, "/receita/", "/meu_app_receita/"].forEach((b) => b && pushCommon(b))
+
+    // Variações por recurso associado
+    if (consultaId) candidates.push(`${baseConsultas}${consultaId}/gerar_receita/`)
+
+    // Endpoints no contexto do médico
+    try {
+      const mid = await this._resolveMedicoId().catch(() => null)
+      if (mid) {
+        candidates.push(`${medBase}${mid}/gerar_receita/`)
+        candidates.push(`${medBase}${mid}/receitas/gerar/`)
+      }
+      candidates.push(`${medBase}me/gerar_receita/`)
+    } catch {}
+
+    if (VERBOSE) { try { console.debug("[medicoService.gerarDocumentoReceita] candidatos:", candidates) } catch {} }
+
+    const buildResult = async (res) => {
+      const ct = res.headers?.["content-type"] || res.headers?.get?.("content-type") || ""
+      const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+      let filename = `receita.${formato}`
+      if (cd) {
+        const m = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+        filename = decodeURIComponent(m?.[1] || m?.[2] || filename)
+      }
+      if (ct.includes("application/json")) {
+        // Alguns backends retornam JSON com URL do arquivo
+        try {
+          const text = await new Response(res.data).text()
+          const json = JSON.parse(text)
+          const url = json.file || json.url || json.pdf || json.documento || json.download_url || json.link
+          if (url) {
+            const fileRes = await api.get(url, { responseType: "blob" })
+            const blob = new Blob([fileRes.data], { type: fileRes.headers?.["content-type"] || (formato === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document") })
+            return { filename: filename || (url.split("/").pop() || `receita.${formato}`), blob }
+          }
+        } catch {}
+      }
+      const blob = new Blob([res.data], { type: ct || (formato === "pdf" ? "application/pdf" : "application/octet-stream") })
+      return { filename, blob }
+    }
+
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      // 1) Tenta POST com JSON
+      try {
+        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] POST", url) } catch {} }
+        const res = await api.post(url, normalized, { responseType: "blob" })
+        return await buildResult(res)
+      } catch (e1) {
+        const st = e1?.response?.status
+        if (st === 401) throw e1
+        lastErr = e1
+      }
+      // 2) Tenta PUT
+      try {
+        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] PUT", url) } catch {} }
+        const res = await api.put(url, normalized, { responseType: "blob" })
+        return await buildResult(res)
+      } catch (e2) {
+        const st = e2?.response?.status
+        if (st === 401) throw e2
+        lastErr = e2
+      }
+      // 3) Tenta GET com query params
+      try {
+        if (VERBOSE) { try { console.debug("[gerarDocumentoReceita] GET", url) } catch {} }
+        const res = await api.get(url, { params: normalized, responseType: "blob" })
+        return await buildResult(res)
+      } catch (e3) {
+        const st = e3?.response?.status
+        if (st === 401) throw e3
+        lastErr = e3
+      }
+    }
+
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao gerar documento de receita: nenhum endpoint compatível encontrado.")
+  },
+
   // Busca simplificada de pacientes por nome
   async buscarPacientes(query) {
     const endpoint = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
@@ -1021,7 +1151,8 @@ export const medicoService = {
 
       // Alguns backends expõem ação de envio via GET em rotas de ação
       const looksLikeAction = /\/(enviar|email|send(-email)?)\/?$/i.test(url)
-      if (looksLikeAction) {
+      // IMPORTANTE: se houver arquivo assinado, evitamos GET para não perder o PDF assinado
+      if (looksLikeAction && !file) {
         try {
           logTry("GET")
           const params = {
@@ -1056,16 +1187,18 @@ export const medicoService = {
         else lastErr = e1
       }
 
-      // 2) Tenta POST com JSON body
-      try {
-        logTry("POST json")
-        const { data } = await api.post(url, jsonPayload)
-        return data
-      } catch (e2) {
-        const st2 = e2?.response?.status
-        if (st2 === 401) throw e2
-        if (st2 && [400, 422].includes(st2)) lastErr = e2
-        else lastErr = e2
+      // 2) Tenta POST com JSON body (somente se não houver arquivo assinado)
+      if (!file) {
+        try {
+          logTry("POST json")
+          const { data } = await api.post(url, jsonPayload)
+          return data
+        } catch (e2) {
+          const st2 = e2?.response?.status
+          if (st2 === 401) throw e2
+          if (st2 && [400, 422].includes(st2)) lastErr = e2
+          else lastErr = e2
+        }
       }
 
       // 3) Tenta PUT multipart
@@ -1080,30 +1213,307 @@ export const medicoService = {
         else lastErr = e3
       }
 
-      // 4) Tenta GET com query params (fallback geral)
-      try {
-        logTry("GET fallback")
-        const params = {
-          email,
-          formato,
-          id: receitaId,
-          receita: receitaId,
-          receita_id: receitaId,
-          paciente: pacienteId,
-          paciente_id: pacienteId,
-          assinar: true,
+      // 4) Tenta GET com query params (fallback geral) — somente quando não houver arquivo assinado
+      if (!file) {
+        try {
+          logTry("GET fallback")
+          const params = {
+            email,
+            formato,
+            id: receitaId,
+            receita: receitaId,
+            receita_id: receitaId,
+            paciente: pacienteId,
+            paciente_id: pacienteId,
+            assinar: true,
+          }
+          const { data } = await api.get(url, { params })
+          return data
+        } catch (e4) {
+          const st4 = e4?.response?.status
+          if (st4 === 401) throw e4
+          lastErr = e4
         }
-        const { data } = await api.get(url, { params })
-        return data
-      } catch (e4) {
-        const st4 = e4?.response?.status
-        if (st4 === 401) throw e4
-        lastErr = e4
       }
     }
 
     if (lastErr) throw lastErr
     throw new Error("Falha ao enviar receita: nenhum endpoint compatível encontrado.")
+  },
+
+  // NOVO: Provisionamento automático de Médico e Perfil
+  async ensureMedicoRecord(medicoData = {}) {
+    const user = authService.getCurrentUser() || (await authService.refreshCurrentUser())
+    const uid = user?.id
+    if (!uid) throw new Error("Usuário não autenticado ou não disponível.")
+
+    // 1) Se já houver médico vinculado, retorna
+    try {
+      const mid = await this._resolveMedicoId()
+      if (mid) {
+        const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+        const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+        try {
+          const res = await api.get(`${medBase}${mid}/`)
+          return res.data || { id: mid }
+        } catch {
+          return { id: mid }
+        }
+      }
+    } catch {}
+
+    // 2) Tentar criar registro do médico com status pendente
+    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+
+    const payload = { ...medicoData }
+    // Vinculação ao usuário (múltiplas chaves compatíveis)
+    payload.user = payload.user || uid
+    payload.user_id = payload.user_id || uid
+    payload.usuario = payload.usuario || uid
+    payload.usuario_id = payload.usuario_id || uid
+    // Status inicial pendente
+    const statusVal = String(payload.status || payload.situacao || payload.state || "pending").toLowerCase()
+    payload.status = statusVal
+    payload.situacao = payload.situacao || statusVal
+    payload.state = payload.state || statusVal
+
+    const candidates = [
+      medBase,
+      `${medBase}create/`,
+      `/api/medicos/`,
+      `/admin/medicos/`,
+    ]
+
+    let lastErrMed = null
+    for (const raw of candidates) {
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      try {
+        const { data } = await api.post(url, payload)
+        // persistir id em localStorage para resoluções futuras
+        const mid = data?.id || data?.pk || data?.uuid
+        if (mid) {
+          try { localStorage.setItem("medico_id", String(mid)) } catch {}
+        }
+        // marca status local
+        try { if (uid) localStorage.setItem(`medicoApplicationStatus:${uid}`, "pending") } catch {}
+        return data
+      } catch (e1) {
+        const st = e1?.response?.status
+        if (st === 401) throw e1
+        if (st === 405) { lastErrMed = e1; continue }
+        lastErrMed = e1
+        // Tentar multipart se houver arquivos nos dados fornecidos
+        const hasFiles = Object.values(medicoData || {}).some((v) => v instanceof File || v instanceof Blob)
+        if (hasFiles) {
+          try {
+            const fd = new FormData()
+            for (const [k, v] of Object.entries(payload)) {
+              if (v == null) continue
+              fd.append(k, v)
+              // sinônimos
+              if (k === "user") fd.append("usuario", v), fd.append("user_id", v), fd.append("usuario_id", v)
+              if (k === "status") fd.append("situacao", v), fd.append("state", v)
+            }
+            const { data } = await api.post(url, fd)
+            const mid = data?.id || data?.pk || data?.uuid
+            if (mid) {
+              try { localStorage.setItem("medico_id", String(mid)) } catch {}
+            }
+            try { if (uid) localStorage.setItem(`medicoApplicationStatus:${uid}`, "pending") } catch {}
+            return data
+          } catch (e2) {
+            lastErrMed = e2
+            continue
+          }
+        }
+      }
+    }
+
+    if (lastErrMed) throw lastErrMed
+    throw new Error("Falha ao criar registro do médico: nenhum endpoint compatível.")
+  },
+
+  async ensurePerfilMedico(profileData = {}) {
+    // Se já houver perfil, retorna
+    try {
+      const perfil = await this.getPerfil()
+      if (perfil && (perfil.id || perfil.user || perfil.medico)) return perfil
+    } catch {}
+
+    const user = authService.getCurrentUser() || (await authService.refreshCurrentUser())
+    const uid = user?.id
+    if (!uid) throw new Error("Usuário não autenticado ou não disponível.")
+
+    // Garante médicoId
+    let medicoId = profileData.medico_id || profileData.medico || null
+    if (!medicoId) {
+      try { medicoId = await this._resolveMedicoId() } catch {}
+      if (!medicoId) {
+        try {
+          const createdMed = await this.ensureMedicoRecord({})
+          medicoId = createdMed?.id || createdMed?.medico?.id || null
+        } catch {}
+      }
+    }
+
+    const payload = { ...profileData }
+    payload.user = payload.user || uid
+    payload.user_id = payload.user_id || uid
+    payload.usuario = payload.usuario || uid
+    payload.usuario_id = payload.usuario_id || uid
+    if (medicoId) {
+      payload.medico = payload.medico || medicoId
+      payload.medico_id = payload.medico_id || medicoId
+    }
+    const statusVal = String(payload.status || payload.situacao || payload.state || "pending").toLowerCase()
+    payload.status = statusVal
+    payload.situacao = payload.situacao || statusVal
+    payload.state = payload.state || statusVal
+
+    const candidates = [
+      "/perfil-medico/",
+      "/perfil/medico/",
+      "/perfis/medico/",
+      "/profiles/medico/",
+      "/api/perfil-medico/",
+      "/api/perfil/medico/",
+    ]
+    // rotas ligadas ao médico
+    const medBaseRaw2 = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+    const medBase2 = medBaseRaw2.endsWith("/") ? medBaseRaw2 : `${medBaseRaw2}/`
+    if (medicoId) {
+      candidates.push(`${medBase2}${medicoId}/perfil/`)
+      candidates.push(`/api/medicos/${medicoId}/perfil/`)
+    }
+    candidates.push(`${medBase2}me/perfil/`)
+
+    let lastErrPerfil = null
+    for (const raw of candidates) {
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      const methods = ["post", "put", "patch"]
+      for (const m of methods) {
+        try {
+          const { data } = await api[m](url, payload)
+          try { if (uid) localStorage.setItem(`medicoApplicationStatus:${uid}`, "pending") } catch {}
+          return data
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401) throw e
+          if (st === 405) { lastErrPerfil = e; continue }
+          if (st === 404) { lastErrPerfil = e; break }
+          lastErrPerfil = e
+          break
+        }
+      }
+    }
+
+    if (lastErrPerfil) throw lastErrPerfil
+    throw new Error("Falha ao criar perfil do médico: nenhum endpoint compatível.")
+  },
+
+  async ensureMedicoAndPerfil(medicoData = {}, profileData = {}) {
+    const user = authService.getCurrentUser() || (await authService.refreshCurrentUser())
+    const uid = user?.id
+    const medico = await this.ensureMedicoRecord(medicoData)
+    const mid = medico?.id || medico?.medico?.id || null
+    const perfil = await this.ensurePerfilMedico({ ...profileData, medico_id: profileData.medico_id || mid })
+    try { if (uid) localStorage.setItem(`medicoApplicationStatus:${uid}`, "pending") } catch {}
+    return { medico, perfil }
+  },
+
+  // NOVO: Atualização dos dados do médico (telefone, endereço, especialidade)
+  async updatePerfilMedico(data = {}) {
+    const payload = { ...data }
+
+    // Telefone
+    const telefone = data.telefone || data.celular || data.phone || data.contato?.telefone
+    if (telefone != null) {
+      payload.telefone = telefone
+      if (!payload.celular) payload.celular = telefone
+      if (!payload.phone) payload.phone = telefone
+      payload.contato = { ...(payload.contato || {}), telefone }
+    }
+
+    // Endereço: aceitar string ou objeto
+    let endereco = data.endereco || data.address || data.local
+    if (endereco && typeof endereco === "object") {
+      endereco = `${endereco.logradouro || endereco.rua || ""} ${endereco.numero || ""} ${endereco.bairro || ""} ${endereco.cidade || ""} ${endereco.estado || ""}`.trim()
+    }
+    if (endereco != null) {
+      payload.endereco = endereco
+      if (!payload.address) payload.address = endereco
+      if (!payload.local) payload.local = endereco
+    }
+
+    // Especialidade: string, id ou objeto
+    const esp = data.especialidade ?? data.especialidade_id ?? data.especialidade_nome ?? data.especialidade_label ?? data.especialidade_obj
+    if (esp != null) {
+      if (typeof esp === "number") {
+        payload.especialidade_id = esp
+      } else if (typeof esp === "string") {
+        payload.especialidade = esp
+        payload.especialidade_nome = esp
+        payload.especialidade_label = esp
+      } else if (typeof esp === "object") {
+        const nome = esp.nome || esp.label || esp.titulo
+        const id = esp.id
+        if (id != null) payload.especialidade_id = id
+        if (nome) {
+          payload.especialidade = nome
+          payload.especialidade_nome = nome
+          payload.especialidade_label = nome
+        }
+      }
+    }
+
+    // Resolver ID do médico
+    let medicoId = null
+    try { medicoId = await this._resolveMedicoId() } catch {}
+
+    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+
+    const candidates = []
+    const envUpd = (import.meta.env.VITE_MEDICO_UPDATE_ENDPOINT || "").trim()
+    if (envUpd) candidates.push(envUpd)
+
+    // Rotas diretas do recurso médico
+    candidates.push(`${medBase}me/`)
+    if (medicoId) candidates.push(`${medBase}${medicoId}/`)
+
+    // Rotas de perfil do médico
+    if (medicoId) candidates.push(`${medBase}${medicoId}/perfil/`)
+    candidates.push(`${medBase}me/perfil/`)
+    candidates.push("/perfil-medico/")
+    candidates.push("/perfil/medico/")
+    candidates.push("/perfis/medico/")
+    candidates.push("/profiles/medico/")
+    candidates.push("/api/perfil-medico/")
+    candidates.push("/api/perfil/medico/")
+
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      const methods = ["patch", "put", "post"]
+      for (const m of methods) {
+        try {
+          const { data: res } = await api[m](url, payload)
+          return res
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401) throw e
+          if (st === 404) { lastErr = e; break }
+          if (st === 405) { lastErr = e; continue }
+          if (st && [400, 422].includes(st)) throw e
+          lastErr = e
+          break
+        }
+      }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao atualizar dados do médico: nenhum endpoint compatível.")
   },
 
   // NOVO: assinar documento (PDF) com o certificado do médico
@@ -1127,22 +1537,37 @@ export const medicoService = {
     if (reason) formData.append("reason", reason), formData.append("motivo", reason)
     if (location) formData.append("location", location), formData.append("local", location)
 
-    // NOVO: suporte a certificado efêmero (.pfx + senha) sem persistência
-    if (meta && meta.pfxFile instanceof File) {
-      formData.append("pfx", meta.pfxFile)
-      formData.append("certificado", meta.pfxFile)
-      formData.append("pkcs12", meta.pfxFile)
+    // Obrigatório: certificado efêmero (.pfx/.p12) + senha, sem persistência
+    let pfxFromForm = null
+    let passFromForm = null
+    if (formData instanceof FormData) {
+      pfxFromForm = formData.get("pfx") || formData.get("certificado") || formData.get("pkcs12")
+      passFromForm = formData.get("pfx_password") || formData.get("senha") || formData.get("password")
     }
-    // Senha: enviar também quando vazia (certificado sem senha)
-    if (meta && typeof meta.pfxPassword === "string") {
-      const pw = meta.pfxPassword
-      formData.append("pfx_password", pw)
-      formData.append("senha", pw)
-      formData.append("password", pw)
+    const pfx = (meta && meta.pfxFile instanceof File) ? meta.pfxFile : pfxFromForm
+    const pw = (typeof meta?.pfxPassword === "string" ? meta.pfxPassword.trim() : "") || (typeof passFromForm === "string" ? passFromForm : "")
+    if (!(pfx instanceof File)) {
+      throw new Error("Certificado digital (.pfx/.p12) é obrigatório para assinatura.")
     }
-    // Flags de orientação ao backend (backwards-compatible)
+    if (!pw) {
+      throw new Error("Senha do certificado PFX/P12 é obrigatória para assinatura.")
+    }
+    formData.append("pfx", pfx)
+    formData.append("certificado", pfx)
+    formData.append("pkcs12", pfx)
+    formData.append("pfx_password", pw)
+    formData.append("senha", pw)
+    formData.append("password", pw)
     formData.append("no_persist", "true")
     formData.append("ephemeral", "true")
+
+    // incluir receita_id quando disponível para vínculo de assinatura e QR
+    const rid = meta?.receitaId || meta?.receita_id || meta?.id
+    if (rid) {
+      formData.append("receita", rid)
+      formData.append("receita_id", rid)
+      formData.append("id", rid)
+    }
 
     const candidates = []
     const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
@@ -1151,15 +1576,13 @@ export const medicoService = {
     const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
     const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
 
-    // Rotas preferenciais e mais prováveis
     candidates.push(`/api/assinatura/assinar/`)
     candidates.push(`/assinatura/assinar/`)
     candidates.push(`/documentos/assinar/`)
     candidates.push(`/receitas/assinar/`)
-    // Específicas do médico
     candidates.push(`${medBase}me/assinar/`)
     candidates.push(`${medBase}assinar/`)
-    // Rotas com ID
+
     let medicoId = null
     try { medicoId = await this._resolveMedicoId() } catch {}
     if (medicoId) {
@@ -1196,94 +1619,125 @@ export const medicoService = {
     if (lastErr) throw lastErr
     throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
   },
-  async signDocumento(fileOrForm, meta = {}) {
-    // fileOrForm pode ser File (PDF) ou FormData
-    let formData
-    if (fileOrForm instanceof FormData) {
-      formData = fileOrForm
-    } else if (fileOrForm && fileOrForm.name) {
-      formData = new FormData()
-      formData.append("file", fileOrForm)
-      formData.append("documento", fileOrForm)
-      formData.append("pdf", fileOrForm)
-    } else {
-      throw new Error("Parâmetro inválido: é esperado FormData ou File PDF.")
-    }
 
-    // Metadados opcionais (motivo, local, contact etc.)
-    const reason = meta.reason || meta.motivo
-    const location = meta.location || meta.local
-    if (reason) formData.append("reason", reason), formData.append("motivo", reason)
-    if (location) formData.append("location", location), formData.append("local", location)
+  // NOVO: atualizar receita (assinada, hashes e metadados)
+  async atualizarReceita(id, payload = {}) {
+    if (!id) throw new Error("ID da receita é obrigatório para atualização.")
 
-    // NOVO: suporte a certificado efêmero (.pfx + senha) sem persistência
-    if (meta && meta.pfxFile instanceof File) {
-      formData.append("pfx", meta.pfxFile)
-      formData.append("certificado", meta.pfxFile)
-      formData.append("pkcs12", meta.pfxFile)
+    // Normaliza campos e sinônimos
+    const body = { ...payload }
+    if (payload.assinada !== undefined) {
+      body.assinada = Boolean(payload.assinada)
+      body.signed = body.signed ?? body.assinada
+      body.status = body.assinada ? "assinada" : (body.status || "emitida")
     }
-    // Senha: enviar também quando vazia (certificado sem senha)
-    if (meta && typeof meta.pfxPassword === "string") {
-      const pw = meta.pfxPassword
-      formData.append("pfx_password", pw)
-      formData.append("senha", pw)
-      formData.append("password", pw)
+    // Hashes e algoritmo
+    if (payload.hash_alg) {
+      body.hash_alg = payload.hash_alg
+      body.hash_algorithm = payload.hash_algorithm || payload.hash_alg
+      body.algoritmo_hash = payload.algoritmo_hash || payload.hash_alg
     }
-    // Flags de orientação ao backend (backwards-compatible)
-    formData.append("no_persist", "true")
-    formData.append("ephemeral", "true")
+    if (payload.hash_pre) {
+      body.hash_pre = payload.hash_pre
+      body.pre_hash = payload.pre_hash || payload.hash_pre
+    }
+    if (payload.hash_signed) {
+      body.hash_signed = payload.hash_signed
+      body.signed_hash = payload.signed_hash || payload.hash_signed
+    }
+    // Outros metadados
+    if (payload.motivo) body.motivo = payload.motivo
+    if (payload.observacoes) body.observacoes = payload.observacoes
+
+    const baseReceitasRaw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const baseReceitas = baseReceitasRaw.endsWith("/") ? baseReceitasRaw : `${baseReceitasRaw}/`
 
     const candidates = []
-    const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
-    if (envSign) candidates.push(envSign)
+    const envUpd = (import.meta.env.VITE_ATUALIZAR_RECEITA_ENDPOINT || "").trim()
+    if (envUpd) candidates.push(envUpd.replace(/\/?$/, "/"))
 
-    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
-    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
-
-    // Rotas preferenciais e mais prováveis
-    candidates.push(`/api/assinatura/assinar/`)
-    candidates.push(`/assinatura/assinar/`)
-    candidates.push(`/documentos/assinar/`)
-    candidates.push(`/receitas/assinar/`)
-    // Específicas do médico
-    candidates.push(`${medBase}me/assinar/`)
-    candidates.push(`${medBase}assinar/`)
-
-    // Rotas com ID
-    let medicoId = null
-    try { medicoId = await this._resolveMedicoId() } catch {}
-    if (medicoId) {
-      candidates.push(`${medBase}${medicoId}/assinar/`)
-      candidates.push(`${medBase}${medicoId}/assinatura/`)
-    }
+    // Rotas diretas
+    candidates.push(`${baseReceitas}${id}/`)
+    candidates.push(`${baseReceitas}${id}/update/`)
+    candidates.push(`${baseReceitas}${id}/editar/`)
+    candidates.push(`/api/receitas/${id}/`)
+    candidates.push(`/receitas/${id}/`)
 
     let lastErr = null
     for (const raw of candidates) {
       if (!raw) continue
       const url = raw.endsWith("/") ? raw : `${raw}/`
-      const methods = ["post", "put"]
+      const methods = ["patch", "put", "post"]
       for (const m of methods) {
         try {
-          const res = await api[m](url, formData, { responseType: "blob" })
-          const contentDisposition = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-          let filename = "documento_assinado.pdf"
-          if (contentDisposition) {
-            const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
-            filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
-          }
-          const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
-          return { filename, blob }
+          const { data } = await api[m](url, body)
+          return data
         } catch (e) {
           const st = e?.response?.status
+          if (st === 401) throw e
           if (st === 404) { lastErr = e; break }
           if (st === 405) { lastErr = e; continue }
-          if (st === 401) throw e
           if (st && [400, 422].includes(st)) throw e
-          lastErr = e; break
+          lastErr = e
+          break
         }
       }
     }
     if (lastErr) throw lastErr
-    throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
+    throw new Error("Falha ao atualizar receita: nenhum endpoint compatível.")
+  },
+
+  // NOVO: registrar auditoria de assinatura
+  async registrarAuditoriaAssinatura(audit = {}) {
+    const user = authService.getCurrentUser() || (await authService.refreshCurrentUser())
+    const uid = user?.id
+    let medicoId = null
+    try { medicoId = await this._resolveMedicoId() } catch {}
+
+    const body = { ...audit }
+    // Normaliza chaves
+    if (uid) {
+      body.usuario = body.usuario || uid
+      body.usuario_id = body.usuario_id || uid
+      body.user = body.user || uid
+      body.user_id = body.user_id || uid
+    }
+    if (medicoId) {
+      body.medico = body.medico || medicoId
+      body.medico_id = body.medico_id || medicoId
+    }
+    body.tipo = body.tipo || "assinatura_receita"
+    body.event = body.event || body.tipo
+    body.assinada = body.assinada ?? true
+    body.timestamp = body.timestamp || new Date().toISOString()
+
+    const baseAuditRaw = import.meta.env.VITE_AUDITORIA_ASSINATURA_ENDPOINT || "/auditoria/assinaturas/"
+    const baseAudit = baseAuditRaw.endsWith("/") ? baseAuditRaw : `${baseAuditRaw}/`
+
+    const candidates = [
+      baseAudit,
+      "/api/auditoria/assinaturas/",
+      "/logs/assinatura/",
+      "/auditoria/receitas/",
+      "/audit/assinaturas/",
+    ]
+
+    let lastErr = null
+    for (const raw of candidates) {
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      try {
+        const { data } = await api.post(url, body)
+        return data
+      } catch (e) {
+        const st = e?.response?.status
+        if (st === 401) throw e
+        if (st === 404 || st === 405) { lastErr = e; continue }
+        if (st && [400, 422].includes(st)) throw e
+        lastErr = e
+      }
+    }
+
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao registrar auditoria de assinatura: nenhum endpoint compatível.")
   },
 };

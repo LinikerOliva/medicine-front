@@ -10,10 +10,20 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const initAuth = () => {
-      const currentUser = authService.getCurrentUser()
-      setUser(currentUser)
-      setLoading(false)
+    const initAuth = async () => {
+      try {
+        // tenta obter usuário atual (normalizado) do storage/api
+        const currentUser = authService.getCurrentUser()
+        if (currentUser) {
+          setUser(currentUser)
+        } else {
+          // como fallback, tenta refresh do backend
+          const refreshed = await authService.refreshCurrentUser().catch(() => null)
+          if (refreshed?.user) setUser(refreshed.user)
+        }
+      } finally {
+        setLoading(false)
+      }
     }
 
     initAuth()

@@ -28,16 +28,24 @@ export function PatientProfileSummary({ patientId, isPacienteView = true, profil
       .map((n) => n[0]?.toUpperCase())
       .join("") || "?"
 
-  const calcAge = (dateStr) => {
+  const calcAgeStr = (dateStr) => {
     if (!dateStr) return null
-    const d = new Date(dateStr)
-    if (Number.isNaN(d.getTime())) return null
-    const diff = Date.now() - d.getTime()
-    const age = new Date(diff).getUTCFullYear() - 1970
-    return age >= 0 ? age : null
+    const dob = new Date(dateStr)
+    if (Number.isNaN(dob.getTime())) return null
+    const today = new Date()
+    let years = today.getFullYear() - dob.getFullYear()
+    const monthDiff = today.getMonth() - dob.getMonth()
+    const dayDiff = today.getDate() - dob.getDate()
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) years--
+    let lastBirthday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate())
+    if (lastBirthday > today) lastBirthday = new Date(today.getFullYear() - 1, dob.getMonth(), dob.getDate())
+    const msPerDay = 24 * 60 * 60 * 1000
+    const days = Math.floor((today - lastBirthday) / msPerDay)
+    return `${years} anos e ${days} dias`
   }
 
-  const age = calcAge(profile?.data_nascimento)
+  const birth = profile?.data_nascimento || patient?.data_nascimento || null
+  const ageStr = calcAgeStr(birth)
 
   // Dados médicos: prioriza patient e faz fallback para profile, caso algum fluxo antigo use esse formato
   const bloodType = patient?.tipo_sanguineo || profile?.tipo_sanguineo || "—"
@@ -96,7 +104,7 @@ export function PatientProfileSummary({ patientId, isPacienteView = true, profil
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
               <p className="font-medium text-muted-foreground">Idade</p>
-              <p>{age ? `${age} anos` : "—"}</p>
+              <p>{ageStr || "—"}</p>
             </div>
             <div>
               <p className="font-medium text-muted-foreground">Tipo Sanguíneo</p>

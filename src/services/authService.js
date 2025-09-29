@@ -1,5 +1,40 @@
 import api from "./api"
 
+// Helpers de normalização de usuário
+const toInputDate = (v) => {
+  if (!v) return ""
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
+  const iso = new Date(v)
+  if (!isNaN(iso)) {
+    const y = iso.getFullYear()
+    const m = String(iso.getMonth() + 1).padStart(2, "0")
+    const d = String(iso.getDate()).padStart(2, "0")
+    return `${y}-${m}-${d}`
+  }
+  const m1 = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`
+  return ""
+}
+
+function normalizeUser(u) {
+  if (!u || typeof u !== "object") return u
+  const out = { ...u }
+  // Nome de exibição
+  const displayName = [out.first_name, out.last_name].filter(Boolean).join(" ") || out.display_name || out.nome || out.nome_completo || out.username || out.email || ""
+  out.display_name = displayName
+  // CPF e RG: mapear cpf a partir de vários campos e, se não houver rg, usar cpf para compatibilidade
+  const cpf = out.cpf || out.documento || out.doc || out.rg || out.cpf_number || (out.profile && (out.profile.cpf || out.profile.documento)) || ""
+  if (cpf) {
+    out.cpf = cpf
+    if (!out.rg) out.rg = cpf
+  }
+  // Data de nascimento: priorizar campo da tabela meu_app_user e normalizar formato
+  const dn = out.data_nascimento || out.nascimento || out.dob || out.birth_date || (out.profile && (out.profile.data_nascimento || out.profile.nascimento)) || ""
+  const dnNorm = toInputDate(dn)
+  if (dnNorm) out.data_nascimento = dnNorm
+  return out
+}
+
 export const authService = {
   async login(credentials) {
     const endpoint = import.meta.env.VITE_LOGIN_ENDPOINT || "/auth/login/"
@@ -26,11 +61,13 @@ export const authService = {
     if (accessToken) localStorage.setItem("access_token", accessToken)
     if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
 
-    // Salva usuário se vier no payload
+    // Salva usuário se vier no payload (normalizado)
     if (user !== undefined) {
       try {
         if (user && typeof user === "object") {
-          localStorage.setItem("user", JSON.stringify(user))
+          const nu = normalizeUser(user)
+          localStorage.setItem("user", JSON.stringify(nu))
+          response.data.user = nu
         } else {
           localStorage.removeItem("user")
         }
@@ -40,12 +77,13 @@ export const authService = {
     }
 
     // NOVO: Sempre tenta descobrir o usuário atual se não houver user no retorno
-    if (!user) {
+    if (!response.data.user) {
       try {
         const me = await fetchCurrentUserFromApi()
         if (me) {
-          localStorage.setItem("user", JSON.stringify(me))
-          response.data.user = me
+          const nu = normalizeUser(me)
+          localStorage.setItem("user", JSON.stringify(nu))
+          response.data.user = nu
         }
       } catch {
         // manter sem user
@@ -74,12 +112,22 @@ export const authService = {
     if (accessToken) localStorage.setItem("access_token", accessToken)
     if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
     if (user !== undefined) {
-      localStorage.setItem("user", JSON.stringify(user))
+      const nu = user && typeof user === "object" ? normalizeUser(user) : user
+      if (nu && typeof nu === "object") {
+        localStorage.setItem("user", JSON.stringify(nu))
+        response.data.user = nu
+      } else {
+        localStorage.removeItem("user")
+      }
     } else {
       // Também tenta descobrir o usuário após registro, quando aplicável
       try {
         const me = await fetchCurrentUserFromApi()
-        if (me) localStorage.setItem("user", JSON.stringify(me))
+        if (me) {
+          const nu = normalizeUser(me)
+          localStorage.setItem("user", JSON.stringify(nu))
+          response.data.user = nu
+        }
       } catch {}
     }
 
@@ -120,6 +168,13 @@ export const authService = {
         }
         const created = await mod.solicitacaoService.criarSolicitacaoMedico(medicoPayload)
         medicoApplication = { success: true, data: created }
+        // Após registrar a solicitação, garantir criação do registro do médico e do perfil com status pendente
+        try {
+          const { medicoService } = await import("./medicoService")
+          await medicoService.ensureMedicoAndPerfil(medicoPayload, {})
+        } catch (provisionErr) {
+          console.warn("[authService.register] ensureMedicoAndPerfil falhou:", provisionErr?.response?.data || provisionErr)
+        }
       } catch (err) {
         console.error("[authService.register] criarSolicitacaoMedico falhou:", err?.response?.data || err)
         medicoApplication = {
@@ -165,7 +220,8 @@ export const authService = {
     const raw = localStorage.getItem("user")
     if (!raw || raw === "undefined" || raw === "null") return null
     try {
-      return JSON.parse(raw)
+      const parsed = JSON.parse(raw)
+      return normalizeUser(parsed)
     } catch {
       return null
     }
@@ -176,8 +232,9 @@ export const authService = {
     try {
       const me = await fetchCurrentUserFromApi()
       if (me) {
-        localStorage.setItem("user", JSON.stringify(me))
-        return me
+        const nu = normalizeUser(me)
+        localStorage.setItem("user", JSON.stringify(nu))
+        return nu
       } else {
         localStorage.removeItem("user")
         return null
@@ -221,7 +278,9 @@ export const authService = {
     if (user !== undefined) {
       try {
         if (user && typeof user === "object") {
-          localStorage.setItem("user", JSON.stringify(user))
+          const nu = normalizeUser(user)
+          localStorage.setItem("user", JSON.stringify(nu))
+          response.data.user = nu
         } else {
           localStorage.removeItem("user")
         }
@@ -230,8 +289,13 @@ export const authService = {
       // buscar usuário se o backend não retornar
       try {
         const me = await fetchCurrentUserFromApi()
-        if (me) localStorage.setItem("user", JSON.stringify(me))
-        response.data.user = me || null
+        if (me) {
+          const nu = normalizeUser(me)
+          localStorage.setItem("user", JSON.stringify(nu))
+          response.data.user = nu
+        } else {
+          response.data.user = null
+        }
       } catch {}
     }
 

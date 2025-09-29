@@ -121,7 +121,58 @@ export const adminService = {
             }
           })()
 
-          return response.data
+          const data = response.data
+          // Pós-ação: tentar ativar médico e perfil vinculados ao item aprovado
+          try {
+            // Derivar o ID do médico da resposta ou do detalhe da solicitação
+            let mid = data?.medico?.id || data?.medico_id || data?.medico || null
+            if (!mid) {
+              try {
+                const detail = await adminService.getSolicitacao(id).catch(() => null)
+                mid = detail?.medico?.id || detail?.medico_id || detail?.medico || null
+              } catch {}
+            }
+            if (mid) {
+              const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+              const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+              const body = { status: "active", situacao: "active", state: "active" }
+              const variants2 = [
+                { m: "patch", u: `${medBase}${mid}/`, b: body },
+                { m: "put", u: `${medBase}${mid}/`, b: body },
+              ]
+              for (const vv of variants2) {
+                try { await api[vv.m](vv.u, vv.b); break } catch {}
+              }
+              // Perfil
+              const profCandidates = [
+                `${medBase}${mid}/perfil/`,
+                "/perfil-medico/",
+                "/perfil/medico/",
+              ]
+              for (const raw2 of profCandidates) {
+                const u2 = raw2.endsWith("/") ? raw2 : `${raw2}/`
+                try { await api.patch(u2, body); break } catch {}
+              }
+            }
+          } catch (ePost) {
+            if (VERBOSE) console.warn("[adminService.aprovarSolicitacao] pós-ação falhou", ePost?.response?.status)
+          }
+
+          ;(async () => {
+            try {
+              await adminService.registrarAuditoria({
+                action: "approve",
+                entity: "SolicitacaoMedico",
+                entity_id: id,
+                status: "success",
+                metadata: { observacoes },
+              })
+            } catch (e) {
+              if (VERBOSE) console.warn("[adminService.aprovarSolicitacao] auditoria falhou:", e?.response?.status)
+            }
+          })()
+
+          return data
         } catch (err) {
           const st = err?.response?.status
           if (VERBOSE) console.warn("[adminService.aprovarSolicitacao] Falhou", v.url, "status=", st)
@@ -133,8 +184,8 @@ export const adminService = {
         }
       }
     }
-
-  },
+  },  
+  
 
   async rejeitarSolicitacao(id, motivo) {
     const bases = getBaseCandidates()
@@ -168,7 +219,57 @@ export const adminService = {
             }
           })()
 
-          return response.data
+          const data = response.data
+          // Pós-ação: tentar marcar médico/perfil como rejeitado com base na solicitação
+          try {
+            let mid = data?.medico?.id || data?.medico_id || data?.medico || null
+            if (!mid) {
+              try {
+                const detail = await adminService.getSolicitacao(id).catch(() => null)
+                mid = detail?.medico?.id || detail?.medico_id || detail?.medico || null
+              } catch {}
+            }
+            if (mid) {
+              const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+              const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+              const body = { status: "rejected", situacao: "rejected", state: "rejected" }
+              const variants2 = [
+                { m: "patch", u: `${medBase}${mid}/`, b: body },
+                { m: "put", u: `${medBase}${mid}/`, b: body },
+              ]
+              for (const vv of variants2) {
+                try { await api[vv.m](vv.u, vv.b); break } catch {}
+              }
+              // Perfil
+              const profCandidates = [
+                `${medBase}${mid}/perfil/`,
+                "/perfil-medico/",
+                "/perfil/medico/",
+              ]
+              for (const raw2 of profCandidates) {
+                const u2 = raw2.endsWith("/") ? raw2 : `${raw2}/`
+                try { await api.patch(u2, body); break } catch {}
+              }
+            }
+          } catch (ePost) {
+            if (VERBOSE) console.warn("[adminService.rejeitarSolicitacao] pós-ação falhou", ePost?.response?.status)
+          }
+
+          ;(async () => {
+            try {
+              await adminService.registrarAuditoria({
+                action: "reject",
+                entity: "SolicitacaoMedico",
+                entity_id: id,
+                status: "success",
+                metadata: { motivo },
+              })
+            } catch (e) {
+              if (VERBOSE) console.warn("[adminService.rejeitarSolicitacao] auditoria falhou:", e?.response?.status)
+            }
+          })()
+
+          return data
         } catch (err) {
           const st = err?.response?.status
           if (VERBOSE) console.warn("[adminService.rejeitarSolicitacao] Falhou", v.url, "status=", st)
