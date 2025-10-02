@@ -23,22 +23,31 @@ export const pacienteService = {
   async getConsultas(params = {}) {
     try {
       const endpoint = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+      console.log('[DEBUG] Endpoint de consultas:', endpoint)
+      
       const paciente = await this.getPacienteDoUsuario()
+      console.log('[DEBUG] Paciente encontrado:', paciente)
 
       const queryParams = { ...params }
       if (paciente?.id && !queryParams.paciente) {
         queryParams.paciente = paciente.id
       }
 
+      console.log('[DEBUG] Query params:', queryParams)
+
       // Se não temos paciente e nenhum filtro informado, evita bater no backend
       if (!paciente?.id && Object.keys(queryParams).length === 0) {
+        console.log('[DEBUG] Sem paciente e sem filtros, retornando array vazio')
         return { results: [] }
       }
 
+      console.log('[DEBUG] Fazendo requisição para:', endpoint, 'com params:', queryParams)
       const response = await api.get(endpoint, { params: queryParams })
+      console.log('[DEBUG] Resposta da API recebida:', response.data)
       return response.data
     } catch (error) {
-      console.warn('[pacienteService] getConsultas falhou:', error?.response?.status)
+      console.warn('[pacienteService] getConsultas falhou:', error?.response?.status, error?.response?.data)
+      console.error('[DEBUG] Erro completo:', error)
       return { results: [] }
     }
   },
@@ -202,29 +211,44 @@ export const pacienteService = {
     const baseRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/";
     const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`;
 
+    console.log('[DEBUG] getPacienteDoUsuario - Base endpoint:', base)
+
     // 1) Tenta /pacientes/me/ primeiro (action do backend)
     try {
+      console.log('[DEBUG] Tentando /pacientes/me/')
       const me = await api.get(`${base}me/`);
+      console.log('[DEBUG] Sucesso /pacientes/me/:', me.data)
       return me.data;
     } catch (err) {
       console.warn("[pacienteService] GET /pacientes/me/ falhou:", err?.response?.status);
+      console.log('[DEBUG] Erro /pacientes/me/:', err?.response?.data)
     }
 
     // 2) Fallback por filtro de usuário
     const user = authService.getCurrentUser();
-    if (!user?.id) return null;
+    console.log('[DEBUG] Usuário atual:', user)
+    if (!user?.id) {
+      console.log('[DEBUG] Nenhum usuário logado')
+      return null;
+    }
 
     const keys = ["user", "user__id", "user_id"];
     for (const key of keys) {
       try {
+        console.log(`[DEBUG] Tentando filtro ?${key}=${user.id}`)
         const res = await api.get(base, { params: { [key]: user.id } });
         const items = Array.isArray(res.data?.results) ? res.data.results : res.data;
-        if (Array.isArray(items) && items.length) return items[0] || null;
+        console.log(`[DEBUG] Resposta filtro ${key}:`, items)
+        if (Array.isArray(items) && items.length) {
+          console.log('[DEBUG] Paciente encontrado via filtro:', items[0])
+          return items[0] || null;
+        }
       } catch (e) {
         console.debug(`[pacienteService] Filtro ?${key}= falhou:`, e?.response?.status);
       }
     }
 
+    console.log('[DEBUG] Nenhum paciente encontrado')
     return null;
   },
 

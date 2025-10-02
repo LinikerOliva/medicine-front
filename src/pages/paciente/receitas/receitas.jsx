@@ -2,11 +2,31 @@ import { useEffect, useMemo, useState } from "react"
 import { pacienteService } from "../../../services/pacienteService"
 import { useToast } from "../../../hooks/use-toast"
 import { ProfileTabs } from "@/components/profile-tabs"
-import { Pill } from "lucide-react"
+import { 
+  Pill, 
+  Download, 
+  Search, 
+  Calendar,
+  FileText,
+  Activity,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Stethoscope,
+  Plus,
+  Eye,
+  User
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectLabel } from "@/components/ui/select"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import api from "@/services/api"
 
 export default function ReceitasPaciente() {
@@ -18,6 +38,7 @@ export default function ReceitasPaciente() {
   const [solicitarOpen, setSolicitarOpen] = useState(false)
   const [form, setForm] = useState({ medico: "", mensagem: "" })
   const [submitting, setSubmitting] = useState(false)
+  const [busca, setBusca] = useState("")
 
   // Filtrar itens inválidos para evitar <SelectItem value=""> (Radix não permite valor vazio)
   const medicosValidos = useMemo(() =>
@@ -52,6 +73,20 @@ export default function ReceitasPaciente() {
     const base = Array.isArray(receitas) ? receitas : (Array.isArray(receitas?.results) ? receitas.results : [])
     return [...base].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
   }, [receitas])
+
+  // Filtrar receitas por busca
+  const receitasFiltradas = useMemo(() => {
+    if (!busca) return receitasList
+    const term = busca.toLowerCase()
+    return receitasList.filter(r => {
+      const medicoNome = getDoctorName(r.medico) || getDoctorName(r.consulta?.medico) || ""
+      const medicamentos = r.medicamentos || ""
+      return (
+        medicoNome.toLowerCase().includes(term) ||
+        medicamentos.toLowerCase().includes(term)
+      )
+    })
+  }, [receitasList, busca])
 
   useEffect(() => {
     let mounted = true
@@ -213,31 +248,196 @@ export default function ReceitasPaciente() {
     { label: "Configurações", href: "/paciente/configuracoes" },
   ]
 
-  if (loading) return <div>Carregando receitas...</div>
-  if (erro) return <div className="text-red-600">{erro}</div>
+  // Calcular estatísticas
+  const totalReceitas = receitasList.length
+  const receitasAssinadas = receitasList.filter(r => r.arquivo_assinado).length
+  const receitasEsteAno = receitasList.filter(r => {
+    if (!r.created_at) return false
+    const receitaYear = new Date(r.created_at).getFullYear()
+    return receitaYear === new Date().getFullYear()
+  }).length
+  const receitasRecentes = receitasList.filter(r => {
+    if (!r.created_at) return false
+    const receitaDate = new Date(r.created_at)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    return receitaDate >= thirtyDaysAgo
+  }).length
+
+  if (loading) {
+    return (
+      <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
+        <div className="space-y-4">
+          <Skeleton className="h-32 w-full rounded-2xl" />
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-16 w-full" />
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-48 w-full rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (erro) {
+    return (
+      <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
+        <div className="text-center py-12">
+          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-red-500 mb-2">Erro ao carregar receitas</h3>
+          <p className="text-red-500">{erro}</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
-      <div className="flex items-center gap-2">
-        <Pill className="h-5 w-5" />
-        <h1 className="text-2xl font-bold tracking-tight">Minhas Receitas</h1>
+    <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
+      {/* Header moderno */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-8 text-white shadow-2xl">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-white/20 p-3 backdrop-blur-sm">
+                  <Pill className="h-8 w-8" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold">Minhas Receitas</h1>
+                  <p className="text-emerald-100">Gerencie suas receitas médicas</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button 
+                variant="secondary" 
+                className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm"
+              >
+                <Stethoscope className="mr-2 h-4 w-4" />
+                Médicos
+              </Button>
+              <Button 
+                variant="secondary"
+                className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm"
+                onClick={() => setSolicitarOpen(true)}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Solicitar Receita
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-white/10"></div>
+        <div className="absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-white/10"></div>
+      </div>
+
+      {/* Cards de estatísticas */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-emerald-100 text-sm font-medium">Total de Receitas</p>
+                <p className="text-3xl font-bold">{totalReceitas}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <FileText className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-blue-100 text-sm font-medium">Assinadas</p>
+                <p className="text-3xl font-bold">{receitasAssinadas}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-amber-100 text-sm font-medium">Últimos 30 dias</p>
+                <p className="text-3xl font-bold">{receitasRecentes}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <Clock className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-purple-100 text-sm font-medium">Este Ano</p>
+                <p className="text-3xl font-bold">{receitasEsteAno}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <TrendingUp className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
       </div>
 
       <ProfileTabs tabs={pacienteTabs} basePath="/paciente" />
 
-      <div className="flex items-center justify-between">
-        <div />
-        <Button onClick={() => setSolicitarOpen(true)}>
-          Solicitar Receita
-        </Button>
-      </div>
+      {/* Filtros */}
+      <Card className="border-0 shadow-lg">
+        <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row justify-between gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por médico ou medicamento..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Lista de receitas */}
       {!hasReceitas ? (
-        <div className="text-gray-600">Você ainda não possui receitas.</div>
+        <Card className="border-0 shadow-lg">
+          <CardContent className="p-12">
+            <div className="text-center">
+              <Pill className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-muted-foreground mb-2">Nenhuma receita encontrada</h3>
+              <p className="text-muted-foreground mb-6">Você ainda não possui receitas médicas.</p>
+              <Button onClick={() => setSolicitarOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Solicitar Receita
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
-        <div className="grid gap-4">
-          {receitasList.map((r) => {
+        <div className="grid gap-6">
+          {receitasFiltradas.map((r) => {
             const consulta = r.consulta
             const medicoNome =
               getDoctorName(r.medico) ||
@@ -251,65 +451,145 @@ export default function ReceitasPaciente() {
                 : "Paciente") || "Paciente"
 
             return (
-              <div key={r.id} className="border rounded p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="font-medium">Emitida em: {new Date(r.created_at).toLocaleString()}</div>
-                  <div className="text-sm text-gray-600">Validade: {r.validade}</div>
-                </div>
-                <div className="text-sm text-gray-700">
-                  <div><strong>Médico:</strong> {medicoNome}</div>
-                  <div><strong>Paciente:</strong> {pacienteNome}</div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-semibold">Medicamentos</div>
-                  <div className="whitespace-pre-wrap text-sm">{r.medicamentos}</div>
-                </div>
-                <div className="mt-2">
-                  <div className="font-semibold">Posologia</div>
-                  <div className="whitespace-pre-wrap text-sm">{r.posologia}</div>
-                </div>
-                {r.observacoes ? (
-                  <div className="mt-2">
-                    <div className="font-semibold">Observações</div>
-                    <div className="whitespace-pre-wrap text-sm">{r.observacoes}</div>
+              <Card key={r.id} className="border-0 shadow-lg hover:shadow-xl transition-all duration-300">
+                <CardHeader className="pb-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900">
+                          <Pill className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">Receita Médica</CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            Emitida em {new Date(r.created_at).toLocaleDateString()} às {new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant={r.arquivo_assinado ? "default" : "secondary"} className={r.arquivo_assinado ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300" : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300"}>
+                        {r.arquivo_assinado ? "Assinada" : "Não assinada"}
+                      </Badge>
+                      {r.validade && (
+                        <Badge variant="outline" className="text-xs">
+                          Válida até {r.validade}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                ) : null}
-                {Array.isArray(r.itens) && r.itens.length > 0 ? (
-                  <div className="mt-3">
-                    <div className="font-semibold">Itens estruturados</div>
-                    <ul className="list-disc ml-6 text-sm">
-                      {r.itens.map((it) => (
-                        <li key={it.id}>
-                          {it.medicamento?.nome || "Medicamento"} - {it.dose || ""} {it.frequencia ? `| ${it.frequencia}` : ""} {it.duracao ? `| ${it.duracao}` : ""}
-                          {it.observacoes ? <span> — {it.observacoes}</span> : null}
-                        </li>
-                      ))}
-                    </ul>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Informações do médico e paciente */}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <Stethoscope className="h-4 w-4" />
+                        Médico
+                      </div>
+                      <p className="font-medium">{medicoNome}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                        <User className="h-4 w-4" />
+                        Paciente
+                      </div>
+                      <p className="font-medium">{pacienteNome}</p>
+                    </div>
                   </div>
-                ) : null}
-                {r.arquivo_assinado ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      className="text-blue-600 underline"
-                      onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}
-                    >
-                      Baixar PDF assinado
-                    </button>
+
+                  {/* Medicamentos */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-foreground">Medicamentos</h4>
+                    <div className="rounded-lg bg-muted/50 p-4">
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{r.medicamentos}</p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      className="text-blue-600 underline"
-                      onClick={() => handleDownloadGerado(r)}
-                    >
-                      Baixar PDF (gerado)
-                    </button>
-                    <div className="text-xs text-muted-foreground mt-1">Nenhum arquivo assinado disponível para esta receita.</div>
+
+                  {/* Posologia */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-foreground">Posologia</h4>
+                    <div className="rounded-lg bg-muted/50 p-4">
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{r.posologia}</p>
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  {/* Observações */}
+                  {r.observacoes && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-foreground">Observações</h4>
+                      <div className="rounded-lg bg-muted/50 p-4">
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{r.observacoes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Itens estruturados */}
+                  {Array.isArray(r.itens) && r.itens.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-foreground">Itens estruturados</h4>
+                      <div className="rounded-lg bg-muted/50 p-4">
+                        <ul className="space-y-2">
+                          {r.itens.map((it) => (
+                            <li key={it.id} className="flex items-start gap-2 text-sm">
+                              <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 flex-shrink-0"></div>
+                              <div>
+                                <span className="font-medium">{it.medicamento?.nome || "Medicamento"}</span>
+                                {it.dose && <span className="text-muted-foreground"> - {it.dose}</span>}
+                                {it.frequencia && <span className="text-muted-foreground"> | {it.frequencia}</span>}
+                                {it.duracao && <span className="text-muted-foreground"> | {it.duracao}</span>}
+                                {it.observacoes && <div className="text-muted-foreground text-xs mt-1">{it.observacoes}</div>}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ações */}
+                  <div className="flex flex-wrap gap-3 pt-4 border-t">
+                    {r.arquivo_assinado ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="group border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 text-emerald-700 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100"
+                          onClick={() => window.open(r.arquivo_assinado, '_blank')}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Visualizar PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="group border-blue-500/60 bg-gradient-to-b from-blue-500/10 to-blue-600/10 text-blue-700 hover:from-blue-500/20 hover:to-blue-600/20 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100"
+                          onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Baixar PDF Assinado
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="group border-amber-500/60 bg-gradient-to-b from-amber-500/10 to-amber-600/10 text-amber-700 hover:from-amber-500/20 hover:to-amber-600/20 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-100"
+                          onClick={() => handleDownloadGerado(r)}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Baixar PDF (Gerado)
+                        </Button>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2">
+                          <AlertCircle className="h-3 w-3" />
+                          Receita não assinada digitalmente
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>

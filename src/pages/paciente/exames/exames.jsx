@@ -5,7 +5,21 @@ import { ProfileTabs } from "@/components/profile-tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ClipboardList, Download, Eye } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { 
+  ClipboardList, 
+  Download, 
+  Eye, 
+  Search, 
+  Calendar,
+  FileText,
+  Activity,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Stethoscope
+} from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -125,83 +139,229 @@ export default function PacienteExames() {
     })
     .sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0))
 
+  // Calcular estatísticas
+  const totalExames = exames.length
+  const proximosExames = examesAgendados.length
+  const examesConcluidos = examesRealizados.length
+  const examesEsteAno = exames.filter(e => {
+    if (!e.data) return false
+    const examYear = new Date(e.data).getFullYear()
+    return examYear === new Date().getFullYear()
+  }).length
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <div className="flex items-center gap-2">
-        <ClipboardList className="h-5 w-5" />
-        <h1 className="text-2xl font-bold tracking-tight">Meus Exames</h1>
+    <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
+      {/* Header moderno */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-8 text-white shadow-2xl">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-white/20 p-3 backdrop-blur-sm">
+                  <ClipboardList className="h-8 w-8" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold">Meus Exames</h1>
+                  <p className="text-blue-100">Gerencie seus exames e resultados</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button 
+                variant="secondary" 
+                className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm"
+              >
+                <Stethoscope className="mr-2 h-4 w-4" />
+                Médicos
+              </Button>
+              <Button 
+                variant="secondary"
+                className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm"
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                Agendar Exame
+              </Button>
+            </div>
+          </div>
+        </div>
+        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-white/10"></div>
+        <div className="absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-white/10"></div>
+      </div>
+
+      {/* Cards de estatísticas */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-blue-100 text-sm font-medium">Total de Exames</p>
+                <p className="text-3xl font-bold">{totalExames}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <FileText className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-amber-100 text-sm font-medium">Próximos Exames</p>
+                <p className="text-3xl font-bold">{proximosExames}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <Clock className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-emerald-100 text-sm font-medium">Concluídos</p>
+                <p className="text-3xl font-bold">{examesConcluidos}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
+
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <p className="text-purple-100 text-sm font-medium">Este Ano</p>
+                <p className="text-3xl font-bold">{examesEsteAno}</p>
+              </div>
+              <div className="rounded-full bg-white/20 p-3">
+                <TrendingUp className="h-6 w-6" />
+              </div>
+            </div>
+            <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10"></div>
+          </CardContent>
+        </Card>
       </div>
 
       <ProfileTabs tabs={pacienteTabs} basePath="/paciente" />
 
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1">
-          <Input
-            placeholder="Buscar por exame, médico ou local..."
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </div>
-        <div className="w-full md:w-[220px]">
-          <Select value={filtro} onValueChange={setFiltro}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filtrar por status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todos os exames</SelectItem>
-              <SelectItem value="agendados">Agendados</SelectItem>
-              <SelectItem value="realizados">Realizados</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {/* Filtros */}
+      <Card className="border-0 shadow-lg">
+        <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row justify-between gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por exame, médico ou local..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="w-full md:w-[220px]">
+              <Select value={filtro} onValueChange={setFiltro}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Filtrar por status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todos os exames</SelectItem>
+                  <SelectItem value="agendados">Agendados</SelectItem>
+                  <SelectItem value="realizados">Realizados</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="agendados" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="agendados">Exames Agendados</TabsTrigger>
-          <TabsTrigger value="realizados">Histórico de Exames</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 h-12 bg-muted/50">
+          <TabsTrigger value="agendados" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Clock className="mr-2 h-4 w-4" />
+            Exames Agendados
+          </TabsTrigger>
+          <TabsTrigger value="realizados" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            Histórico de Exames
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="agendados">
-          <Card>
-            <CardHeader>
-              <CardTitle>Próximos Exames</CardTitle>
+        <TabsContent value="agendados" className="mt-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <Clock className="h-5 w-5 text-amber-500" />
+                Próximos Exames
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-24 w-full" />
+                    <div key={i} className="rounded-lg border p-4">
+                      <Skeleton className="h-6 w-3/4 mb-2" />
+                      <Skeleton className="h-4 w-1/2 mb-2" />
+                      <Skeleton className="h-4 w-1/4" />
+                    </div>
                   ))}
                 </div>
               ) : error ? (
-                <p className="text-sm text-red-500">{error}</p>
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                  <p className="text-red-500 font-medium">{error}</p>
+                </div>
               ) : examesAgendados.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  Você não possui exames agendados no momento.
+                <div className="text-center py-12">
+                  <Calendar className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-muted-foreground mb-2">Nenhum exame agendado</h3>
+                  <p className="text-muted-foreground">Você não possui exames agendados no momento.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {examesAgendados.map((e) => (
-                    <div key={e.id || `${e.data}-${e.nome}`} className="flex flex-col md:flex-row gap-4 border rounded-lg p-4 bg-app-soft dark:bg-background">
-                      <div className="flex-1">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                          <div>
-                            <p className="font-medium">{e.nome}</p>
-                            <p className="text-sm text-muted-foreground">{e.medico?.nome || "—"}</p>
+                    <div key={e.id || `${e.data}-${e.nome}`} className="group rounded-xl border border-border/50 bg-gradient-to-r from-background to-muted/20 p-6 transition-all hover:shadow-lg hover:border-border">
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div className="flex-1 space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h3 className="font-semibold text-lg text-foreground group-hover:text-primary transition-colors">
+                                {e.nome}
+                              </h3>
+                              <p className="text-muted-foreground flex items-center gap-2 mt-1">
+                                <Stethoscope className="h-4 w-4" />
+                                {e.medico?.nome || "—"}
+                              </p>
+                            </div>
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
+                              {e.status}
+                            </Badge>
                           </div>
-                          <div className="text-sm">
-                            {e.data ? new Date(e.data).toLocaleDateString() : "—"}{" "}
-                            {e.data ? `às ${new Date(e.data).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                          
+                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {e.data ? new Date(e.data).toLocaleDateString() : "—"}{" "}
+                                {e.data ? `às ${new Date(e.data).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+                              </span>
+                            </div>
+                            {e.local && (
+                              <div className="flex items-center gap-2">
+                                <Activity className="h-4 w-4" />
+                                <span>{e.local}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="mt-2 text-sm text-muted-foreground">{e.local || "Local não especificado"}</div>
-                        <div className="mt-3">
-                          <span className="rounded-full px-2 py-1 text-xs bg-primary/10 text-primary">{e.status}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-row md:flex-col gap-2 justify-end">
-                        {/* Espaço para ações futuras como reagendar */}
                       </div>
                     </div>
                   ))}
@@ -211,95 +371,120 @@ export default function PacienteExames() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="realizados">
-          <Card>
-            <CardHeader>
-              <CardTitle>Histórico de Exames</CardTitle>
+        <TabsContent value="realizados" className="mt-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                Histórico de Exames
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {loading ? (
                 <div className="space-y-2">
                   {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-10 w-full" />
+                    <Skeleton key={i} className="h-16 w-full" />
                   ))}
                 </div>
               ) : error ? (
-                <p className="text-sm text-red-500">{error}</p>
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                  <p className="text-red-500 font-medium">{error}</p>
+                </div>
               ) : examesRealizados.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Você não possui exames realizados no histórico.</div>
+                <div className="text-center py-12">
+                  <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-muted-foreground mb-2">Nenhum exame no histórico</h3>
+                  <p className="text-muted-foreground">Você não possui exames realizados no histórico.</p>
+                </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Exame</TableHead>
-                      <TableHead>Médico</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {examesFiltrados.map((e) => (
-                      <TableRow key={e.id}>
-                        <TableCell>{e.data ? new Date(e.data).toLocaleDateString() : "—"}</TableCell>
-                        <TableCell>{e.nome}</TableCell>
-                        <TableCell>{e.medico?.nome || "—"}</TableCell>
-                        <TableCell>
-                          <span
-                            className={`rounded-full px-2 py-1 text-xs ${
-                              (e.status || "").toLowerCase().includes("conclu") || (e.status || "").toLowerCase() === "realizado"
-                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                                : "bg-primary/10 text-primary"
-                            }`}
-                          >
-                            {e.status || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-end gap-3">
-                            {e.resultado_url ? (
-                              <>
-                                <a
-                                  href={e.resultado_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group inline-flex items-center gap-2 rounded-lg border border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 px-3 py-1.5 text-emerald-300 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-100 shadow-sm shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                                  title="Abrir resultado em nova aba"
-                                >
-                                  <Eye className="h-4 w-4 transition-transform group-hover:-translate-y-0.5" />
-                                  <span>Ver</span>
-                                </a>
-
-                                <Button
-                                  variant="outline"
-                                  className="group inline-flex items-center gap-2 rounded-lg border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 px-3 py-1.5 text-emerald-300 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-100 shadow-sm shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                                  onClick={() => void handleDownloadFile(e)}
-                                  title="Baixar arquivo"
-                                >
-                                  <Download className="h-4 w-4 transition-transform group-hover:translate-y-0.5" />
-                                  <span>Baixar</span>
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-sm text-muted-foreground">Sem arquivo</span>
-                                <Button
-                                  variant="outline"
-                                  disabled
-                                  className="inline-flex items-center gap-2 rounded-lg border-emerald-500/30 bg-gradient-to-b from-emerald-500/5 to-emerald-600/5 px-3 py-1.5 text-emerald-400/50 disabled:opacity-60 disabled:cursor-not-allowed"
-                                  title="Resultado ainda não disponível"
-                                >
-                                  <Download className="h-4 w-4" />
-                                  <span>Baixar</span>
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/50">
+                        <TableHead className="font-semibold">Data</TableHead>
+                        <TableHead className="font-semibold">Exame</TableHead>
+                        <TableHead className="font-semibold">Médico</TableHead>
+                        <TableHead className="font-semibold">Status</TableHead>
+                        <TableHead className="font-semibold text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {examesFiltrados.map((e) => (
+                        <TableRow key={e.id} className="border-border/50 hover:bg-muted/30 transition-colors">
+                          <TableCell className="font-medium">
+                            {e.data ? new Date(e.data).toLocaleDateString() : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">{e.nome}</div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Stethoscope className="h-4 w-4 text-muted-foreground" />
+                              {e.medico?.nome || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                (e.status || "").toLowerCase().includes("conclu") || (e.status || "").toLowerCase() === "realizado"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                              className={
+                                (e.status || "").toLowerCase().includes("conclu") || (e.status || "").toLowerCase() === "realizado"
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300"
+                                  : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300"
+                              }
+                            >
+                              {e.status || "—"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-2">
+                              {e.resultado_url ? (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="group border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 text-emerald-700 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100"
+                                    onClick={() => window.open(e.resultado_url, '_blank')}
+                                  >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    Ver
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="group border-blue-500/60 bg-gradient-to-b from-blue-500/10 to-blue-600/10 text-blue-700 hover:from-blue-500/20 hover:to-blue-600/20 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100"
+                                    onClick={() => void handleDownloadFile(e)}
+                                  >
+                                    <Download className="h-4 w-4 mr-1" />
+                                    Baixar
+                                  </Button>
+                                </>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-muted-foreground">Sem resultado</span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled
+                                    className="opacity-50 cursor-not-allowed"
+                                  >
+                                    <Download className="h-4 w-4 mr-1" />
+                                    Baixar
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>

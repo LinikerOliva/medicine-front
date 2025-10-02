@@ -816,12 +816,15 @@ export default function Configuracao() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   {/* Status atual */}
-                  <div className="rounded-lg border p-4 bg-muted/30">
+                  <div className="rounded-lg border p-4 bg-white">
                     {loadingCert ? (
-                      <p className="text-muted-foreground">Carregando informações do certificado...</p>
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600 mr-3"></div>
+                        <p className="text-muted-foreground">Carregando informações do certificado...</p>
+                      </div>
                     ) : exists ? (
                       <div className="space-y-1">
-                        <p className="font-medium">Certificado cadastrado</p>
+                        <p className="font-medium text-green-700">Certificado cadastrado</p>
                         <p className="text-sm text-muted-foreground">
                           Titular: {certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
                         </p>
@@ -849,11 +852,12 @@ export default function Configuracao() {
 
                   {/* Upload */}
                   <div className="space-y-2">
-                    <Label>Arquivo do certificado</Label>
+                    <Label className="text-sm font-medium text-gray-700">Arquivo do certificado</Label>
                     <Input
                       type="file"
                       accept=".pfx,.p12,.crt,.cer,.pem"
                       onChange={(e) => setSelectedCertFile(e.target.files?.[0] || null)}
+                      className="border-gray-200 focus:border-indigo-500 focus:ring-indigo-500"
                     />
                     <p className="text-xs text-muted-foreground">
                       Aceita: .pfx, .p12, .crt, .cer, .pem. Tamanho máximo: 15MB.
@@ -864,12 +868,13 @@ export default function Configuracao() {
                   </div>
 
                   <div className="space-y-2">
-                      <Label>Senha do certificado (se aplicável)</Label>
+                      <Label className="text-sm font-medium text-gray-700">Senha do certificado (se aplicável)</Label>
                       <TooltipProvider delayDuration={0}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info size={16} className="text-muted-foreground cursor-help" />
                           </TooltipTrigger>
+
                           <TooltipContent side="top">Certificados PKCS#12 (.pfx/.p12) contendo chave privada. O arquivo não é persistido.</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

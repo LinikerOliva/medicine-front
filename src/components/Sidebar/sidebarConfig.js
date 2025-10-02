@@ -37,10 +37,6 @@ export const sidebarConfig = {
           { label: "Médicos Vinculados", path: "/paciente/medicos", icon: Users },
         ],
       },
-      {
-        label: "Configurações",
-        items: [{ label: "Configurações", path: "/paciente/configuracoes", icon: Settings }],
-      },
     ],
   },
   medico: {
@@ -54,10 +50,6 @@ export const sidebarConfig = {
           { label: "Consultas", path: "/medico/minhas-consultas", icon: Calendar },
           { label: "Meus Pacientes", path: "/medico/meus-pacientes", icon: Users },
         ],
-      },
-      {
-        label: "Configurações",
-        items: [{ label: "Configurações", path: "/medico/configuracoes", icon: Settings }],
       },
     ],
   },
@@ -76,10 +68,6 @@ export const sidebarConfig = {
           { label: "Relatórios", path: "/clinica/relatorios", icon: BarChart3 },
         ],
       },
-      {
-        label: "Configurações",
-        items: [{ label: "Configurações", path: "/clinica/configuracoes", icon: Settings }],
-      },
     ],
   },
   secretaria: {
@@ -93,10 +81,6 @@ export const sidebarConfig = {
           { label: "Pacientes", path: "/secretaria/pacientes", icon: Users },
           { label: "Médicos", path: "/secretaria/medicos", icon: Stethoscope },
         ],
-      },
-      {
-        label: "Configurações",
-        items: [{ label: "Configurações", path: "/secretaria/configuracoes", icon: Settings }],
       },
     ],
   },
@@ -128,10 +112,6 @@ export const sidebarConfig = {
           { label: "Secretaria", path: "/secretaria/dashboard", icon: Users },
           { label: "Admin", path: "/admin/dashboard", icon: Shield },
         ],
-      },
-      {
-        label: "Configurações",
-        items: [{ label: "Configurações", path: "/admin/configuracoes", icon: Settings }],
       },
     ],
   },

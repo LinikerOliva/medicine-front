@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { useAuth } from "../../contexts/auth-context"
 import { useToast } from "../../hooks/use-toast"
 import { useTheme } from "../theme-provider"
+import { Stethoscope, Mail, Lock, Eye, EyeOff } from "lucide-react"
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
@@ -16,6 +17,7 @@ export function LoginForm() {
     password: ""
   })
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   const { login, loginWithGoogle } = useAuth()
   const { toast } = useToast()
@@ -85,6 +87,7 @@ export function LoginForm() {
       if (prevThemeRef.current) setTheme(prevThemeRef.current)
     }
   }, [theme, setTheme])
+  
   useEffect(() => {
     if (window.google && googleBtnRef.current) {
       try {
@@ -143,23 +146,33 @@ export function LoginForm() {
   }, [loginWithGoogle, navigate, toast])
 
   return (
-    <div className="min-h-screen bg-app-soft flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-app-lg border-0 backdrop-blur-sm bg-white/95">
-        <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto w-12 h-12 bg-app-gradient rounded-xl flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-950 dark:via-slate-900 dark:to-gray-950 flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background decorative elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-indigo-400/20 to-blue-600/20 rounded-full blur-3xl"></div>
+      </div>
+
+      <Card className="w-full max-w-md shadow-2xl border-0 backdrop-blur-xl bg-white/90 relative z-10">
+        <CardHeader className="space-y-1 text-center pb-8">
+          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+            <Stethoscope className="w-8 h-8 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold text-app-gradient">Entrar</CardTitle>
-          <CardDescription className="text-center text-slate-600">
-            Acesse sua conta no Portal Médico
+          <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Portal Médico
+          </CardTitle>
+          <CardDescription className="text-slate-600 text-base">
+            Acesse sua conta para continuar
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
+        
+        <CardContent className="space-y-6 px-8 pb-8">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-slate-700 font-medium">Email</Label>
+              <Label htmlFor="email" className="text-slate-700 font-medium flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Email
+              </Label>
               <Input
                 id="email"
                 name="email"
@@ -168,31 +181,62 @@ export function LoginForm() {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="h-11 border-slate-200 focus:border-primary focus:ring-primary/20"
+                className="h-12 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 bg-white/80 backdrop-blur-sm transition-all duration-200"
               />
             </div>
+            
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-700 font-medium">Senha</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                className="h-11 border-slate-200 focus:border-primary focus:ring-primary/20"
-              />
+              <Label htmlFor="password" className="text-slate-700 font-medium flex items-center gap-2">
+                <Lock className="w-4 h-4" />
+                Senha
+              </Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  className="h-12 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 bg-white/80 backdrop-blur-sm transition-all duration-200 pr-12"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-slate-400" />
+                  )}
+                </Button>
+              </div>
             </div>
-            <Button type="submit" className="w-full h-11 bg-app-gradient hover:opacity-90 text-white font-semibold shadow-app" disabled={loading}>
-              {loading ? "Entrando..." : "Entrar"}
+            
+            <Button 
+              type="submit" 
+              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]" 
+              disabled={loading}
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Entrando...
+                </div>
+              ) : (
+                "Entrar"
+              )}
             </Button>
           </form>
 
           {/* Separador */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-            <span className="text-xs text-slate-500 font-medium">ou</span>
+            <span className="text-sm text-slate-500 font-medium bg-white px-2">ou</span>
             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
           </div>
 
@@ -203,18 +247,36 @@ export function LoginForm() {
 
           {/* Fallback simples caso o script não tenha carregado ainda */}
           {!window.google && (
-            <Button type="button" variant="outline" className="w-full h-11 border-slate-200 hover:bg-slate-50" disabled>
-              {loadingGoogle ? "Conectando..." : "Continuar com Google"}
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full h-12 border-slate-200 hover:bg-slate-50 bg-white/80 backdrop-blur-sm transition-all duration-200" 
+              disabled
+            >
+              {loadingGoogle ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-slate-400/30 border-t-slate-400 rounded-full animate-spin"></div>
+                  Conectando...
+                </div>
+              ) : (
+                "Continuar com Google"
+              )}
             </Button>
           )}
 
-          <div className="text-center space-y-2">
-            <Link to="/esqueci-senha" className="text-sm text-sky-500 hover:text-sky-600 hover:underline">
+          <div className="text-center space-y-3 pt-4">
+            <Link 
+              to="/esqueci-senha" 
+              className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors duration-200"
+            >
               Esqueceu sua senha?
             </Link>
             <div className="text-sm text-slate-600">
               Não tem uma conta?{" "}
-              <Link to="/registrar" className="text-sky-500 hover:text-sky-600 hover:underline font-medium">
+              <Link 
+                to="/registrar" 
+                className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors duration-200"
+              >
                 Cadastre-se
               </Link>
             </div>

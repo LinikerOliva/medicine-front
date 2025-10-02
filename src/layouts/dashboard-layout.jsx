@@ -1,8 +1,13 @@
 import { SidebarProvider, SidebarInset } from "../components/ui/sidebar"
 import { ThemeToggle } from "../components/theme-toggle"
 import { useUser } from "@/contexts/user-context"
+import { useAuth } from "@/contexts/auth-context"
 import { Separator } from "../components/ui/separator"
+import { Button } from "../components/ui/button"
+import { Input } from "../components/ui/input"
+import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { Bell, Search } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,95 +20,84 @@ import { SidebarTrigger } from "../components/ui/sidebar"
 
 export function DashboardLayout({ children, sidebar: Sidebar, breadcrumbs = [] }) {
   const { activeRole } = useUser()
-
-  // Header neutro (remove gradiente verde)
-  const headerClasses = "bg-white/80 dark:bg-slate-900/70"
-
-  // Fundo principal neutro seguindo o tema (remove gradiente por papel)
-  const mainClasses = "bg-background"
+  const { user } = useAuth()
+  const { userData } = useUser()
+  
+  const displayName = userData?.nome || user?.nome || "Usuário"
 
   return (
     <SidebarProvider>
       <Sidebar />
       <SidebarInset>
-        <header
-          className={cn(
-            // header “card” em light + blur, com sombra suave e cantos arredondados na base
-            "relative flex h-16 shrink-0 items-center gap-2 border-b px-6 rounded-b-xl shadow-sm backdrop-blur supports-[backdrop-filter]:backdrop-blur-md transition-all duration-300",
-            headerClasses
-          )}
-        >
-          {/* faixa/acento superior removida */}
-          {/* <div
-            className={cn(
-              "pointer-events-none absolute inset-x-0 top-0 h-[3px] rounded-t-xl",
-              "bg-green-500 dark:bg-green-600"
-            )}
-          /> */}
-          <div className="flex items-center gap-2 flex-1">
-            <SidebarTrigger className="mr-1" />
-            {/* breadcrumbs */}
+        {/* Header Moderno */}
+        <header className="sticky top-0 z-40 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
+          <div className="flex h-16 items-center gap-4 px-6">
+            <SidebarTrigger className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100" />
+            <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
+            
+            {/* Breadcrumb */}
             {breadcrumbs.length > 0 && (
-              <>
-                <Separator orientation="vertical" className="mr-2 h-4" />
-                <Breadcrumb>
-                  <BreadcrumbList>
-                    {breadcrumbs.map((breadcrumb, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <BreadcrumbItem className="hidden md:block">
-                          {breadcrumb.href ? (
-                            <BreadcrumbLink
-                              href={breadcrumb.href}
-                              className={cn(
-                                "text-sm font-medium transition-colors",
-                                // Light neutro; Dark neutro (removido verde/azul por papel)
-                                "text-slate-800 hover:text-slate-950",
-                                "dark:text-slate-200 dark:hover:text-slate-100",
-                              )}
-                            >
-                              {breadcrumb.label}
-                            </BreadcrumbLink>
-                          ) : (
-                            <BreadcrumbPage
-                              className={cn(
-                                "text-sm font-semibold",
-                                // Light/dark neutro
-                                "text-slate-950",
-                                "dark:text-slate-100",
-                              )}
-                            >
-                              {breadcrumb.label}
-                            </BreadcrumbPage>
-                          )}
-                        </BreadcrumbItem>
-                        {index < breadcrumbs.length - 1 && (
-                          <BreadcrumbSeparator
-                            className={cn(
-                              "hidden md:block",
-                              // Light/dark neutro
-                              "text-slate-400",
-                              "dark:text-slate-300",
-                            )}
-                          />
+              <Breadcrumb className="flex-1">
+                <BreadcrumbList>
+                  {breadcrumbs.map((crumb, index) => (
+                    <div key={index} className="flex items-center">
+                      {index > 0 && <BreadcrumbSeparator className="text-slate-400" />}
+                      <BreadcrumbItem>
+                        {crumb.href ? (
+                          <BreadcrumbLink 
+                            href={crumb.href}
+                            className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 font-medium"
+                          >
+                            {crumb.label}
+                          </BreadcrumbLink>
+                        ) : (
+                          <BreadcrumbPage className="text-slate-900 dark:text-slate-100 font-semibold">
+                            {crumb.label}
+                          </BreadcrumbPage>
                         )}
-                      </div>
-                    ))}
-                  </BreadcrumbList>
-                </Breadcrumb>
-              </>
+                      </BreadcrumbItem>
+                    </div>
+                  ))}
+                </BreadcrumbList>
+              </Breadcrumb>
             )}
-          </div>
-          <div className="ml-auto">
-            <ThemeToggle />
+
+            {/* Search Bar */}
+            <div className="relative hidden md:flex items-center max-w-sm">
+              <Search className="absolute left-3 size-4 text-slate-400" />
+              <Input
+                placeholder="Buscar..."
+                className="pl-10 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100">
+                <Bell className="size-4" />
+              </Button>
+              <ThemeToggle />
+              <Separator orientation="vertical" className="h-6 bg-slate-200 dark:bg-slate-700" />
+              <div className="flex items-center gap-2">
+                <Avatar className="size-8">
+                  <AvatarImage src="" />
+                  <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white text-sm font-semibold">
+                    {displayName?.charAt(0)?.toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300 hidden sm:block">
+                  {displayName}
+                </span>
+              </div>
+            </div>
           </div>
         </header>
-        <main
-          className={cn(
-            "flex flex-1 flex-col gap-4 px-6 pt-10 pb-6 min-h-[calc(100svh-4rem)] transition-all duration-300",
-            mainClasses,
-          )}
-        >
-          {children}
+
+        {/* Main Content */}
+        <main className="flex-1 p-6 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 min-h-[calc(100vh-4rem)]">
+          <div className="mx-auto max-w-7xl">
+            {children}
+          </div>
         </main>
       </SidebarInset>
     </SidebarProvider>

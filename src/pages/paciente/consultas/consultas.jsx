@@ -1,107 +1,119 @@
-import { useEffect, useState } from "react"
-import { pacienteService } from "@/services/pacienteService"
-import { ProfileTabs } from "@/components/profile-tabs"
+import React, { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableHead, TableHeader, TableRow, TableCell } from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Calendar, Search, Filter, Clock, User, MapPin } from "lucide-react"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Calendar, Clock, Search, User, MapPin, Phone, Video, Stethoscope, CalendarPlus, Activity, FileText } from "lucide-react"
+import { ProfileTabs } from "@/components/profile-tabs"
+import { pacienteService } from "@/services/pacienteService"
 
-export default function PacienteConsultas() {
+export default function Consultas() {
   const [consultas, setConsultas] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [filtro, setFiltro] = useState("todas")
+  const [error, setError] = useState("")
   const [busca, setBusca] = useState("")
-
-  // Estados do painel de detalhes
+  const [filtro, setFiltro] = useState("todas")
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [consultaSelecionada, setConsultaSelecionada] = useState(null)
 
-  // Abrir painel de detalhes
-  const abrirDetalhes = (c) => {
-    setConsultaSelecionada(c)
+  const abrirDetalhes = (consulta) => {
+    setConsultaSelecionada(consulta)
     setDetailsOpen(true)
-  }
-
-  // Helper para especialidade (evita "[object Object]")
-  const getDoctorSpecialty = (m) => {
-    const tryFromObj = (obj) =>
-      obj?.nome || obj?.titulo || obj?.name || obj?.descricao || obj?.description
-
-    if (Array.isArray(m?.especialidades) && m.especialidades.length) {
-      const parts = m.especialidades
-        .map((x) => tryFromObj(x) || (typeof x === "string" ? x : null))
-        .filter(Boolean)
-      if (parts.length) return parts.join(", ")
-    }
-    if (m?.especialidade && typeof m.especialidade === "object") {
-      const v = tryFromObj(m.especialidade)
-      if (v) return v
-    }
-    if (typeof m?.especialidade === "string" && m.especialidade.trim()) return m.especialidade.trim()
-    if (typeof m?.especialidade_nome === "string" && m.especialidade_nome.trim()) return m.especialidade_nome.trim()
-    if (typeof m?.specialty === "string" && m.specialty.trim()) return m.specialty.trim()
-    if (typeof m?.area === "string" && m.area.trim()) return m.area.trim()
-    if (typeof m?.user?.especialidade === "string" && m.user.especialidade.trim()) return m.user.especialidade.trim()
-    return "Não especificada"
   }
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
+
+    const carregarConsultas = async () => {
       try {
-        const data = await pacienteService.getConsultas()
-        if (mounted) {
-          const consultasData = Array.isArray(data) ? data : data?.results || []
+        console.log('[DEBUG] Consultas - Iniciando carregamento...')
+        
+        const response = await pacienteService.getConsultas()
+        console.log('[DEBUG] Consultas - Resposta da API:', response)
+        
+        if (!mounted) return
 
-          const consultasMapeadas = consultasData.map((c) => {
-            const first = c.medico?.user?.first_name || c.medico?.first_name || c.medico?.nome || ""
-            const last = c.medico?.user?.last_name || c.medico?.last_name || ""
-            const nomeMedico = [first, last].filter(Boolean).join(" ").trim() || c.medico?.nome || "—"
-            const especialidadeStr = getDoctorSpecialty(c.medico || {})
-
-            return {
-              id: c.id,
-              data: c.data || c.data_hora,
-              medico: {
-                id: c.medico?.id || c.medico_id,
-                nome: nomeMedico,
-                especialidade: especialidadeStr,
-                crm: c.medico?.crm || c.medico?.crm_numero || c.crm || null,
-                email: c.medico?.email || c.medico?.user?.email || null,
-                telefone: c.medico?.telefone || c.medico?.celular || c.medico?.user?.phone || null,
-                raw: c.medico || null,
-              },
-              status: c.status,
-              local: c.local || c.localizacao || "Local não especificado",
-              tipo: c.tipo || c.motivo || "Consulta",
-              observacoes: c.observacoes || c.descricao || "",
-              // Inclusão de medicamentos/prescrição
-              medicamentos: c.medicamentos || c.medicacoes || c.prescricao?.medicamentos || c.receita?.medicamentos || [],
-              prescricao: c.prescricao || c.receita || null,
-              raw: c,
-            }
-          })
-
-          setConsultas(consultasMapeadas)
+        // Normalizar dados da API
+        let consultasData = []
+        if (response.results) {
+          console.log('[DEBUG] Consultas - Usando response.results')
+          consultasData = response.results
+        } else if (response.data?.results) {
+          console.log('[DEBUG] Consultas - Usando response.data.results')
+          consultasData = response.data.results
+        } else if (response.data && Array.isArray(response.data)) {
+          console.log('[DEBUG] Consultas - Usando response.data (array)')
+          consultasData = response.data
+        } else if (Array.isArray(response)) {
+          console.log('[DEBUG] Consultas - Usando response direto (array)')
+          consultasData = response
         }
-      } catch (e) {
-        if (mounted) setError("Não foi possível carregar as consultas.")
+
+        // Normalizar cada consulta
+        const consultasNormalizadas = consultasData.map(consulta => {
+          console.log('[DEBUG] Consultas - Consulta original:', consulta)
+          
+          const consultaNormalizada = {
+            id: consulta.id,
+            data: consulta.data || consulta.data_consulta,
+            local: consulta.local || consulta.endereco || "Local não informado",
+            tipo: consulta.tipo || consulta.tipo_consulta || "Presencial",
+            status: consulta.status || "Agendada",
+            medico: null
+          }
+
+          // Normalizar dados do médico
+          if (consulta.medico) {
+            if (typeof consulta.medico === 'object') {
+              console.log('[DEBUG] Consultas - Médico como objeto:', consulta.medico)
+              consultaNormalizada.medico = {
+                id: consulta.medico.id,
+                nome: consulta.medico.nome || consulta.medico.name || consulta.medico.usuario?.nome || consulta.medico.usuario?.name,
+                especialidade: consulta.medico.especialidade || consulta.medico.specialty || "Especialidade não informada"
+              }
+            } else {
+              console.log('[DEBUG] Consultas - Médico como string/ID:', consulta.medico)
+              consultaNormalizada.medico = {
+                id: consulta.medico,
+                nome: "Médico não identificado",
+                especialidade: "Especialidade não informada"
+              }
+            }
+          } else if (consulta.medico_nome || consulta.doctor_name) {
+            console.log('[DEBUG] Consultas - Médico por nome direto:', consulta.medico_nome || consulta.doctor_name)
+            consultaNormalizada.medico = {
+              id: consulta.medico_id || null,
+              nome: consulta.medico_nome || consulta.doctor_name,
+              especialidade: consulta.especialidade || consulta.specialty || "Especialidade não informada"
+            }
+          }
+
+          console.log('[DEBUG] Consultas - Consulta normalizada:', consultaNormalizada)
+          return consultaNormalizada
+        })
+
+        console.log('[DEBUG] Consultas - Todas as consultas normalizadas:', consultasNormalizadas)
+        setConsultas(consultasNormalizadas)
+      } catch (err) {
+        if (!mounted) return
+        console.error("Erro ao carregar consultas:", err)
+        setError("Erro ao carregar consultas. Tente novamente.")
       } finally {
         if (mounted) setLoading(false)
       }
-    })()
+    }
+
+    carregarConsultas()
+
     return () => {
       mounted = false
     }
   }, [])
 
-  // Removido: consultasDemo e fallback
   // Filtrar consultas
   const consultasFiltradas = consultas.filter(c => {
     const st = String(c.status || "").toLowerCase()
@@ -120,7 +132,7 @@ export default function PacienteConsultas() {
     return true
   })
 
-  // Separar consultas por período – lógica mais tolerante
+  // Separar consultas por período
   const agora = new Date()
   const consultasAgendadas = consultasFiltradas
     .filter((c) => {
@@ -151,324 +163,439 @@ export default function PacienteConsultas() {
     { label: "Configurações", href: "/paciente/configuracoes" },
   ]
 
+  // Estatísticas das consultas
+  const totalConsultas = consultas.length
+  const consultasEsteAno = consultas.filter(c => c.data && new Date(c.data).getFullYear() === new Date().getFullYear()).length
+  const proximasConsultas = consultasAgendadas.length
+  const consultasConcluidas = consultasRealizadas.length
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-primary" />
-          <h1 className="text-2xl font-bold tracking-tight">Minhas Consultas</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 dark:from-gray-900 dark:via-blue-900/10 dark:to-indigo-900/10">
+      <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
+        {/* Cabeçalho Moderno */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-8 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-black/10"></div>
+          <div className="relative z-10">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-white/20 p-3 backdrop-blur-sm">
+                    <Calendar className="h-8 w-8" />
+                  </div>
+                  <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Minhas Consultas</h1>
+                    <p className="text-blue-100">Gerencie suas consultas médicas</p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Button 
+                  variant="secondary" 
+                  className="bg-white/20 text-white border-white/30 hover:bg-white/30 backdrop-blur-sm dark:bg-gray-800/80 dark:hover:bg-gray-700/80 dark:border-gray-600/50 dark:text-gray-200"
+                  asChild
+                >
+                  <a href="/paciente/medicos" className="inline-flex items-center gap-2">
+                    <Stethoscope className="h-4 w-4" />
+                    Médicos
+                  </a>
+                </Button>
+                <Button 
+                  className="bg-white text-blue-600 hover:bg-blue-50 font-semibold shadow-lg dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  asChild
+                >
+                  <a href="/paciente/consultas/nova" className="inline-flex items-center gap-2">
+                    <CalendarPlus className="h-4 w-4" />
+                    Agendar Consulta
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-        <Button variant="outline" asChild className="app-cta-btn">
-          <a href="/paciente/consultas/nova" aria-label="Agendar Nova Consulta" className="inline-flex items-center">
-            <span className="icon-pill">
-              <Calendar className="h-4 w-4" />
-            </span>
-            <span className="font-semibold tracking-tight">Agendar Nova Consulta</span>
-          </a>
-        </Button>
-      </div>
 
-      <ProfileTabs tabs={pacienteTabs} basePath="/paciente" />
-
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Buscar por médico, especialidade ou local..." 
-            className="pl-10" 
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-2">
-          <Select value={filtro} onValueChange={setFiltro}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filtrar por status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as consultas</SelectItem>
-              <SelectItem value="agendadas">Agendadas</SelectItem>
-              <SelectItem value="realizadas">Realizadas</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Tabs defaultValue="agendadas" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="agendadas">Consultas Agendadas</TabsTrigger>
-          <TabsTrigger value="realizadas">Histórico de Consultas</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="agendadas">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-primary" />
-                Próximas Consultas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
+        {/* Cards de Estatísticas */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
                 <div className="space-y-2">
-                  {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-24 w-full" />
-                  ))}
+                  <p className="text-blue-100 text-sm font-medium">Total de Consultas</p>
+                  <p className="text-3xl font-bold">{totalConsultas}</p>
                 </div>
-              ) : error ? (
-                <p className="text-sm text-red-500">{error}</p>
-              ) : consultasAgendadas.length === 0 ? (
-                <div className="text-center py-8">
-                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                  <h3 className="text-lg font-medium">Nenhuma consulta agendada</h3>
-                  <p className="text-sm text-muted-foreground mt-1">Você não possui consultas agendadas no momento.</p>
-                  <Button className="mt-4 app-cta-btn" variant="outline" asChild>
-                    <a href="/paciente/consultas/nova" aria-label="Agendar Nova Consulta" className="inline-flex items-center">
-                      <span className="icon-pill">
-                        <Calendar className="h-4 w-4" />
-                      </span>
-                      <span className="font-semibold tracking-tight">Agendar Nova Consulta</span>
-                    </a>
-                  </Button>
+                <div className="rounded-full bg-white/20 p-3">
+                  <Calendar className="h-6 w-6" />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {consultasAgendadas.map((c) => (
-                    <div key={c.id} className="flex flex-col md:flex-row gap-4 border rounded-lg p-4 bg-app-soft dark:bg-background">
-                      <div className="flex-1">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <User className="h-5 w-5 text-primary" />
-                            <div>
-                              <p className="font-medium">{c.medico?.nome}</p>
-                              <p className="text-sm text-muted-foreground">{c.medico?.especialidade}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-green-500 to-green-600 text-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <p className="text-green-100 text-sm font-medium">Próximas Consultas</p>
+                  <p className="text-3xl font-bold">{proximasConsultas}</p>
+                </div>
+                <div className="rounded-full bg-white/20 p-3">
+                  <Clock className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-purple-600 text-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <p className="text-purple-100 text-sm font-medium">Consultas Concluídas</p>
+                  <p className="text-3xl font-bold">{consultasConcluidas}</p>
+                </div>
+                <div className="rounded-full bg-white/20 p-3">
+                  <Activity className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <p className="text-orange-100 text-sm font-medium">Este Ano</p>
+                  <p className="text-3xl font-bold">{consultasEsteAno}</p>
+                </div>
+                <div className="rounded-full bg-white/20 p-3">
+                  <FileText className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <ProfileTabs tabs={pacienteTabs} basePath="/paciente" />
+
+        {/* Filtros e Busca */}
+        <Card className="border-0 shadow-lg">
+          <CardContent className="p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Buscar por médico, especialidade ou local..." 
+                  className="pl-10 border-0 bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400" 
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-3">
+                <Select value={filtro} onValueChange={setFiltro}>
+                  <SelectTrigger className="w-[180px] border-0 bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+                    <SelectValue placeholder="Filtrar por status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas as consultas</SelectItem>
+                    <SelectItem value="agendadas">Agendadas</SelectItem>
+                    <SelectItem value="realizadas">Realizadas</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Tabs defaultValue="agendadas" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 bg-white dark:bg-gray-800 shadow-lg border-0">
+            <TabsTrigger value="agendadas" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+              Consultas Agendadas
+            </TabsTrigger>
+            <TabsTrigger value="realizadas" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+              Histórico de Consultas
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="agendadas">
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+                <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                  <Calendar className="h-5 w-5" />
+                  Próximas Consultas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="rounded-xl border p-4 space-y-3">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-1/4" />
+                      </div>
+                    ))}
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8">
+                    <div className="rounded-full bg-red-100 dark:bg-red-900/20 p-3 w-fit mx-auto mb-4">
+                      <Calendar className="h-8 w-8 text-red-500" />
+                    </div>
+                    <p className="text-red-500 font-medium">{error}</p>
+                  </div>
+                ) : consultasAgendadas.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="rounded-full bg-blue-100 dark:bg-blue-900/20 p-4 w-fit mx-auto mb-4">
+                      <Calendar className="h-12 w-12 text-blue-500" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Nenhuma consulta agendada
+                    </h3>
+                    <p className="text-gray-500 dark:text-gray-400 mb-6">
+                      Você não possui consultas agendadas no momento.
+                    </p>
+                    <Button 
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg"
+                      asChild
+                    >
+                      <a href="/paciente/consultas/nova" className="inline-flex items-center gap-2">
+                        <CalendarPlus className="h-4 w-4" />
+                        Agendar Nova Consulta
+                      </a>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {consultasAgendadas.map((c) => (
+                      <div key={c.id} className="group relative overflow-hidden rounded-xl border-0 bg-gradient-to-r from-white to-blue-50/50 dark:from-gray-800 dark:to-blue-900/10 p-6 shadow-lg transition-all hover:shadow-xl hover:scale-[1.02]">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                          <div className="flex-1 space-y-4">
+                            <div className="flex items-start gap-4">
+                              <div className="rounded-full bg-gradient-to-r from-blue-500 to-purple-600 p-3 text-white shadow-lg">
+                                <User className="h-5 w-5" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                                  <div>
+                                    <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">
+                                      {c.medico?.nome || "Médico não informado"}
+                                    </h3>
+                                    <p className="text-blue-600 dark:text-blue-400 font-medium">
+                                      {c.medico?.especialidade || "Especialidade não informada"}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                    <Clock className="h-4 w-4" />
+                                    <span className="font-medium">
+                                      {c.data ? new Date(c.data).toLocaleDateString() : "Data não informada"} às {c.data ? new Date(c.data).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "--:--"}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                <div className="mt-3 flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                  <MapPin className="h-4 w-4" />
+                                  <span>{c.local}</span>
+                                </div>
+                                
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-3 py-1 text-xs font-medium text-white">
+                                    {c.tipo === "Online" ? <Video className="h-3 w-3" /> : c.tipo === "Telefone" ? <Phone className="h-3 w-3" /> : <Stethoscope className="h-3 w-3" />}
+                                    {c.tipo}
+                                  </span>
+                                  <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300">
+                                    {c.status || "—"}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <p className="text-sm">
-                              {new Date(c.data).toLocaleDateString()} às {new Date(c.data).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </p>
+                          <div className="flex gap-3">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => abrirDetalhes(c)}
+                              className="border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                            >
+                              Ver Detalhes
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg"
+                              asChild
+                            >
+                              <a href={`/paciente/consultas/nova${c.medico?.id ? `?medico=${c.medico.id}` : ""}`}>
+                                Reagendar
+                              </a>
+                            </Button>
                           </div>
                         </div>
-                        
-                        <div className="mt-2">
-                          <div className="flex items-start gap-2">
-                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                            <p className="text-sm">{c.local}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full px-2 py-1 text-xs bg-primary/10 text-primary">
-                            {c.tipo}
-                          </span>
-                          <span className="rounded-full px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                            {c.status || "—"}
-                          </span>
-                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="secondary" size="sm" onClick={() => abrirDetalhes(c)}>
-                          Ver Detalhes
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                          <a href={`/paciente/consultas/nova${c.medico?.id ? `?medico=${c.medico.id}` : ""}`}>Reagendar</a>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="realizadas">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" />
-                Histórico de Consultas
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Skeleton key={i} className="h-10 w-full" />
-                  ))}
-                </div>
-              ) : error ? (
-                <p className="text-sm text-red-500">{error}</p>
-              ) : consultasRealizadas.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Você não possui consultas realizadas no histórico.</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Médico</TableHead>
-                      <TableHead>Especialidade</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {consultasRealizadas.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell>{new Date(c.data).toLocaleDateString()}</TableCell>
-                        <TableCell>{c.medico?.nome || c.medico || "—"}</TableCell>
-                        <TableCell>{c.medico?.especialidade || c.especialidade || "—"}</TableCell>
-                        <TableCell>{c.tipo || "—"}</TableCell>
-                        <TableCell>
-                          <span className="rounded-full px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                            {c.status || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => abrirDetalhes(c)}>
-                            Ver Detalhes
-                          </Button>
-                        </TableCell>
-                      </TableRow>
                     ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Modal de Detalhes da Consulta */}
-      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Detalhes da Consulta</DialogTitle>
-            <DialogDescription>Informações completas da consulta selecionada</DialogDescription>
-          </DialogHeader>
-
-          {consultaSelecionada ? (
-            <div className="px-6 pb-4 space-y-6">
-              {/* Cabeçalho com avatar + info do médico */}
-              <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
-                  {(consultaSelecionada.medico?.nome || "—")
-                    .split(" ")
-                    .map((p) => p?.[0])
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .join("")
-                    .toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-base">{consultaSelecionada.medico?.nome || "—"}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {consultaSelecionada.medico?.especialidade || "Especialidade não informada"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="h-px bg-border" />
-
-              {/* Grid de informações principais */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Data</p>
-                  <p className="font-medium">
-                    {consultaSelecionada.data ? new Date(consultaSelecionada.data).toLocaleDateString() : "—"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Hora</p>
-                  <p className="font-medium">
-                    {consultaSelecionada.data
-                      ? new Date(consultaSelecionada.data).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                      : "—"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Tipo</p>
-                  <span className="inline-block rounded-full px-2 py-1 text-xs bg-primary/10 text-primary">
-                    {consultaSelecionada.tipo || "—"}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <span className="inline-block rounded-full px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300">
-                    {consultaSelecionada.status || "—"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">Local</p>
-                <p className="text-sm">{consultaSelecionada.local || "—"}</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Observações</p>
-                <div className="rounded-md bg-muted/40 p-3 text-sm leading-relaxed whitespace-pre-wrap">
-                  {consultaSelecionada.observacoes || "—"}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Medicamentos</p>
-                {(() => {
-                  const raw =
-                    consultaSelecionada.medicamentos ??
-                    consultaSelecionada.prescricao?.medicamentos
-                  const list = Array.isArray(raw)
-                    ? raw
-                    : typeof raw === "string"
-                    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
-                    : []
-
-                  return list.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {list.map((x, i) => {
-                        const label =
-                          typeof x === "string"
-                            ? x
-                            : x?.nome ||
-                              x?.medicamento ||
-                              x?.nome_medicamento ||
-                              [x?.descricao, x?.dose || x?.dosagem, x?.posologia || x?.frequencia]
-                                .filter(Boolean)
-                                .join(" • ") ||
-                              JSON.stringify(x)
-                        return (
-                          <span key={i} className="rounded-full px-2.5 py-1 text-xs bg-muted text-foreground">
-                            {label}
-                          </span>
-                        )
-                      })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="realizadas">
+            <Card className="border-0 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-gray-50 to-slate-50 dark:from-gray-900/20 dark:to-slate-900/20">
+                <CardTitle className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <Clock className="h-5 w-5" />
+                  Histórico de Consultas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                {loading ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8">
+                    <div className="rounded-full bg-red-100 dark:bg-red-900/20 p-3 w-fit mx-auto mb-4">
+                      <Clock className="h-8 w-8 text-red-500" />
                     </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">—</p>
-                  )
-                })()}
-              </div>
+                    <p className="text-red-500 font-medium">{error}</p>
+                  </div>
+                ) : consultasRealizadas.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="rounded-full bg-gray-100 dark:bg-gray-800 p-4 w-fit mx-auto mb-4">
+                      <Clock className="h-12 w-12 text-gray-400" />
+                    </div>
+                    <p className="text-gray-500 dark:text-gray-400">
+                      Você não possui consultas realizadas no histórico.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-hidden rounded-xl border-0 bg-white dark:bg-gray-800 shadow-lg">
+                    <Table>
+                      <TableHeader className="bg-gray-50 dark:bg-gray-900/50">
+                        <TableRow className="border-0">
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Data</TableHead>
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Médico</TableHead>
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Especialidade</TableHead>
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Tipo</TableHead>
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Status</TableHead>
+                          <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {consultasRealizadas.map((c) => (
+                          <TableRow key={c.id} className="border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                            <TableCell className="font-medium">
+                              {c.data ? new Date(c.data).toLocaleDateString() : "—"}
+                            </TableCell>
+                            <TableCell>{c.medico?.nome || "—"}</TableCell>
+                            <TableCell>{c.medico?.especialidade || "—"}</TableCell>
+                            <TableCell>
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 dark:bg-blue-900/30 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                                {c.tipo === "Online" ? <Video className="h-3 w-3" /> : c.tipo === "Telefone" ? <Phone className="h-3 w-3" /> : <Stethoscope className="h-3 w-3" />}
+                                {c.tipo || "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-1 text-xs font-medium text-green-700 dark:text-green-300">
+                                {c.status || "—"}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => abrirDetalhes(c)}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                              >
+                                Ver Detalhes
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
-              <DialogFooter>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => setDetailsOpen(false)}
-                >
-                  Fechar
-                </button>
-              </DialogFooter>
-            </div>
-          ) : (
-            <div className="px-6 pb-6 text-sm text-muted-foreground">Selecione uma consulta para ver os detalhes.</div>
-          )}
-        </DialogContent>
-      </Dialog>
+        {/* Modal de Detalhes da Consulta */}
+        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+          <DialogContent className="max-w-2xl border-0 shadow-2xl">
+            <DialogHeader className="pb-6">
+              <DialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                Detalhes da Consulta
+              </DialogTitle>
+              <DialogDescription className="text-gray-600 dark:text-gray-400">
+                Informações completas da consulta selecionada
+              </DialogDescription>
+            </DialogHeader>
+
+            {consultaSelecionada ? (
+              <div className="space-y-6">
+                {/* Cabeçalho com avatar + info do médico */}
+                <div className="flex items-start gap-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold text-lg shadow-lg">
+                    {(consultaSelecionada.medico?.nome || "—")
+                      .split(" ")
+                      .map((p) => p?.[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-xl text-gray-900 dark:text-gray-100">
+                      {consultaSelecionada.medico?.nome || "—"}
+                    </h3>
+                    <p className="text-blue-600 dark:text-blue-400 font-medium">
+                      {consultaSelecionada.medico?.especialidade || "Especialidade não informada"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Grid de informações principais */}
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Data</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {consultaSelecionada.data ? new Date(consultaSelecionada.data).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Hora</p>
+                    <p className="font-semibold text-gray-900 dark:text-gray-100">
+                      {consultaSelecionada.data
+                        ? new Date(consultaSelecionada.data).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Tipo</p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 px-3 py-1 text-sm font-medium text-white">
+                      {consultaSelecionada.tipo === "Online" ? <Video className="h-3 w-3" /> : consultaSelecionada.tipo === "Telefone" ? <Phone className="h-3 w-3" /> : <Stethoscope className="h-3 w-3" />}
+                      {consultaSelecionada.tipo}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Status</p>
+                    <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-3 py-1 text-sm font-medium text-green-700 dark:text-green-300">
+                      {consultaSelecionada.status}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Local da consulta */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Local</p>
+                  <div className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                    <MapPin className="h-4 w-4 text-gray-500" />
+                    <span>{consultaSelecionada.local}</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

@@ -89,11 +89,14 @@ export default function MinhasConsultas() {
       <div className="flex flex-col md:flex-row justify-between gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar consultas..." className="pl-10" />
+          <Input 
+            placeholder="Buscar consultas..." 
+            className="pl-10 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:placeholder-gray-400" 
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <Select>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[180px] dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
               <SelectValue placeholder="Filtrar por status" />
             </SelectTrigger>
             <SelectContent>
@@ -103,7 +106,10 @@ export default function MinhasConsultas() {
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
-          <Input type="date" className="w-[180px]" />
+          <Input 
+            type="date" 
+            className="w-[180px] dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200" 
+          />
           <Button>
             <Calendar className="mr-2 h-4 w-4" />
             Nova Consulta

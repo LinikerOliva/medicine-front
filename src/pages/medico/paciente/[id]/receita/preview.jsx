@@ -126,12 +126,14 @@ export default function PreviewReceitaMedico() {
   const [validado, setValidado] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitLoading, setSubmitLoading] = useState(false)
+  
   // NOVO: certificado efêmero para assinatura (usando contexto)
+  const { ephemeralCertFile, setEphemeralCertFile, ephemeralCertPassword, setEphemeralCertPassword } = useUser()
   const [pfxFile, setPfxFile] = useState(ephemeralCertFile || null)
   const [pfxPassword, setPfxPassword] = useState(ephemeralCertPassword || "")
   // Sync local state to context
-  useEffect(() => { setEphemeralCertFile(pfxFile) }, [pfxFile])
-  useEffect(() => { setEphemeralCertPassword(pfxPassword) }, [pfxPassword])
+  useEffect(() => { setEphemeralCertFile(pfxFile) }, [pfxFile, setEphemeralCertFile])
+  useEffect(() => { setEphemeralCertPassword(pfxPassword) }, [pfxPassword, setEphemeralCertPassword])
   // NOVO: metadados de assinatura e validação de vínculo
   const [certInfo, setCertInfo] = useState(null)
   const [signDate, setSignDate] = useState(null)
