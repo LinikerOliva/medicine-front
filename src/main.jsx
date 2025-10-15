@@ -6,7 +6,7 @@ import { Toaster } from "./components/ui/toaster"
 
 // Suprime no DEV o alerta gerado por extensão: 
 // "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received"
-if (typeof window !== "undefined" && import.meta.env.DEV) {
+if (typeof window !== "undefined") {
   const suppressExtensionWarning = (ev) => {
     const reason = ev?.reason
     const msg = typeof reason === "string" ? reason : reason?.message

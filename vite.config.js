@@ -1,6 +1,6 @@
 // filepath: vite.config.js
 import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
+import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
@@ -299,8 +299,15 @@ export default defineConfig(({ mode }) => {
           res.setHeader('Content-Length', String(buf.length));
           return res.end(buf);
         } catch (e) {
-          // Em caso de erro inesperado, não bloquear o proxy
+          // Em caso de erro inesperado, não bloquear o proxy de recursos estáticos
           try { console.error('[mock-receita] erro:', e); } catch {}
+          try {
+            const url = req.url || '/';
+            const pathname = url.split('?')[0];
+            const base = apiBasePath.replace(/\/?$/, '/');
+            const isApi = pathname.startsWith(base) || pathname.startsWith('/receitas/') || pathname.startsWith('/prontuarios/');
+            if (!isApi) return next();
+          } catch {}
           return text(res, 500, 'Erro ao gerar PDF mock');
         }
       });
@@ -458,6 +465,14 @@ export default defineConfig(({ mode }) => {
           });
         } catch (e) {
           try { console.error('[mock-medico-certificado] erro:', e); } catch {}
+          // Não bloquear recursos estáticos em caso de erro inesperado
+          try {
+            const url = req.url || '/';
+            const pathname = url.split('?')[0];
+            const base = apiBasePath.replace(/\/?$/, '/');
+            const isApi = pathname.startsWith(base) || pathname.startsWith('/medicos/') || pathname.startsWith('/assinatura/') || pathname.startsWith('/certificados/');
+            if (!isApi) return next();
+          } catch {}
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ ok:false, error: 'Falha no mock de certificado/assinatura' }));
@@ -514,7 +529,7 @@ export default defineConfig(({ mode }) => {
         'X-Content-Type-Options': 'nosniff',
         'Cache-Control': 'no-store',
         // CSP relaxada para ambiente de desenvolvimento (HMR precisa de unsafe-eval/inline)
-        'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; font-src-elem 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; frame-ancestors 'none';",
+        'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws: http: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' http: https: https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' http: https: https://fonts.googleapis.com; font-src 'self' data: http: https: https://fonts.gstatic.com; img-src 'self' data: blob: http: https:; frame-ancestors 'none';",
         'Referrer-Policy': 'strict-origin-when-cross-origin',
         // Ajuste: permitir microfone/câmera em DEV para habilitar Web Speech / getUserMedia
         'Permissions-Policy': 'geolocation=(self), camera=(self), microphone=(self)'

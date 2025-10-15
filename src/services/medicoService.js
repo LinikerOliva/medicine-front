@@ -1537,7 +1537,18 @@ export const medicoService = {
     if (reason) formData.append("reason", reason), formData.append("motivo", reason)
     if (location) formData.append("location", location), formData.append("local", location)
 
-    // Obrigatório: certificado efêmero (.pfx/.p12) + senha, sem persistência
+    // Determinar modo de assinatura: token físico vs PFX
+    const flagFromForm = (k) => {
+      const v = formData instanceof FormData ? formData.get(k) : null
+      if (typeof v === "string") return v === "true" || v === "1" || v.toLowerCase() === "yes"
+      return Boolean(v)
+    }
+    const useToken = Boolean(
+      meta.useToken || meta.use_token || meta.token || meta.pkcs11 || meta.hardware || meta.smartcard ||
+      flagFromForm("useToken") || flagFromForm("use_token") || flagFromForm("token") || flagFromForm("pkcs11") || flagFromForm("hardware") || flagFromForm("smartcard")
+    )
+
+    // Coleta dados do certificado arquivo (PFX) e senha
     let pfxFromForm = null
     let passFromForm = null
     if (formData instanceof FormData) {
@@ -1546,20 +1557,42 @@ export const medicoService = {
     }
     const pfx = (meta && meta.pfxFile instanceof File) ? meta.pfxFile : pfxFromForm
     const pw = (typeof meta?.pfxPassword === "string" ? meta.pfxPassword.trim() : "") || (typeof passFromForm === "string" ? passFromForm : "")
-    if (!(pfx instanceof File)) {
-      throw new Error("Certificado digital (.pfx/.p12) é obrigatório para assinatura.")
+
+    // PIN opcional para token físico
+    const pin = (meta.pin || meta.tokenPin || meta.pin_code || (formData instanceof FormData ? (formData.get("pin") || formData.get("token_pin") || formData.get("pin_code")) : "") || "").toString().trim()
+
+    if (useToken) {
+      // Assinatura via hardware/token: não exigir PFX
+      formData.append("use_token", "true")
+      formData.append("pkcs11", "true")
+      formData.append("hardware", "true")
+      if (pin) {
+        formData.append("pin", pin)
+        formData.append("token_pin", pin)
+        formData.append("pin_code", pin)
+      }
+      // Seletores de certificado no token (opcionais)
+      if (meta.subject) formData.append("subject", meta.subject)
+      if (meta.serial) formData.append("serial", meta.serial)
+      if (meta.slot) formData.append("slot", String(meta.slot))
+      if (meta.keyId) formData.append("key_id", meta.keyId)
+    } else {
+      // Assinatura via PFX: exigir arquivo e senha
+      if (!(pfx instanceof File)) {
+        throw new Error("Certificado digital (.pfx/.p12) é obrigatório para assinatura.")
+      }
+      if (!pw) {
+        throw new Error("Senha do certificado PFX/P12 é obrigatória para assinatura.")
+      }
+      formData.append("pfx", pfx)
+      formData.append("certificado", pfx)
+      formData.append("pkcs12", pfx)
+      formData.append("pfx_password", pw)
+      formData.append("senha", pw)
+      formData.append("password", pw)
+      formData.append("no_persist", "true")
+      formData.append("ephemeral", "true")
     }
-    if (!pw) {
-      throw new Error("Senha do certificado PFX/P12 é obrigatória para assinatura.")
-    }
-    formData.append("pfx", pfx)
-    formData.append("certificado", pfx)
-    formData.append("pkcs12", pfx)
-    formData.append("pfx_password", pw)
-    formData.append("senha", pw)
-    formData.append("password", pw)
-    formData.append("no_persist", "true")
-    formData.append("ephemeral", "true")
 
     // incluir receita_id quando disponível para vínculo de assinatura e QR
     const rid = meta?.receitaId || meta?.receita_id || meta?.id

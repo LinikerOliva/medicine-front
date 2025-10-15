@@ -990,3 +990,189 @@ export default function Configuracao() {
     </div>
   )
 }
+
+// Componente da aba de Layout da Receita (médico)
+function ReceitaLayoutTab() {
+  const { toast } = useToast()
+  const [receitaLayout, setReceitaLayout] = useState({
+    logoDataUrl: "",
+    showHeader: true,
+    headerBg: "#ffffff",
+    headerText: "#111111",
+    bodyText: "#111111",
+    accentColor: "#1f2937",
+    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI",
+    marginTop: 24,
+    marginRight: 24,
+    marginBottom: 24,
+    marginLeft: 24,
+    signaturePlacement: "bottom_center",
+    qrPosition: "right",
+    signatureLineWidth: 256,
+    showSignedNotice: true,
+  })
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("receita_layout_config")
+      if (saved) setReceitaLayout((cur) => ({ ...cur, ...JSON.parse(saved) }))
+    } catch {}
+  }, [])
+
+  const handleLayoutChange = (field, value) => {
+    setReceitaLayout((s) => ({ ...s, [field]: value }))
+  }
+
+  const handleLogoUpload = async (file) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      handleLayoutChange("logoDataUrl", reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const saveLayoutPrefs = () => {
+    localStorage.setItem("receita_layout_config", JSON.stringify(receitaLayout))
+    toast({ title: "Layout salvo", description: "Preferências de layout da receita atualizadas." })
+  }
+
+  const resetLayoutPrefs = () => {
+    const def = {
+      logoDataUrl: "",
+      showHeader: true,
+      headerBg: "#ffffff",
+      headerText: "#111111",
+      bodyText: "#111111",
+      accentColor: "#1f2937",
+      fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI",
+      marginTop: 24,
+      marginRight: 24,
+      marginBottom: 24,
+      marginLeft: 24,
+      signaturePlacement: "bottom_center",
+      qrPosition: "right",
+      signatureLineWidth: 256,
+      showSignedNotice: true,
+    }
+    setReceitaLayout(def)
+    localStorage.setItem("receita_layout_config", JSON.stringify(def))
+    toast({ title: "Layout restaurado", description: "Preferências padrão aplicadas." })
+  }
+
+  return (
+    <TabsContent value="layout-receita" className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Layout da Receita</h3>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={resetLayoutPrefs}>Restaurar padrão</Button>
+          <Button onClick={saveLayoutPrefs}>Salvar</Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div>
+            <label className="text-sm font-medium">Logo do consultório</label>
+            <div className="mt-2 flex items-center gap-3">
+              {receitaLayout.logoDataUrl ? (
+                <img src={receitaLayout.logoDataUrl} alt="Logo" className="h-12 w-12 object-contain border rounded" />
+              ) : (
+                <div className="h-12 w-12 border rounded flex items-center justify-center text-xs text-muted-foreground">Sem logo</div>
+              )}
+              <input type="file" accept="image/*" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm">Mostrar cabeçalho</label>
+              <input type="checkbox" checked={receitaLayout.showHeader} onChange={(e) => handleLayoutChange("showHeader", e.target.checked)} />
+            </div>
+            <div>
+              <label className="text-sm">Aviso de assinatura</label>
+              <input type="checkbox" checked={receitaLayout.showSignedNotice} onChange={(e) => handleLayoutChange("showSignedNotice", e.target.checked)} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm">Cor do cabeçalho</label>
+              <Input type="color" value={receitaLayout.headerBg} onChange={(e) => handleLayoutChange("headerBg", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm">Texto do cabeçalho</label>
+              <Input type="color" value={receitaLayout.headerText} onChange={(e) => handleLayoutChange("headerText", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm">Texto do corpo</label>
+              <Input type="color" value={receitaLayout.bodyText} onChange={(e) => handleLayoutChange("bodyText", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm">Cor de destaque</label>
+              <Input type="color" value={receitaLayout.accentColor} onChange={(e) => handleLayoutChange("accentColor", e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm">Fonte</label>
+            <select value={receitaLayout.fontFamily} onChange={(e) => handleLayoutChange("fontFamily", e.target.value)} className="border rounded px-2 py-1">
+              <option value="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI">Inter</option>
+              <option value="Georgia, serif">Georgia</option>
+              <option value="Times New Roman, Times, serif">Times</option>
+              <option value="Arial, Helvetica, sans-serif">Arial</option>
+              <option value="Roboto, system-ui, sans-serif">Roboto</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm">Margem superior</label>
+              <Input type="number" value={receitaLayout.marginTop} onChange={(e) => handleLayoutChange("marginTop", Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="text-sm">Margem direita</label>
+              <Input type="number" value={receitaLayout.marginRight} onChange={(e) => handleLayoutChange("marginRight", Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="text-sm">Margem inferior</label>
+              <Input type="number" value={receitaLayout.marginBottom} onChange={(e) => handleLayoutChange("marginBottom", Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="text-sm">Margem esquerda</label>
+              <Input type="number" value={receitaLayout.marginLeft} onChange={(e) => handleLayoutChange("marginLeft", Number(e.target.value))} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm">Largura da linha de assinatura</label>
+              <Input type="number" value={receitaLayout.signatureLineWidth} onChange={(e) => handleLayoutChange("signatureLineWidth", Number(e.target.value))} />
+            </div>
+            <div>
+              <label className="text-sm">Posição do QR</label>
+              <select value={receitaLayout.qrPosition} onChange={(e) => handleLayoutChange("qrPosition", e.target.value)} className="border rounded px-2 py-1">
+                <option value="left">Esquerda</option>
+                <option value="right">Direita</option>
+                <option value="none">Ocultar</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm">Posição da assinatura</label>
+            <select value={receitaLayout.signaturePlacement} onChange={(e) => handleLayoutChange("signaturePlacement", e.target.value)} className="border rounded px-2 py-1">
+              <option value="bottom_center">Inferior - Centro</option>
+              <option value="bottom_right">Inferior - Direita</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Prévia rápida dentro da aba */}
+        <div className="border rounded-md p-4 bg-background">
+          <div className="text-sm text-muted-foreground">A prévia completa é vista na página da Receita; aqui você ajusta o estilo.</div>
+        </div>
+      </div>
+    </TabsContent>
+  )
+}

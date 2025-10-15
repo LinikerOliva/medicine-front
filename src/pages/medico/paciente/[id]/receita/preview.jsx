@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react"
-import { useLocation, useParams } from "react-router-dom"
+import { useLocation, useParams, useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,9 +9,13 @@ import { FileText, CheckCircle2, Printer, Mail } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import api from "@/services/api"
 import { medicoService } from "@/services/medicoService"
+
 import { useUser } from "@/contexts/user-context"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Info } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Separator } from "@/components/ui/separator"
 
 export default function PreviewReceitaMedico() {
   // Estado para controlar assinatura obrigatória e blobs
@@ -126,6 +130,13 @@ export default function PreviewReceitaMedico() {
   const [validado, setValidado] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitLoading, setSubmitLoading] = useState(false)
+  const [signDialogOpen, setSignDialogOpen] = useState(false)
+  const [signMethod, setSignMethod] = useState("token") // "pfx" ou "token"
+  const [tokenPin, setTokenPin] = useState("")
+  const [tokenSubject, setTokenSubject] = useState("")
+  const [tokenSerial, setTokenSerial] = useState("")
+  const [tokenSlot, setTokenSlot] = useState("")
+  const [tokenKeyId, setTokenKeyId] = useState("")
   
   // NOVO: certificado efêmero para assinatura (usando contexto)
   const { ephemeralCertFile, setEphemeralCertFile, ephemeralCertPassword, setEphemeralCertPassword } = useUser()
@@ -480,40 +491,9 @@ export default function PreviewReceitaMedico() {
       let finalFilename = baseFilename
       let signedOk = false
       if (String(form.formato).toLowerCase() === "pdf") {
-        // Assinar automaticamente: exigir certificado PFX/P12 e senha
-        if (!pfxFile) {
-          toast({ title: "Certificado obrigatório", description: "Selecione um arquivo de certificado (.pfx/.p12) para assinar a receita.", variant: "destructive" })
-          throw new Error("Certificado PFX/P12 ausente")
-        }
-        if (!(pfxPassword && pfxPassword.trim())) {
-          toast({ title: "Senha obrigatória", description: "Informe a senha do arquivo PFX/P12 para assinar a receita.", variant: "destructive" })
-          throw new Error("Senha do PFX/P12 ausente")
-        }
-        const rid2 = rid || lastReceitaId || null
-        const signMeta = {
-          reason: "Receita Médica",
-          location: form.endereco_consultorio || undefined,
-          pfxFile: pfxFile,
-          pfxPassword: pfxPassword.trim(),
-          receitaId: rid2 || undefined,
-          receita_id: rid2 || undefined,
-        }
-        try {
-          const pdfFile = new File([originalBlob], finalFilename, { type: "application/pdf" })
-          const signed = await medicoService.signDocumento(pdfFile, signMeta)
-          if (signed?.blob instanceof Blob) {
-            finalBlob = signed.blob
-            if (signed.filename) finalFilename = signed.filename
-            signedOk = true
-            setSignDate(new Date().toISOString())
-            // se o backend retornar info de certificado futuramente, poderemos popular setCertInfo aqui
-          }
-        } catch (e) {
-          const st = e?.response?.status
-          const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita. Continuaremos sem assinatura."
-          console.warn("[PreviewReceita] Falha ao assinar PDF:", st, msg)
-          toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
-        }
+        // Assinatura agora é uma ação manual via botão "Assinar Receita".
+        // Aqui apenas preparamos o PDF gerado; sem exigir certificado nem senha.
+        signedOk = false
       }
 
       // Atualiza estados com o último PDF gerado
@@ -563,58 +543,156 @@ export default function PreviewReceitaMedico() {
     }
   }
 
-  // Ação dedicada para assinatura digital, agora dentro do componente
-  const handleAssinarReceita = async () => {
+  // Ação dedicada para assinatura digital: abre modal imediatamente
+  const handleAssinarReceita = () => {
+    setSignDialogOpen(true)
+  }
+
+  // Estados para integração com agente local de assinatura
+  const [agentAvailable, setAgentAvailable] = useState(false)
+  const [detectLoading, setDetectLoading] = useState(false)
+  const [tokens, setTokens] = useState([])
+  const [selectedToken, setSelectedToken] = useState(null)
+
+  // Quando o modal abre, tentar detectar tokens automaticamente via agente local
+  useEffect(() => {
+    if (!signDialogOpen) return
+    let cancelled = false
+    async function detect() {
+      try {
+        setDetectLoading(true)
+        const res = await localAgent.detectTokens()
+        const list = Array.isArray(res?.tokens) ? res.tokens : (Array.isArray(res) ? res : [])
+        if (!cancelled && list.length > 0) {
+          setAgentAvailable(true)
+          setTokens(list)
+          setSelectedToken(list[0])
+          setSignMethod("token")
+        } else if (!cancelled) {
+          setAgentAvailable(false)
+          setSignMethod("pfx")
+        }
+      } catch {
+        if (!cancelled) {
+          setAgentAvailable(false)
+          setSignMethod("pfx")
+        }
+      } finally {
+        if (!cancelled) setDetectLoading(false)
+      }
+    }
+    detect()
+    return () => { cancelled = true }
+  }, [signDialogOpen])
+
+  async function handleConfirmAssinar() {
     try {
       if (!lastGeneratedBlob) {
         await handleGerarDocumento()
       }
       if (!lastGeneratedBlob) {
-        toast({ title: "Falha ao gerar", description: "Não foi possível gerar o documento para assinatura.", variant: "destructive" })
+        toast({ title: "Falha", description: "Gere o documento antes de assinar.", variant: "destructive" })
         return
       }
 
-      // Exigir certificado e senha
-      if (!pfxFile) {
-        toast({ title: "Certificado obrigatório", description: "Selecione um arquivo de certificado (.pfx/.p12) para assinar a receita.", variant: "destructive" })
-        return
-      }
-      if (!(pfxPassword && pfxPassword.trim())) {
-        toast({ title: "Senha obrigatória", description: "Informe a senha do arquivo PFX/P12 para assinar a receita.", variant: "destructive" })
-        return
+      const rid = await ensureReceitaRecord()
+      const pdfFile = new File([lastGeneratedBlob], lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}.pdf`, { type: "application/pdf" })
+
+      setSubmitLoading(true)
+
+      // Fluxo preferencial: Token A3 via agente local (UX mínima)
+      if (signMethod === "token" && agentAvailable) {
+        try {
+          const preHash = await sha256Hex(lastGeneratedBlob)
+          const res = await localAgent.signHash({
+            document_hash: `sha256:${preHash}`,
+            format: "PAdES",
+            prefer_certificate: selectedToken || null,
+            pin: tokenPin || undefined,
+          })
+          if (res?.status !== "success") {
+            const msg = res?.message || "Falha ao assinar via token local"
+            throw new Error(msg)
+          }
+          const finalize = await localAgent.finalizeWithBackend({
+            receitaId: rid || undefined,
+            pdfFile,
+            assinatura: res.assinatura,
+            certificado: res.certificado,
+            thumbprint: res.thumbprint,
+            cert_subject: res.cert_subject,
+            timestamp: res.timestamp,
+            hash_pre: preHash,
+          })
+          const filename = finalize?.filename || (lastGeneratedFilename || pdfFile.name)
+          const blob = finalize?.blob || null
+          if (blob instanceof Blob) {
+            setIsSigned(true)
+            setSignedBlob(blob)
+            setSignedFilename(filename)
+            setSignDate(new Date().toISOString())
+            try {
+              const info = await medicoService.getCertificadoInfo()
+              setCertInfo(info || { subject: res?.cert_subject })
+            } catch {}
+            toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
+            setSignDialogOpen(false)
+            return
+          }
+          // Se não retornou blob, cair para fluxo existente
+        } catch (eToken) {
+          const msg = eToken?.message || "Erro ao assinar com token"
+          toast({ title: "Erro na assinatura", description: msg, variant: "destructive" })
+          // fallback para fluxo existente abaixo
+        }
       }
 
-      const rid = lastReceitaId || await ensureReceitaRecord()
-      const signMeta = { 
-        reason: "Assinatura de prescrição", 
-        location: form.endereco_consultorio || "",
-        pfxFile: pfxFile,
-        pfxPassword: pfxPassword.trim(),
+      // Fallback: usar implementação atual (PFX ou token via backend)
+      const meta = {
+        motivo: "Receita Médica",
+        local: form.endereco_consultorio || "Consultório",
         receitaId: rid || undefined,
-        receita_id: rid || undefined,
       }
-      const pdfFile = new File([lastGeneratedBlob], lastGeneratedFilename || "receita.pdf", { type: "application/pdf" })
-      const signed = await medicoService.signDocumento(pdfFile, signMeta)
-      if (signed?.blob instanceof Blob) {
-        setSignedBlob(signed.blob)
-        setSignedFilename(signed.filename || lastGeneratedFilename || "receita_assinada.pdf")
-        setIsSigned(true)
-        setSignDate(new Date().toISOString())
-        toast({ title: "Receita assinada", description: "A assinatura digital foi aplicada com sucesso." })
+      if (signMethod === "token") {
+        meta.useToken = true
+        meta.pin = tokenPin || undefined
       } else {
-        setIsSigned(false)
-        setSignedBlob(null)
-        setSignedFilename("")
-        toast({ title: "Assinatura falhou", description: "Não foi possível aplicar a assinatura digital.", variant: "destructive" })
+        meta.pfxFile = pfxFile || undefined
+        meta.pfxPassword = pfxPassword || ""
       }
+
+      const { filename, blob } = await medicoService.signDocumento(pdfFile, meta)
+
+      // Atualiza estados de assinatura
+      setIsSigned(true)
+      setSignedBlob(blob)
+      setSignedFilename(filename || (lastGeneratedFilename || pdfFile.name))
+      setSignDate(new Date().toISOString())
+
+      try {
+        const info = await medicoService.getCertificadoInfo()
+        setCertInfo(info || null)
+      } catch {}
+
+      // Atualiza registro e auditoria com hashes
+      try {
+        const preHash = await sha256Hex(lastGeneratedBlob)
+        const signedHash = await sha256Hex(blob)
+        if (rid) {
+          await medicoService.atualizarReceita(rid, { assinada: true, hash_alg: "SHA-256", hash_pre: preHash, hash_signed: signedHash, motivo: "Receita Médica" })
+          await medicoService.registrarAuditoriaAssinatura({ receita_id: rid, valido: true, hash_alg: "SHA-256", hash_pre: preHash, hash_signed: signedHash, motivo: "Receita Médica", arquivo: filename })
+        }
+      } catch {}
+
+      toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
+      setSignDialogOpen(false)
     } catch (e) {
       const st = e?.response?.status
-      const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o PDF da receita."
-      console.warn("[PreviewReceita] Falha ao assinar PDF:", st, msg)
-      setIsSigned(false)
-      setSignedBlob(null)
-      setSignedFilename("")
-      toast({ title: "Assinatura falhou", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao assinar o documento"
+      console.warn("[PreviewReceita] Erro assinatura:", st, msg)
+      toast({ title: "Erro na assinatura", description: `${msg}${st ? ` [HTTP ${st}]` : ""}` , variant: "destructive" })
+    } finally {
+      setSubmitLoading(false)
     }
   }
 
@@ -640,6 +718,7 @@ export default function PreviewReceitaMedico() {
       })
   
       toast({ title: "Receita enviada", description: "A receita assinada foi enviada ao paciente com sucesso." })
+      navigate(`/medico/paciente/${id}/receita/confirmacao`, { state: { receitaId: rid || null, email: form.email_paciente || null, filename: filenameToSend } })
     } catch (e) {
       const st = e?.response?.status
       const msg = e?.response?.data?.detail || e?.message || "Falha ao enviar a receita assinada"
@@ -765,44 +844,12 @@ export default function PreviewReceitaMedico() {
             </div>
 
             {/* NOVO: campos para certificado efêmero */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="flex items-center gap-2">
-                <Label>Arquivo PFX para assinatura (não será salvo)</Label>
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info size={16} className="text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top">Aceitamos certificados PKCS#12 (.pfx/.p12). O arquivo é usado apenas para assinar e não é persistido.</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Input type="file" accept=".pfx,.p12" onChange={(e) => setPfxFile(e.target.files?.[0] || null)} />
-              {pfxFile && (
-                <p className="text-xs text-muted-foreground">Selecionado: {pfxFile.name} ({Math.ceil(pfxFile.size / 1024)} KB)</p>
-              )}
-              <div className="flex items-center gap-2">
-                <Label>Senha do PFX</Label>
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info size={16} className="text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top">A senha do certificado é necessária para desbloquear a chave privada e aplicar a assinatura digital.</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Input type="password" value={pfxPassword} onChange={(e) => setPfxPassword(e.target.value)} placeholder="Informe a senha" />
-              {/* Validação em tempo real */}
-              {(!pfxPassword || !pfxPassword.trim()) && (
-                <p className="text-xs text-red-600">Senha obrigatória para assinatura.</p>
-              )}
-              {(pfxPassword && pfxPassword.trim().length < 4) && (
-                <p className="text-xs text-yellow-600">A senha parece curta. Verifique se está correta.</p>
-              )}
-              {(pfxPassword && pfxPassword.trim()) && (
-                <p className="text-xs text-muted-foreground">Dica: em caso de erro de senha, verifique maiúsculas/minúsculas e se o teclado está no layout correto.</p>
-              )}
+            {/* Removido do formulário principal — configure o método de assinatura no modal abaixo */}
+            <div className="flex gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setSignDialogOpen(true)}>
+                Configurar método de assinatura
+              </Button>
+              <span className="text-xs text-muted-foreground self-center">Escolha PFX ou Token no modal antes de assinar.</span>
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -900,6 +947,66 @@ export default function PreviewReceitaMedico() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal de Assinatura */}
+      <Dialog open={signDialogOpen} onOpenChange={setSignDialogOpen}>
+        <DialogContent className="sm:max-w-[640px] space-y-6">
+          <DialogHeader>
+            <DialogTitle>Assinar receita</DialogTitle>
+            <DialogDescription>
+              {"Escolha Token (PIN) ou PFX para assinar."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Separator />
+
+          <Tabs value={signMethod} onValueChange={setSignMethod} className="w-full">
+            <TabsList className="grid grid-cols-2 w-full">
+              <TabsTrigger value="token">Token</TabsTrigger>
+              <TabsTrigger value="pfx">PFX (alternativa)</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="token">
+              <div className="space-y-5 rounded-md border p-4 bg-muted/40">
+                <div className="space-y-2">
+                  <Label>PIN do Token</Label>
+                  <Input type="password" value={tokenPin} onChange={(e) => setTokenPin(e.target.value)} placeholder="PIN" />
+                </div>
+                <p className="text-xs text-muted-foreground">Conecte seu token e insira o PIN para assinar.</p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="pfx">
+              <div className="space-y-5 rounded-md border p-4 bg-muted/40">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label>Arquivo PFX</Label>
+                  </div>
+                  <Input type="file" accept=".pfx,.p12" onChange={(e) => setPfxFile(e.target.files?.[0] || null)} />
+                  {pfxFile && (
+                    <p className="text-xs text-muted-foreground">Selecionado: {pfxFile.name} ({Math.ceil(pfxFile.size/1024)} KB)</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label>Senha do PFX</Label>
+                  </div>
+                  <Input type="password" value={pfxPassword} onChange={(e) => setPfxPassword(e.target.value)} placeholder="Informe a senha" />
+                  {(!pfxPassword || !pfxPassword.trim()) && (
+                    <p className="text-xs text-red-600">Senha obrigatória para assinatura.</p>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setSignDialogOpen(false)}>Cancelar</Button>
+            <Button type="button" onClick={handleConfirmAssinar}>Assinar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
