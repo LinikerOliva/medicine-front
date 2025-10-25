@@ -14,6 +14,8 @@ import { FileText, Stethoscope, ClipboardList, Save, Mic, MicOff, CircleDot } fr
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { aiService } from "@/services/aiService"
+import { PatientProfileSummary } from "@/components/patient-profile-summary"
+import { DatePicker } from "@/components/ui/date-picker"
 
 export default function IniciarConsulta() {
   const { id } = useParams()
@@ -39,6 +41,7 @@ export default function IniciarConsulta() {
     exames: "",
     retorno: "",
   })
+  const [activeTab, setActiveTab] = useState("anamnese")
   const handleFieldChange = (e) => {
     const { id, value } = e.target
     setFormData((prev) => ({ ...prev, [id]: value }))
@@ -107,6 +110,55 @@ export default function IniciarConsulta() {
       if (saved) setTranscript(saved)
     } catch {}
   }, [storageKey])
+
+  // Habilitar deep-link por hash para selecionar a aba
+  useEffect(() => {
+    const hash = (location.hash || "").toLowerCase()
+    const tabMap = {
+      "#diagnostico": "diagnostico",
+      "#problems_and_diagnostics": "diagnostico",
+      "#exame-fisico": "exame-fisico",
+      "#exame_fisico": "exame-fisico",
+      "#anamnese": "anamnese",
+    }
+    const targetTab = tabMap[hash]
+    if (targetTab) setActiveTab(targetTab)
+
+    const idMap = {
+      "#diagnostico": "diagnostico",
+      "#problems_and_diagnostics": "diagnostico",
+      "#exame-fisico": "exame-fisico",
+      "#exame_fisico": "exame-fisico",
+      "#anamnese": "anamnese",
+    }
+
+    const tryScroll = (attempt = 0) => {
+      const targetId = idMap[hash]
+      const el = document.getElementById(targetId) || document.getElementById(hash.replace(/^#/, ""))
+      if (el) {
+        try { el.scrollIntoView({ behavior: "smooth", block: "start" }) } catch {}
+        return
+      }
+      if (attempt < 10) setTimeout(() => tryScroll(attempt + 1), 80)
+    }
+    if (hash) setTimeout(() => tryScroll(0), 50)
+  }, [location.hash])
+
+  // Sincronizar hash com a aba ativa para deep-links estáveis
+  useEffect(() => {
+    const tabToHash = {
+      anamnese: "#anamnese",
+      "exame-fisico": "#exame-fisico",
+      diagnostico: "#problems_and_diagnostics",
+    }
+    const target = tabToHash[activeTab]
+    if (!target) return
+    if ((location.hash || "") !== target) {
+      try {
+        navigate(`${location.pathname}${target}`, { replace: true })
+      } catch {}
+    }
+  }, [activeTab])
 
   // Carregar dados do paciente por id para preencher alergias automaticamente
   useEffect(() => {
@@ -275,123 +327,168 @@ export default function IniciarConsulta() {
         recognitionRef.current.stop()
         recognitionRef.current = null
       }
-    } catch {}
+    } catch (e) {}
 
     // NOVO: ao parar manualmente e se houver transcrição e ainda não aplicamos IA, chama backend
-    try {
-      const hasText = (transcript || "").trim().length > 0
-      if (hasText && !aiApplied && consultaId) {
-        try { await medicoService.finalizarConsulta(consultaId) } catch {}
-        try {
-          const extracted = extractFromTranscript(transcript || "")
-          const aiData = await medicoService.sumarizarConsulta(consultaId, {
-            transcript: transcript || "",
-            extracted: {
-              queixa: extracted.queixa || "",
-              historia: extracted.historia || "",
-              diagnostico: extracted.diagnostico || "",
-              conduta: extracted.conduta || "",
-              medicamentos: extracted.medicamentos || "",
-              posologia: extracted.posologia || "",
-              pressao: extracted.pressao || "",
-              frequencia_cardiaca: extracted["frequencia-cardiaca"] || extracted.frequencia || "",
-              temperatura: extracted.temperatura || "",
-              saturacao: extracted.saturacao || "",
-            },
-            form: {
-              queixa_principal: formData.queixa || "",
-              historia_doenca_atual: formData.historia || "",
-              diagnostico_principal: formData.diagnostico || "",
-              conduta: formData.conduta || "",
-              medicamentos_uso: formData.medicamentos || "",
-              alergias: formData.alergias || "",
-              pressao: formData.pressao || "",
-              frequencia_cardiaca: formData.frequencia || formData["frequencia-cardiaca"] || "",
-              temperatura: formData.temperatura || "",
-              saturacao: formData.saturacao || "",
-            },
-          })
+    const hasText = (transcript || "").trim().length > 0
+    if (hasText && !aiApplied && consultaId) {
+      try {
+        const extracted = extractFromTranscript(transcript || "")
+        const aiData = await medicoService.finalizarConsultaIA(consultaId, {
+          transcript: transcript || "",
+          extracted: {
+            queixa: extracted.queixa || "",
+            historia: extracted.historia || "",
+            diagnostico: extracted.diagnostico || "",
+            conduta: extracted.conduta || "",
+            medicamentos: extracted.medicamentos || "",
+            posologia: extracted.posologia || "",
+            pressao: extracted.pressao || "",
+            frequencia_cardiaca: extracted["frequencia-cardiaca"] || extracted.frequencia || "",
+            temperatura: extracted.temperatura || "",
+            saturacao: extracted.saturacao || "",
+          },
+          form: {
+            queixa_principal: formData.queixa || "",
+            historia_doenca_atual: formData.historia || "",
+            diagnostico_principal: formData.diagnostico || "",
+            conduta: formData.conduta || "",
+            medicamentos_uso: formData.medicamentos || "",
+            alergias: formData.alergias || "",
+            pressao: formData.pressao || "",
+            frequencia_cardiaca: formData.frequencia || formData["frequencia-cardiaca"] || "",
+            temperatura: formData.temperatura || "",
+            saturacao: formData.saturacao || "",
+          },
+        })
 
-          const candidates = [aiData, aiData?.data, aiData?.result, aiData?.output, aiData?.summary, aiData?.sumarizacao, aiData?.resumo, aiData?.fields].filter(Boolean)
-          const read = (obj, path) => path.split('.').reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), obj)
-          const pick = (paths) => {
-            for (const obj of candidates) {
-              for (const p of paths) {
-                const v = read(obj, p)
-                if (typeof v === 'string' && v.trim()) return v.trim()
-              }
+        const candidates = [aiData, aiData?.data, aiData?.result, aiData?.output, aiData?.summary, aiData?.sumarizacao, aiData?.resumo, aiData?.fields].filter(Boolean)
+        const read = (obj, path) => path.split('.').reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), obj)
+        const pick = (paths) => {
+          for (const obj of candidates) {
+            for (const p of paths) {
+              const v = read(obj, p)
+              if (typeof v === 'string' && v.trim()) return v.trim()
             }
-            return ''
           }
-
-          const filled = {
-            queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
-            historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
-            medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
-            alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
-            diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
-            conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
-            posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
-            pressao: formData.pressao || pick(["pressao", "sinais_vitais.pressao"]) || extracted.pressao || "",
-            "frequencia-cardiaca": formData["frequencia-cardiaca"] || formData.frequencia || pick(["frequencia_cardiaca", "sinais_vitais.frequencia_cardiaca", "fc", "heart_rate"]) || extracted["frequencia-cardiaca"] || extracted.frequencia || "",
-            temperatura: formData.temperatura || pick(["temperatura", "sinais_vitais.temperatura"]) || extracted.temperatura || "",
-            saturacao: formData.saturacao || pick(["saturacao", "sinais_vitais.saturacao", "spo2"]) || extracted.saturacao || "",
-          }
-
-          setFormData((prev) => ({ ...prev, ...filled }))
-          setAiApplied(true)
-          toast({ title: "Resumo aplicado", description: "Pré-preenchimento realizado a partir da transcrição." })
-        } catch (e) {
-          console.debug("[auto-sumarizar] falhou:", e?.message)
+          return ''
         }
+
+        const filled = {
+          queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
+          historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
+          medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
+          alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
+          diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
+          conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
+          posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
+          pressao: formData.pressao || pick(["pressao", "sinais_vitais.pressao"]) || extracted.pressao || "",
+          "frequencia-cardiaca": formData["frequencia-cardiaca"] || formData.frequencia || pick(["frequencia_cardiaca", "sinais_vitais.frequencia_cardiaca", "fc", "heart_rate"]) || extracted["frequencia-cardiaca"] || extracted.frequencia || "",
+          temperatura: formData.temperatura || pick(["temperatura", "sinais_vitais.temperatura"]) || extracted.temperatura || "",
+          saturacao: formData.saturacao || pick(["saturacao", "sinais_vitais.saturacao", "spo2"]) || extracted.saturacao || "",
+        }
+
+        setFormData((prev) => ({ ...prev, ...filled }))
+        setAiApplied(true)
+        toast({ title: "Resumo aplicado", description: "Pré-preenchimento realizado a partir da transcrição." })
+      } catch (e) {
+        console.debug("[auto-sumarizar] falhou:", e?.message)
       }
-    } catch {}
+    }
   }
 
   // Util: extração simples a partir do texto transcrito
   function extractFromTranscript(text = "") {
-    const norm = text.replace(/\r/g, "").trim()
-
+    let norm = String(text || "").replace(/\r/g, "").trim()
+    // Inserir quebras de linha antes de rótulos comuns quando surgem no meio da frase
+    norm = norm
+      .replace(/(?:^|[.!?])\s*(Ao exame)\s*:/gi, "\n$1:")
+      .replace(/(?:^|[.!?])\s*(Exame Físico|Exame)\s*:/gi, "\n$1:")
+      .replace(/(?:^|[.!?])\s*(Diagnóstico(?: Principal)?)\s*:/gi, "\n$1:")
+      .replace(/(?:^|[.!?])\s*(Conduta)(?!\s*[:：])/gi, "\n$1:")
+      .replace(/(?:^|[.!?])\s*(Prescrição|Prescricao|Receita|Rx)\s*:/gi, "\n$1:")
+      .replace(/(?:^|[.!?])\s*(História da Doença Atual|HDA|História|Historia)\s*:/gi, "\n$1:")
+   
+    // Tokens possíveis de início de seção
+    const sectionStartTokens = [
+      "Queixa",
+      "Queixa Principal",
+      "História",
+      "Historia",
+      "HDA",
+      "História da Doença Atual",
+      "Exame",
+      "Exame Físico",
+      "Ao exame",
+      "Diagnóstico",
+      "Diagnostico",
+      "Diagnóstico Principal",
+      "Conduta",
+      "Plano",
+      "Plano Terapêutico",
+      "Prescrição",
+      "Prescricao",
+      "Receita",
+      "Rx",
+      "Alergias",
+      "Orientações",
+      "Orientacoes",
+      "Observações",
+      "Observacoes",
+      "Exames",
+      "Retorno",
+    ]
+  
     const getSection = (labels) => {
-      const regex = new RegExp(`(?:^|\n)\s*(?:${labels.join("|")})\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:Queixa|História|Historia|Exame|Diagn[oó]stico|Conduta|Prescri|Rx|Receita)\s*[:：]|$)`, "i")
-      const m = norm.match(regex)
+      const labelRe = labels.join("|")
+      const boundaryRe = sectionStartTokens.join("|")
+      const rx = new RegExp(
+        `(?:^|\n)\s*(?:${labelRe})(?:[^\n:]{0,50})?\s*[:：]\s*([\s\S]*?)(?=\s*(?:${boundaryRe})\s*[:：]|$)`,
+        "i"
+      )
+      const m = norm.match(rx)
       return m ? m[1].trim() : ""
     }
-
+  
     const queixa = getSection(["Queixa", "Queixa Principal"]) || norm.split(/\n\n|\n-/)[0]?.slice(0, 300) || ""
-    const historia = getSection(["História", "Historia", "HDA", "História da Doença Atual"]) || ""
-    const diagnostico = getSection(["Diagnóstico", "Diagnostico"]) || ""
+    const historia = getSection(["História da Doença Atual", "HDA", "História", "Historia"]) || ""
+    const diagnostico = getSection(["Diagnóstico Principal", "Diagnóstico", "Diagnostico"]) || ""
     const conduta = getSection(["Conduta", "Plano", "Plano Terapêutico"]) || ""
     const prescricao = getSection(["Prescrição", "Prescricao", "Receita", "Rx"]) || ""
-
-    // Tentar separar medicamentos e posologia de uma seção de prescrição
+  
     let medicamentos = ""
     let posologia = ""
+  
     if (prescricao) {
       const lines = prescricao.split(/\n+/).map((l) => l.trim()).filter(Boolean)
-      if (lines.length === 1) {
-        medicamentos = lines[0]
-        posologia = "Conforme descrito na prescrição."
-      } else if (lines.length > 1) {
-        medicamentos = lines[0]
-        posologia = lines.slice(1).join(" ")
-      }
+      // Usar as linhas completas como medicamentos para garantir visibilidade no resumo
+      medicamentos = lines.join("\n")
+      // Extrair posologia quando possível (após "–" ou após dosagem)
+      const posoParts = lines
+        .map((l) => {
+          const dashIdx = l.indexOf("–")
+          if (dashIdx >= 0) return l.slice(dashIdx + 1).trim()
+          const m = l.match(/(?:\d+\s?(mg|ml|g|mcg)[^,;]*)[,;]?(.*)$/i)
+          return m ? (m[2] || "").trim() : ""
+        })
+        .filter(Boolean)
+      if (posoParts.length) posologia = posoParts.join("\n")
     }
-
+  
     if (!medicamentos && conduta) {
-      const medLine = (conduta.match(/.+?(\d+\s?(mg|ml|g|mcg)|comprimid|c[aá]psul|gotas).*/i) || [""])[0]
+      const medLine = (conduta.match(/.+?(\d+\s?(mg|ml|g|mcg)|comprimid|c[aá]psul|gotas|spray).*/i) || [""])[0]
       if (medLine) {
         medicamentos = medLine.trim()
         posologia = "Conforme conduta descrita."
       }
     }
-
+  
     // Extração simples de sinais vitais no texto completo
     const pressao = (norm.match(/(PA|press[aã]o( arterial)?)[^\d]*(\d{2,3}\s*\/\s*\d{2,3})\s*(mmhg)?/i) || ["", "", "", ""])[3] || ""
     const frequencia = (norm.match(/(FC|freq[uê]ncia\s*card[ií]aca)[^\d]*(\d{2,3})\s*(bpm)?/i) || ["", "", ""])[2] || ""
     const temperatura = (norm.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""])[3] || ""
     const saturacao = (norm.match(/(sat|satura[cç][aã]o)[^\d]*(\d{2})\s*%/i) || ["", "", ""])[2] || ""
-
+  
     return { queixa, historia, diagnostico, conduta, medicamentos, posologia, pressao, "frequencia-cardiaca": frequencia, temperatura, saturacao }
   }
 
@@ -439,10 +536,9 @@ export default function IniciarConsulta() {
       // ETAPA 1: Finalizar e buscar resumo da IA para preencher os campos na tela
       if (!aiApplied) {
         if (consultaId) {
-          try { await medicoService.finalizarConsulta(consultaId) } catch {}
           let aiData = null
           try {
-            aiData = await medicoService.sumarizarConsulta(consultaId, {
+            aiData = await medicoService.finalizarConsultaIA(consultaId, {
               transcript: transcript || "",
               extracted: {
                 queixa: extracted.queixa || "",
@@ -524,9 +620,10 @@ export default function IniciarConsulta() {
           setAiApplied(true)
           toast({
             title: "Resumo aplicado",
-            description: "Campos preenchidos com a sugestão da IA. Salvando prontuário...",
+            description: "Campos preenchidos com a sugestão da IA. Revise e clique em 'Salvar Prontuário'.",
           })
-          // NÃO retornar: seguimos para salvar
+          setIsSubmitting(false)
+          return
         } else {
           // Sem consultaId: ainda assim tentar sumarizar com IA a partir da transcrição
           try {
@@ -575,7 +672,9 @@ export default function IniciarConsulta() {
             filledForSave = filled
             setFormData((prev) => ({ ...prev, ...filled }))
             setAiApplied(true)
-            toast({ title: "Campos sugeridos", description: "Usamos a transcrição e a IA para preencher. Salvando prontuário..." })
+            toast({ title: "Campos sugeridos", description: "Usamos a transcrição e a IA para preencher. Revise e clique em 'Salvar Prontuário'." })
+            setIsSubmitting(false)
+            return
           } catch (e) {
             // Fallback final: usar apenas o que foi extraído da transcrição
             const filled = {
@@ -589,9 +688,10 @@ export default function IniciarConsulta() {
             filledForSave = filled
             setFormData((prev) => ({ ...prev, ...filled }))
             setAiApplied(true)
-            toast({ title: "Campos sugeridos", description: "Usamos a transcrição para preencher. Salvando prontuário..." })
+            toast({ title: "Campos sugeridos", description: "Usamos a transcrição para preencher. Revise e clique em 'Salvar Prontuário'." })
+            setIsSubmitting(false)
+            return
           }
-          // NÃO retornar: seguimos para salvar
         }
       }
 
@@ -691,6 +791,8 @@ export default function IniciarConsulta() {
         <p className="text-muted-foreground">Paciente ID: {id}{consultaId ? ` • Consulta #${consultaId}` : ""}</p>
       </div>
 
+      <PatientProfileSummary patientId={id} isPacienteView={false} profile={pacienteInfo?.user} patient={pacienteInfo} loading={!pacienteInfo} />
+
       {/* Transcrição em tempo real */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -751,7 +853,7 @@ export default function IniciarConsulta() {
       </Card>
 
       <form onSubmit={handleSubmit}>
-        <Tabs defaultValue="anamnese" className="space-y-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="anamnese" className="flex items-center gap-2">
               <Stethoscope className="h-4 w-4" />
@@ -868,7 +970,7 @@ export default function IniciarConsulta() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="diagnostico">
+          <TabsContent value="diagnostico" id="problems_and_diagnostics">
             <Card>
               <CardHeader>
                 <CardTitle>Diagnóstico e Conduta</CardTitle>
@@ -895,7 +997,7 @@ export default function IniciarConsulta() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="retorno">Retorno</Label>
-                  <Input id="retorno" type="date" className="max-w-xs" value={formData.retorno} onChange={handleFieldChange} />
+                  <DatePicker id="retorno" name="retorno" className="max-w-xs" value={formData.retorno} onChange={(val) => handleFieldChange({ target: { name: "retorno", value: val } })} minDate={new Date()} />
                 </div>
               </CardContent>
               {/* Botões foram movidos para um rodapé fixo do formulário, visível em todas as abas */}

@@ -6,9 +6,30 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Calendar, FileText, ClipboardList, User } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
+import { useEffect, useState } from "react"
+import api from "@/services/api"
 
 export default function PacientePerfil() {
   const { id } = useParams() // Obtém o parâmetro "id" da URL
+  const [patient, setPatient] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const baseRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+        const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+        const res = await api.get(`${base}${id}/`)
+        if (active) setPatient(res.data)
+      } catch (e) {
+        console.debug("[PerfilPacienteMedico] Falha ao buscar paciente por id:", e?.response?.status)
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [id])
 
   const medicoTabs = [
     { label: "Resumo", href: `/medico/paciente/${id}/perfil` },
@@ -25,136 +46,74 @@ export default function PacientePerfil() {
         <p className="text-muted-foreground">Visualize e gerencie as informações do paciente</p>
       </div>
 
-      <PatientProfileSummary patientId={id} isPacienteView={false} />
+      {/* Cabeçalho com resumo do paciente */}
+      <PatientProfileSummary patientId={id} isPacienteView={false} profile={patient?.user} patient={patient} loading={loading} />
 
+      {/* Abas de navegação */}
       <ProfileTabs tabs={medicoTabs} basePath={`/medico/paciente/${id}`} />
 
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* Seções do Perfil */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Informações Pessoais */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Informações Pessoais
-            </CardTitle>
+            <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> Informações Pessoais</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Nome</p>
-                  <p className="text-muted-foreground">—</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Data de Nascimento</p>
-                  <p className="text-muted-foreground">—</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">CPF</p>
-                  <p className="text-muted-foreground">—</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Telefone</p>
-                  <p className="text-muted-foreground">—</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-sm font-medium text-muted-foreground">Endereço</p>
-                  <p className="text-muted-foreground">—</p>
-                </div>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Nome</p>
+              <p className="text-muted-foreground">{(patient?.nome || [patient?.user?.first_name, patient?.user?.last_name].filter(Boolean).join(" ") || patient?.user?.username) || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Data de Nascimento</p>
+              <p className="text-muted-foreground">{(patient?.data_nascimento || patient?.user?.data_nascimento) ? new Date(patient?.data_nascimento || patient?.user?.data_nascimento).toLocaleDateString("pt-BR") : "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">CPF</p>
+              <p className="text-muted-foreground">{patient?.cpf || patient?.user?.cpf || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Telefone</p>
+              <p className="text-muted-foreground">{patient?.telefone || patient?.user?.phone || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Endereço</p>
+              <p className="text-muted-foreground">{patient?.endereco || patient?.user?.address || "—"}</p>
             </div>
           </CardContent>
         </Card>
 
+        {/* Resumo Médico */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Resumo Médico
-            </CardTitle>
+            <CardTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5" /> Resumo Médico</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Tipo Sanguíneo</p>
-                <p>O+</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Alergias</p>
-                <p>Penicilina, Amendoim</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Condições Crônicas</p>
-                <p>Hipertensão</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Medicamentos em Uso</p>
-                <p>Losartana 50mg, Hidroclorotiazida 25mg</p>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Tipo Sanguíneo</p>
+              <p className="text-muted-foreground">{patient?.tipo_sanguineo || "—"}</p>
             </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Alergias</p>
+              <p className="text-muted-foreground">{Array.isArray(patient?.alergias) ? (patient.alergias.length ? patient.alergias.join(", ") : "—") : (patient?.alergias || "—")}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Condições Crônicas</p>
+              <p className="text-muted-foreground">{patient?.condicoes_cronicas || "—"}</p>
+            </div>
+            {/* Mantém medicamentos em uso como estático se não houver dado */}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Histórico de Consultas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 rounded-lg border p-3">
-                  <div className="flex-1">
-                    <p className="font-medium">Consulta de Rotina</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(Date.now() - i * 30 * 86400000).toLocaleDateString()}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Dr. Carlos Oliveira</p>
-                  </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to={`/medico/paciente/${id}/consultas`}>Ver</Link>
-                  </Button>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" asChild>
-                <Link to={`/medico/paciente/${id}/consultas`}>Ver Todas</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5" />
-              Exames Recentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 rounded-lg border p-3">
-                  <div className="flex-1">
-                    <p className="font-medium">Hemograma Completo</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(Date.now() - i * 7 * 86400000).toLocaleDateString()}
-                    </p>
-                    <p className="text-sm text-muted-foreground">Solicitado por: Dr. Ana Souza</p>
-                  </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to={`/medico/paciente/${id}/exames`}>Ver</Link>
-                  </Button>
-                </div>
-              ))}
-              <Button variant="outline" size="sm" asChild>
-                <Link to={`/medico/paciente/${id}/exames`}>Ver Todos</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Ações Rápidas */}
+      <div className="flex justify-end gap-3">
+        <Button asChild>
+          <Link to={`/medico/paciente/${id}/iniciar-consulta`}>Iniciar Consulta</Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link to={`/medico/paciente/${id}/prontuario`}>Ver Prontuário</Link>
+        </Button>
       </div>
     </div>
   )

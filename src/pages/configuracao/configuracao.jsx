@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { MedicoRegistration } from "./medico-registration"
@@ -594,12 +595,12 @@ export default function Configuracao() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="data_nascimento">Data de Nascimento</Label>
-                        <Input
+                        <DatePicker
                           id="data_nascimento"
                           name="data_nascimento"
-                          type="date"
                           value={form.data_nascimento || ""}
-                          onChange={handleFormChange}
+                          onChange={(val) => handleFormChange({ target: { name: "data_nascimento", value: val } })}
+                          maxDate={new Date()}
                         />
                       </div>
                     </div>
@@ -826,7 +827,7 @@ export default function Configuracao() {
                       <div className="space-y-1">
                         <p className="font-medium text-green-700">Certificado cadastrado</p>
                         <p className="text-sm text-muted-foreground">
-                          Titular: {certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
+                          Titular: {certInfo?.owner_name || certInfo?.subject_name || certInfo?.subject || certInfo?.nome || "—"}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           Emitente: {certInfo?.issuer || certInfo?.issuer_name || certInfo?.emitente || "—"}

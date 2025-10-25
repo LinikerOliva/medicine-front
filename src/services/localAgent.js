@@ -114,9 +114,9 @@ export const localAgent = {
     candidates.push("/assinatura/finalizar/")
     candidates.push("/documentos/assinar_externo/")
     candidates.push("/assinatura/externa/finalizar/")
-    candidates.push(`${baseReceitas}finalizar_assinatura_externa/")
+    candidates.push(`${baseReceitas}finalizar_assinatura_externa/`)
     if (receitaId) {
-      candidates.push(`${baseReceitas}${receitaId}/finalizar_assinatura_externa/")
+      candidates.push(`${baseReceitas}${receitaId}/finalizar_assinatura_externa/`)
     }
 
     let lastErr = null

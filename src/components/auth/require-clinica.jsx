@@ -13,6 +13,9 @@ export default function RequireClinica({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  // Token válido, mas usuário não carregado ainda: não bloquear
+  if (!user) return children
+
   const role = user?.role || user?.tipo
 
   // Permite clínica e admin

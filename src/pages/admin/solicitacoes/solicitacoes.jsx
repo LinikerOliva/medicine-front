@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,8 @@ import {
 import { Link } from "react-router-dom"
 import { adminService } from "@/services/adminService"
 import { useToast } from "@/hooks/use-toast"
+import { useDebounce } from "@/hooks/useDebounce"
+import { sanitizeString, validateText } from "@/utils/inputValidation"
 
 export default function AdminSolicitacoes() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -30,15 +32,33 @@ export default function AdminSolicitacoes() {
   const [urgenciaFilter, setUrgenciaFilter] = useState("all")
   const [isLoading, setIsLoading] = useState(false)
   const [solicitacoes, setSolicitacoes] = useState([])
+  const [loadError, setLoadError] = useState(null)
   const abortRef = useRef(null)
   const { toast } = useToast()
 
+  // Debounce do termo de busca para evitar muitas requisições
+  const debouncedSearchTerm = useDebounce(searchTerm, 500)
+
   const queryKey = useMemo(() => ({
-    search: searchTerm.trim(),
+    search: sanitizeString(debouncedSearchTerm.trim()),
     status: statusFilter,
     tipo: tipoFilter,
     urgencia: urgenciaFilter,
-  }), [searchTerm, statusFilter, tipoFilter, urgenciaFilter])
+  }), [debouncedSearchTerm, statusFilter, tipoFilter, urgenciaFilter])
+
+  // Função otimizada para buscar solicitações
+  const fetchSolicitacoes = useCallback(async (params, signal) => {
+    try {
+      const data = await adminService.getSolicitacoes(params, { signal })
+      const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      return items
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        console.error('Erro ao buscar solicitações:', error)
+      }
+      throw error
+    }
+  }, [])
 
   useEffect(() => {
     setIsLoading(true)
@@ -49,6 +69,7 @@ export default function AdminSolicitacoes() {
       }
       const controller = new AbortController()
       abortRef.current = controller
+      
       try {
         const params = {}
         if (queryKey.status !== "all") params.status = queryKey.status
@@ -56,23 +77,23 @@ export default function AdminSolicitacoes() {
         if (queryKey.urgencia !== "all") params.urgencia = queryKey.urgencia
         if (queryKey.search) params.search = queryKey.search
 
-        const data = await adminService.getSolicitacoes(params, { signal: controller.signal })
-        const items = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+        const items = await fetchSolicitacoes(params, controller.signal)
         setSolicitacoes(items)
+        setLoadError(null)
       } catch (e) {
         if (e?.name !== "AbortError") {
-          // evita log ruidoso em DEV
           setSolicitacoes([])
+          setLoadError("Não foi possível carregar as solicitações.")
         }
       } finally {
         setIsLoading(false)
       }
-    }, 400)
+    }, 200) // Reduzido de 400ms para 200ms
     return () => clearTimeout(t)
-  }, [queryKey])
+  }, [queryKey, fetchSolicitacoes])
 
-  // Ações rápidas na lista
-  const handleAprovar = async (id) => {
+  // Ações rápidas na lista - otimizadas com useCallback
+  const handleAprovar = useCallback(async (id) => {
     setIsLoading(true)
     try {
       const updated = await adminService.aprovarSolicitacao(id)
@@ -91,20 +112,31 @@ export default function AdminSolicitacoes() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
 
-  const handleRejeitar = async (id) => {
+  const handleRejeitar = useCallback(async (id) => {
     const motivo = window.prompt("Informe o motivo da rejeição:") // simples prompt
     if (motivo === null) return // cancelado
+    
+    // Valida e sanitiza o motivo
+    const validationResult = validateText(motivo, 500)
+    if (!validationResult.isValid) {
+      toast({ 
+        title: "Motivo inválido", 
+        description: validationResult.error, 
+        variant: "destructive" 
+      })
+      return
+    }
     setIsLoading(true)
     try {
-      const updated = await adminService.rejeitarSolicitacao(id, (motivo || "").trim())
+      const updated = await adminService.rejeitarSolicitacao(id, validationResult.value)
       setSolicitacoes((prev) => prev.map((s) => (s.id === id ? {
         ...s,
         status: "rejected",
         rejeitadoPor: updated?.rejected_by || s.rejeitadoPor || "",
         dataRejeicao: updated?.rejected_at || s.dataRejeicao || new Date().toISOString(),
-        motivoRejeicao: updated?.rejection_reason || motivo || s.motivoRejeicao || "",
+        motivoRejeicao: updated?.rejection_reason || validationResult.value || s.motivoRejeicao || "",
         aprovadoPor: "",
         dataAprovacao: null,
       } : s)))
@@ -114,26 +146,28 @@ export default function AdminSolicitacoes() {
     } finally {
       setIsLoading(false)
     }
-  }
-  const getStatusBadge = (status) => {
+  }, [toast])
+
+  // Memoização dos componentes de badge para evitar re-renders desnecessários
+  const getStatusBadge = useCallback((status) => {
     switch (status) {
       case "pending":
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Badge variant="outline" className="badge-medical-warning">
             <Clock className="mr-1 h-3 w-3" />
             Pendente
           </Badge>
         )
       case "approved":
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="outline" className="badge-medical-success">
             <CheckCircle className="mr-1 h-3 w-3" />
             Aprovado
           </Badge>
         )
       case "rejected":
         return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+          <Badge variant="outline" className="badge-medical-error">
             <XCircle className="mr-1 h-3 w-3" />
             Rejeitado
           </Badge>
@@ -141,9 +175,9 @@ export default function AdminSolicitacoes() {
       default:
         return null
     }
-  }
+  }, [])
 
-  const getUrgenciaBadge = (urgencia) => {
+  const getUrgenciaBadge = useCallback((urgencia) => {
     switch (urgencia) {
       case "alta":
         return (
@@ -167,25 +201,50 @@ export default function AdminSolicitacoes() {
       default:
         return null
     }
-  }
+  }, [])
 
-  const filteredSolicitacoes = solicitacoes.filter((solicitacao) => {
-    const matchesSearch =
-      (solicitacao.nome || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (solicitacao.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (solicitacao.crm && String(solicitacao.crm).toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (solicitacao.cnpj && String(solicitacao.cnpj).includes(searchTerm))
+  // Memoização da filtragem para evitar recálculos desnecessários
+  const filteredSolicitacoes = useMemo(() => {
+    return solicitacoes.filter((solicitacao) => {
+      const searchLower = searchTerm.toLowerCase()
+      const matchesSearch =
+        (solicitacao.nome || "").toLowerCase().includes(searchLower) ||
+        (solicitacao.email || "").toLowerCase().includes(searchLower) ||
+        (solicitacao.crm && String(solicitacao.crm).toLowerCase().includes(searchLower)) ||
+        (solicitacao.cnpj && String(solicitacao.cnpj).includes(searchTerm))
 
-    const matchesStatus = statusFilter === "all" || solicitacao.status === statusFilter
-    const matchesTipo = tipoFilter === "all" || solicitacao.tipo === tipoFilter
-    const matchesUrgencia = urgenciaFilter === "all" || solicitacao.urgencia === urgenciaFilter
+      const matchesStatus = statusFilter === "all" || solicitacao.status === statusFilter
+      const matchesTipo = tipoFilter === "all" || solicitacao.tipo === tipoFilter
+      const matchesUrgencia = urgenciaFilter === "all" || solicitacao.urgencia === urgenciaFilter
 
-    return matchesSearch && matchesStatus && matchesTipo && matchesUrgencia
-  })
+      return matchesSearch && matchesStatus && matchesTipo && matchesUrgencia
+    })
+  }, [solicitacoes, searchTerm, statusFilter, tipoFilter, urgenciaFilter])
 
-  const pendingSolicitacoes = filteredSolicitacoes.filter((s) => s.status === "pending")
-  const approvedSolicitacoes = filteredSolicitacoes.filter((s) => s.status === "approved")
-  const rejectedSolicitacoes = filteredSolicitacoes.filter((s) => s.status === "rejected")
+  // Memoização das listas categorizadas
+  const categorizedSolicitacoes = useMemo(() => ({
+    pending: filteredSolicitacoes.filter((s) => s.status === "pending"),
+    approved: filteredSolicitacoes.filter((s) => s.status === "approved"),
+    rejected: filteredSolicitacoes.filter((s) => s.status === "rejected")
+  }), [filteredSolicitacoes])
+
+  // Handlers otimizados para filtros
+  const handleSearchChange = useCallback((e) => {
+    const value = sanitizeString(e.target.value)
+    setSearchTerm(value)
+  }, [])
+
+  const handleStatusFilterChange = useCallback((value) => {
+    setStatusFilter(value)
+  }, [])
+
+  const handleTipoFilterChange = useCallback((value) => {
+    setTipoFilter(value)
+  }, [])
+
+  const handleUrgenciaFilterChange = useCallback((value) => {
+    setUrgenciaFilter(value)
+  }, [])
 
   const SolicitacaoCard = ({ solicitacao }) => (
     <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl group">
@@ -335,7 +394,7 @@ export default function AdminSolicitacoes() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-amber-600 text-sm font-medium">Pendentes</p>
-                  <p className="text-2xl font-bold text-amber-700">{pendingSolicitacoes.length}</p>
+                  <p className="text-2xl font-bold text-amber-700">{categorizedSolicitacoes.pending.length}</p>
                 </div>
                 <div className="bg-amber-100 p-3 rounded-full">
                   <Clock className="h-6 w-6 text-amber-600" />
@@ -349,7 +408,7 @@ export default function AdminSolicitacoes() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-green-600 text-sm font-medium">Aprovadas</p>
-                  <p className="text-2xl font-bold text-green-700">{approvedSolicitacoes.length}</p>
+                  <p className="text-2xl font-bold text-green-700">{categorizedSolicitacoes.approved.length}</p>
                 </div>
                 <div className="bg-green-100 p-3 rounded-full">
                   <CheckCircle className="h-6 w-6 text-green-600" />
@@ -363,7 +422,7 @@ export default function AdminSolicitacoes() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-red-600 text-sm font-medium">Rejeitadas</p>
-                  <p className="text-2xl font-bold text-red-700">{rejectedSolicitacoes.length}</p>
+                  <p className="text-2xl font-bold text-red-700">{categorizedSolicitacoes.rejected.length}</p>
                 </div>
                 <div className="bg-red-100 p-3 rounded-full">
                   <XCircle className="h-6 w-6 text-red-600" />
@@ -408,11 +467,11 @@ export default function AdminSolicitacoes() {
                   placeholder="Buscar por nome, e-mail, CRM ou CNPJ" 
                   className="pl-9 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-lg"
                   value={searchTerm} 
-                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  onChange={handleSearchChange} 
                 />
               </div>
               <div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                   <SelectTrigger className="bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-lg">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
@@ -425,7 +484,7 @@ export default function AdminSolicitacoes() {
                 </Select>
               </div>
               <div>
-                <Select value={tipoFilter} onValueChange={setTipoFilter}>
+                <Select value={tipoFilter} onValueChange={handleTipoFilterChange}>
                   <SelectTrigger className="bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-lg">
                     <SelectValue placeholder="Tipo" />
                   </SelectTrigger>
@@ -437,7 +496,7 @@ export default function AdminSolicitacoes() {
                 </Select>
               </div>
               <div>
-                <Select value={urgenciaFilter} onValueChange={setUrgenciaFilter}>
+                <Select value={urgenciaFilter} onValueChange={handleUrgenciaFilterChange}>
                   <SelectTrigger className="bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500 rounded-lg">
                     <SelectValue placeholder="Urgência" />
                   </SelectTrigger>
@@ -494,6 +553,13 @@ export default function AdminSolicitacoes() {
                       <p className="text-muted-foreground">Carregando solicitações...</p>
                     </div>
                   </div>
+                ) : loadError ? (
+                  <div className="text-center py-12">
+                    <div className="bg-red-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
+                      <AlertTriangle className="h-8 w-8 text-red-600" />
+                    </div>
+                    <p className="text-red-700">{loadError}</p>
+                  </div>
                 ) : filteredSolicitacoes.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="bg-gray-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
@@ -518,7 +584,7 @@ export default function AdminSolicitacoes() {
                       <p className="text-muted-foreground">Carregando solicitações...</p>
                     </div>
                   </div>
-                ) : pendingSolicitacoes.length === 0 ? (
+                ) : categorizedSolicitacoes.pending.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="bg-amber-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
                       <Clock className="h-8 w-8 text-amber-600" />
@@ -527,7 +593,7 @@ export default function AdminSolicitacoes() {
                   </div>
                 ) : (
                   <div className="grid gap-6 md:grid-cols-2">
-                    {pendingSolicitacoes.map((sol) => (
+                    {categorizedSolicitacoes.pending.map((sol) => (
                       <SolicitacaoCard key={sol.id} solicitacao={sol} />
                     ))}
                   </div>
@@ -542,7 +608,7 @@ export default function AdminSolicitacoes() {
                       <p className="text-muted-foreground">Carregando solicitações...</p>
                     </div>
                   </div>
-                ) : approvedSolicitacoes.length === 0 ? (
+                ) : categorizedSolicitacoes.approved.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="bg-green-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
                       <CheckCircle className="h-8 w-8 text-green-600" />
@@ -551,7 +617,7 @@ export default function AdminSolicitacoes() {
                   </div>
                 ) : (
                   <div className="grid gap-6 md:grid-cols-2">
-                    {approvedSolicitacoes.map((sol) => (
+                    {categorizedSolicitacoes.approved.map((sol) => (
                       <SolicitacaoCard key={sol.id} solicitacao={sol} />
                     ))}
                   </div>
@@ -566,7 +632,7 @@ export default function AdminSolicitacoes() {
                       <p className="text-muted-foreground">Carregando solicitações...</p>
                     </div>
                   </div>
-                ) : rejectedSolicitacoes.length === 0 ? (
+                ) : categorizedSolicitacoes.rejected.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="bg-red-100 rounded-full p-4 w-16 h-16 mx-auto mb-4">
                       <XCircle className="h-8 w-8 text-red-600" />
@@ -575,7 +641,7 @@ export default function AdminSolicitacoes() {
                   </div>
                 ) : (
                   <div className="grid gap-6 md:grid-cols-2">
-                    {rejectedSolicitacoes.map((sol) => (
+                    {categorizedSolicitacoes.rejected.map((sol) => (
                       <SolicitacaoCard key={sol.id} solicitacao={sol} />
                     ))}
                   </div>

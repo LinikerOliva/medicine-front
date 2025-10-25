@@ -1,0 +1,67 @@
+/* Overrides modernos para o react-datepicker, alinhados ao design do projeto */
+
+/* Nível de popper para aparecer sobre diálogos e cards */
+.dp-popper {
+  z-index: 50;
+}
+
+/* Container principal do calendário */
+.dp-modern.react-datepicker {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 25px -5px rgba(2, 6, 23, 0.2);
+  overflow: hidden;
+  background: hsl(var(--card));
+}
+
+/* Cabeçalho e controles */
+.dp-modern .react-datepicker__header {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.dp-modern .react-datepicker__current-month,
+.dp-modern .react-datepicker__month-dropdown-container,
+.dp-modern .react-datepicker__year-dropdown-container {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+/* Dias e estados */
+.dp-modern .react-datepicker__day,
+.dp-modern .react-datepicker__day-name {
+  color: hsl(var(--foreground));
+}
+
+.dp-modern .react-datepicker__day:hover {
+  background-color: hsl(var(--primary) / 0.12);
+  border-radius: 0.5rem;
+}
+
+.dp-modern .react-datepicker__day--selected,
+.dp-modern .react-datepicker__day--keyboard-selected {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-radius: 0.5rem;
+}
+
+.dp-modern .react-datepicker__day--outside-month {
+  color: hsl(var(--muted-foreground));
+}
+
+/* Input com ícone do calendário já está estilizado no componente */
+
+/* Dark mode ajustes */
+.dark .dp-modern.react-datepicker {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .dp-modern .react-datepicker__header {
+  background: hsl(var(--card));
+  border-bottom-color: hsl(var(--border));
+}
+
+.dark .dp-modern .react-datepicker__day:hover {
+  background-color: hsl(var(--primary) / 0.2);
+}

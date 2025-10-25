@@ -3,6 +3,7 @@ import { ClinicaLayout } from "../../../layouts/clinica-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
+import { DatePicker } from "../../../components/ui/date-picker"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table"
 import { clinicaService } from "../../../services/clinicaService"
@@ -185,7 +186,7 @@ export default function ExamesClinica() {
               ))}
             </SelectContent>
           </Select>
-          <Input type="date" value={formNovo.data} onChange={(e) => setFormNovo({ ...formNovo, data: e.target.value })} />
+          <DatePicker value={formNovo.data} onChange={(val) => setFormNovo({ ...formNovo, data: val })} minDate={new Date()} />
           <div className="flex gap-2">
             <Input
               type="time"

@@ -9,6 +9,7 @@ import { FileText, CheckCircle2, Printer, Mail } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import api from "@/services/api"
 import { medicoService } from "@/services/medicoService"
+const getLocalAgent = async () => (await import("@/services/localAgent")).default
 
 import { useUser } from "@/contexts/user-context"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -16,6 +17,7 @@ import { Info } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
+import { DatePicker } from "@/components/ui/date-picker"
 
 export default function PreviewReceitaMedico() {
   // Estado para controlar assinatura obrigatória e blobs
@@ -27,7 +29,6 @@ export default function PreviewReceitaMedico() {
   const { id } = useParams()
   const location = useLocation()
   const { toast } = useToast()
-  const [qrDataUrl, setQrDataUrl] = useState("")
   const [lastReceitaId, setLastReceitaId] = useState(null)
   // Helper: SHA-256 em hex do conteúdo (Blob)
   const sha256Hex = async (blob) => {
@@ -35,25 +36,6 @@ export default function PreviewReceitaMedico() {
     const digest = await crypto.subtle.digest('SHA-256', ab)
     return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
   }
-  useEffect(() => {
-    let mounted = true
-    async function genQR() {
-      try {
-        if (!isSigned || !lastReceitaId) { setQrDataUrl(""); return }
-        const rid = lastReceitaId
-        const baseApi = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")
-        const verifyPath = `/receitas/validar/${rid}/`
-        const { toDataURL } = await import("qrcode")
-        const qrUrl = await toDataURL(`${baseApi}${verifyPath}`, { width: 196, margin: 0 })
-        if (mounted) setQrDataUrl(qrUrl)
-      } catch (e) {
-        try { console.warn("[PreviewReceita] Falha ao gerar QR:", e) } catch {}
-        if (mounted) setQrDataUrl("")
-      }
-    }
-    genQR()
-    return () => { mounted = false }
-  }, [isSigned, lastReceitaId, id])
   // Dados vindos da tela de finalizar consulta (se houver)
   const fromConsulta = location.state?.fromConsulta || {}
   // Novo: garantir leitura do consultaId tanto do topo do state quanto do objeto fromConsulta
@@ -139,7 +121,7 @@ export default function PreviewReceitaMedico() {
   const [tokenKeyId, setTokenKeyId] = useState("")
   
   // NOVO: certificado efêmero para assinatura (usando contexto)
-  const { ephemeralCertFile, setEphemeralCertFile, ephemeralCertPassword, setEphemeralCertPassword } = useUser()
+  const { ephemeralCertFile, setEphemeralCertFile, ephemeralCertPassword, setEphemeralCertPassword, clearEphemeralCert } = useUser()
   const [pfxFile, setPfxFile] = useState(ephemeralCertFile || null)
   const [pfxPassword, setPfxPassword] = useState(ephemeralCertPassword || "")
   // Sync local state to context
@@ -561,7 +543,8 @@ export default function PreviewReceitaMedico() {
     async function detect() {
       try {
         setDetectLoading(true)
-        const res = await localAgent.detectTokens()
+        const agent = await getLocalAgent()
+        const res = await agent.detectTokens()
         const list = Array.isArray(res?.tokens) ? res.tokens : (Array.isArray(res) ? res : [])
         if (!cancelled && list.length > 0) {
           setAgentAvailable(true)
@@ -595,57 +578,53 @@ export default function PreviewReceitaMedico() {
         return
       }
 
-      const rid = await ensureReceitaRecord()
-      const pdfFile = new File([lastGeneratedBlob], lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}.pdf`, { type: "application/pdf" })
-
-      setSubmitLoading(true)
-
-      // Fluxo preferencial: Token A3 via agente local (UX mínima)
-      if (signMethod === "token" && agentAvailable) {
-        try {
-          const preHash = await sha256Hex(lastGeneratedBlob)
-          const res = await localAgent.signHash({
-            document_hash: `sha256:${preHash}`,
-            format: "PAdES",
-            prefer_certificate: selectedToken || null,
-            pin: tokenPin || undefined,
-          })
-          if (res?.status !== "success") {
-            const msg = res?.message || "Falha ao assinar via token local"
-            throw new Error(msg)
-          }
-          const finalize = await localAgent.finalizeWithBackend({
-            receitaId: rid || undefined,
-            pdfFile,
-            assinatura: res.assinatura,
-            certificado: res.certificado,
-            thumbprint: res.thumbprint,
-            cert_subject: res.cert_subject,
-            timestamp: res.timestamp,
-            hash_pre: preHash,
-          })
-          const filename = finalize?.filename || (lastGeneratedFilename || pdfFile.name)
-          const blob = finalize?.blob || null
-          if (blob instanceof Blob) {
-            setIsSigned(true)
-            setSignedBlob(blob)
-            setSignedFilename(filename)
-            setSignDate(new Date().toISOString())
-            try {
-              const info = await medicoService.getCertificadoInfo()
-              setCertInfo(info || { subject: res?.cert_subject })
-            } catch {}
-            toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
-            setSignDialogOpen(false)
-            return
-          }
-          // Se não retornou blob, cair para fluxo existente
-        } catch (eToken) {
-          const msg = eToken?.message || "Erro ao assinar com token"
-          toast({ title: "Erro na assinatura", description: msg, variant: "destructive" })
-          // fallback para fluxo existente abaixo
+      // Validação de PFX: arquivo e senha obrigatórios
+      if (signMethod === "pfx") {
+        if (!pfxFile) {
+          toast({ title: "Certificado ausente", description: "Selecione o arquivo .pfx/.p12.", variant: "destructive" })
+          return
+        }
+        const name = String(pfxFile?.name || "").toLowerCase()
+        const validExt = name.endsWith(".pfx") || name.endsWith(".p12")
+        if (!validExt) {
+          toast({ title: "Arquivo inválido", description: "Apenas .pfx ou .p12 são aceitos.", variant: "destructive" })
+          return
+        }
+        const maxBytes = 10 * 1024 * 1024 // 10MB
+        if (pfxFile.size > maxBytes) {
+          toast({ title: "Arquivo muito grande", description: "Limite de 10 MB para PFX.", variant: "destructive" })
+          return
+        }
+        if (!pfxPassword || !pfxPassword.trim()) {
+          toast({ title: "Senha obrigatória", description: "Informe a senha do certificado PFX.", variant: "destructive" })
+          return
+        }
+        if (pfxPassword.trim().length < 4) {
+          toast({ title: "Senha fraca", description: "A senha deve ter pelo menos 4 caracteres.", variant: "destructive" })
+          return
         }
       }
+
+      // Fluxo preferencial: Token A3 via agente local
+      if (signMethod === "token") {
+        if (!agentAvailable) {
+          toast({ title: "Agente local indisponível", description: "Instale e execute o agente de assinatura A3 para prosseguir.", variant: "destructive" })
+          return
+        }
+        if (!tokenPin || tokenPin.trim().length < 4) {
+          toast({ title: "PIN inválido", description: "O PIN do token deve possuir ao menos 4 dígitos.", variant: "destructive" })
+          return
+        }
+      }
+
+      const rid = await ensureReceitaRecord()
+      const stampedBlob = await medicoService.applySignatureStamp(lastGeneratedBlob, {
+        signerName: form.medico || undefined,
+        receitaId: rid || undefined,
+      })
+      const pdfFile = new File([stampedBlob], lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}.pdf`, { type: "application/pdf" })
+
+      setSubmitLoading(true)
 
       // Fallback: usar implementação atual (PFX ou token via backend)
       const meta = {
@@ -684,6 +663,7 @@ export default function PreviewReceitaMedico() {
         }
       } catch {}
 
+      clearEphemeralCert()
       toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
       setSignDialogOpen(false)
     } catch (e) {
@@ -769,7 +749,7 @@ export default function PreviewReceitaMedico() {
               </div>
               <div>
                 <Label>Data de Nascimento</Label>
-                <Input type="date" name="data_nascimento" value={toInputDate(form.data_nascimento)} onChange={handleChange} />
+                <DatePicker name="data_nascimento" value={toInputDate(form.data_nascimento)} onChange={(val) => handleChange({ target: { name: "data_nascimento", value: val } })} maxDate={new Date()} />
               </div>
             </div>
 
@@ -785,7 +765,7 @@ export default function PreviewReceitaMedico() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Validade da Receita</Label>
-                <Input type="date" name="validade_receita" value={toInputDate(form.validade_receita)} onChange={handleChange} />
+                <DatePicker name="validade_receita" value={toInputDate(form.validade_receita)} onChange={(val) => handleChange({ target: { name: "validade_receita", value: val } })} minDate={new Date()} />
               </div>
               <div>
                 <Label>Formato</Label>
@@ -920,15 +900,24 @@ export default function PreviewReceitaMedico() {
                   )}
                   {isSigned ? (
                     <div className="text-xs text-muted-foreground mt-1">
-                      Assinado digitalmente
+                      Assinado digitalmente conforme ICP-Brasil
                       {certInfo?.subject_name || certInfo?.nome || certInfo?.subject ? (
-                        <> — Titular: {certInfo?.subject_name || certInfo?.nome || certInfo?.subject}</>
+                        <> • Titular: {certInfo?.subject_name || certInfo?.nome || certInfo?.subject}</>
+                      ) : null}
+                      {form.crm ? (
+                        <> • CRM: {form.crm}</>
+                      ) : null}
+                      {form.rg ? (
+                        <> • CPF: {form.rg}</>
                       ) : null}
                       {certInfo?.algorithm || "SHA256-RSA" ? (
                         <> • Algoritmo: {certInfo?.algorithm || "SHA256-RSA"}</>
                       ) : null}
                       {signDate ? (
-                        <> • Data: {new Date(signDate).toLocaleString()}</>
+                        <> • Carimbo: {new Date(signDate).toLocaleString()}</>
+                      ) : null}
+                      {(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until) ? (
+                        <> • Válido até: {new Date(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until).toLocaleDateString()}</>
                       ) : null}
                     </div>
                   ) : (
@@ -936,11 +925,6 @@ export default function PreviewReceitaMedico() {
                       Documento gerado. Assine para exibir o selo de assinatura digital.
                     </div>
                   )}
-                </div>
-                <div className="flex justify-center">
-                  {isSigned && qrDataUrl ? (
-                    <img src={qrDataUrl} alt="QR Code de verificação" className="w-24 h-24 border rounded" />
-                  ) : null}
                 </div>
               </div>
             </div>
@@ -979,10 +963,31 @@ export default function PreviewReceitaMedico() {
             <TabsContent value="pfx">
               <div className="space-y-5 rounded-md border p-4 bg-muted/40">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label>Arquivo PFX</Label>
-                  </div>
-                  <Input type="file" accept=".pfx,.p12" onChange={(e) => setPfxFile(e.target.files?.[0] || null)} />
+                  <Label>Arquivo PFX</Label>
+                  <Input
+                    type="file"
+                    accept=".pfx,.p12"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null
+                      if (!f) { setPfxFile(null); return }
+                      const name = (f.name || "").toLowerCase()
+                      const validExt = name.endsWith(".pfx") || name.endsWith(".p12")
+                      const maxBytes = 10 * 1024 * 1024
+                      if (!validExt) {
+                        toast({ title: "Arquivo inválido", description: "Selecione um .pfx ou .p12.", variant: "destructive" })
+                        e.target.value = ""
+                        setPfxFile(null)
+                        return
+                      }
+                      if (f.size > maxBytes) {
+                        toast({ title: "Arquivo muito grande", description: "Limite de 10 MB para PFX.", variant: "destructive" })
+                        e.target.value = ""
+                        setPfxFile(null)
+                        return
+                      }
+                      setPfxFile(f)
+                    }}
+                  />
                   {pfxFile && (
                     <p className="text-xs text-muted-foreground">Selecionado: {pfxFile.name} ({Math.ceil(pfxFile.size/1024)} KB)</p>
                   )}
@@ -1003,7 +1008,7 @@ export default function PreviewReceitaMedico() {
 
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setSignDialogOpen(false)}>Cancelar</Button>
-            <Button type="button" onClick={handleConfirmAssinar}>Assinar</Button>
+            <Button type="button" onClick={handleConfirmAssinar} disabled={submitLoading}>{submitLoading ? "Assinando..." : "Confirmar e Assinar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

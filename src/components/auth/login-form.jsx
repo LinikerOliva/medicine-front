@@ -10,6 +10,7 @@ import { useAuth } from "../../contexts/auth-context"
 import { useToast } from "../../hooks/use-toast"
 import { useTheme } from "../theme-provider"
 import { Stethoscope, Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { validateEmail, validateLoginPassword } from "../../utils/inputValidation"
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
@@ -18,13 +19,42 @@ export function LoginForm() {
   })
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [validationErrors, setValidationErrors] = useState({})
 
   const { login, loginWithGoogle } = useAuth()
   const { toast } = useToast()
   const navigate = useNavigate()
 
+  const validateForm = () => {
+    const errors = {}
+    
+    const emailValidation = validateEmail(formData.email)
+    if (!emailValidation.isValid) {
+      errors.email = emailValidation.error
+    }
+
+    const passwordValidation = validateLoginPassword(formData.password)
+    if (!passwordValidation.isValid) {
+      errors.password = passwordValidation.error
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Validação do lado cliente
+    if (!validateForm()) {
+      toast({
+        title: "Dados inválidos",
+        description: "Por favor, corrija os erros no formulário",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -67,10 +97,20 @@ export function LoginForm() {
   }
 
   const handleChange = (e) => {
+    const { name, value } = e.target
     setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value,
+      [name]: value,
     }))
+    
+    // Limpa erro de validação quando o usuário começa a digitar
+    if (validationErrors[name]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev }
+        delete newErrors[name]
+        return newErrors
+      })
+    }
   }
 
   // Google Sign-In
@@ -155,10 +195,10 @@ export function LoginForm() {
 
       <Card className="w-full max-w-md shadow-2xl border-0 backdrop-blur-xl bg-white/90 relative z-10">
         <CardHeader className="space-y-1 text-center pb-8">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+          <div className="mx-auto w-16 h-16 bg-medical-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
             <Stethoscope className="w-8 h-8 text-white" />
           </div>
-          <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+          <CardTitle className="text-3xl font-bold text-medical-primary">
             Portal Médico
           </CardTitle>
           <CardDescription className="text-slate-600 text-base">
@@ -181,8 +221,13 @@ export function LoginForm() {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="h-12 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 bg-white/80 backdrop-blur-sm transition-all duration-200"
+                className={`h-12 input-medical-primary bg-white/80 backdrop-blur-sm transition-all duration-200 ${
+                  validationErrors.email ? 'border-red-500 focus:border-red-500' : ''
+                }`}
               />
+              {validationErrors.email && (
+                <p className="text-sm text-red-600 mt-1">{validationErrors.email}</p>
+              )}
             </div>
             
             <div className="space-y-2">
@@ -199,7 +244,9 @@ export function LoginForm() {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="h-12 border-slate-200 focus:border-blue-500 focus:ring-blue-500/20 bg-white/80 backdrop-blur-sm transition-all duration-200 pr-12"
+                  className={`h-12 input-medical-primary bg-white/80 backdrop-blur-sm transition-all duration-200 pr-12 ${
+                    validationErrors.password ? 'border-red-500 focus:border-red-500' : ''
+                  }`}
                 />
                 <Button
                   type="button"
@@ -215,11 +262,14 @@ export function LoginForm() {
                   )}
                 </Button>
               </div>
+              {validationErrors.password && (
+                <p className="text-sm text-red-600 mt-1">{validationErrors.password}</p>
+              )}
             </div>
             
             <Button 
               type="submit" 
-              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]" 
+              className="w-full h-12 btn-medical-primary font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]" 
               disabled={loading}
             >
               {loading ? (

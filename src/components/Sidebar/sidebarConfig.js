@@ -80,6 +80,7 @@ export const sidebarConfig = {
           { label: "Consultas", path: "/secretaria/consultas", icon: Calendar },
           { label: "Pacientes", path: "/secretaria/pacientes", icon: Users },
           { label: "Médicos", path: "/secretaria/medicos", icon: Stethoscope },
+          { label: "Solicitações", path: "/secretaria/solicitacoes", icon: UserCheck },
         ],
       },
     ],

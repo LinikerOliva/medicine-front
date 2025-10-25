@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
+import { DatePicker } from "@/components/ui/date-picker"
 
 
 export default function PacientePerfil() {
@@ -135,14 +136,14 @@ export default function PacientePerfil() {
 
     try {
       // Atualizar perfil do usuário
-      await pacienteService.updatePerfil({
+      await pacienteService.atualizarPerfil({
         data_nascimento: formData.data_nascimento,
         endereco: formData.endereco,
         telefone: formData.telefone,
       })
 
       // Atualizar dados do paciente
-      await pacienteService.updatePaciente({
+      await pacienteService.atualizarPaciente({
         tipo_sanguineo: formData.tipo_sanguineo,
         alergias: formData.alergias,
         condicoes_cronicas: formData.condicoes_cronicas,
@@ -195,9 +196,9 @@ export default function PacientePerfil() {
 
   const quickActions = [
     {
-      title: "Agendar Consulta",
-      description: "Marque uma nova consulta",
-      href: "/paciente/consultas",
+      title: "Contato com médico",
+      description: "Solicite um horário",
+      href: "/paciente/consultas/nova",
       icon: Calendar,
       color: "blue",
     },
@@ -295,13 +296,13 @@ export default function PacientePerfil() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="data_nascimento" className="text-slate-800 dark:text-slate-200 font-medium">Data de Nascimento</Label>
-                    <Input
+                    <DatePicker
                       id="data_nascimento"
                       name="data_nascimento"
-                      type="date"
                       value={formData.data_nascimento}
-                      onChange={handleChange}
+                      onChange={(val) => setFormData(prev => ({ ...prev, data_nascimento: val }))}
                       className="border-amber-300 focus:border-amber-500 focus:ring-amber-500/30 bg-white dark:bg-gray-800 dark:border-amber-600 dark:text-white"
+                      maxDate={new Date()}
                       required
                     />
                   </div>
@@ -372,7 +373,7 @@ export default function PacientePerfil() {
                 <Button 
                   type="submit" 
                   disabled={saving}
-                  className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg font-medium"
+                  className="w-full btn-medical-primary shadow-lg font-medium"
                 >
                   {saving ? "Salvando..." : "Salvar Informações"}
                 </Button>
@@ -583,7 +584,7 @@ export default function PacientePerfil() {
                     <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">Nenhuma consulta agendada</p>
                     <Button variant="outline" size="sm" asChild className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-900/20">
                       <Link to="/paciente/consultas">
-                        Agendar Consulta
+                        Entrar em contato
                         <ChevronRight className="h-3 w-3 ml-1" />
                       </Link>
                     </Button>

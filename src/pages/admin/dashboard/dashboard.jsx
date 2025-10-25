@@ -149,21 +149,21 @@ export default function AdminDashboard() {
     switch (status) {
       case "pending":
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+          <Badge variant="outline" className="badge-medical-warning">
             <Clock className="mr-1 h-3 w-3" />
             Pendente
           </Badge>
         )
       case "approved":
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800">
+          <Badge variant="outline" className="badge-medical-success">
             <CheckCircle className="mr-1 h-3 w-3" />
             Aprovado
           </Badge>
         )
       case "rejected":
         return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">
+          <Badge variant="outline" className="badge-medical-error">
             <XCircle className="mr-1 h-3 w-3" />
             Rejeitado
           </Badge>
@@ -223,7 +223,7 @@ export default function AdminDashboard() {
               Relatórios
             </Link>
           </Button>
-          <Button className="gap-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800" asChild>
+          <Button className="gap-2 btn-medical-primary" asChild>
             <Link to="/admin/solicitacoes">
               <Shield className="h-4 w-4" />
               Solicitações
@@ -399,7 +399,7 @@ export default function AdminDashboard() {
                       {getUrgenciaBadge(solicitacao.urgencia)}
                       {getStatusBadge(solicitacao.status)}
                       {solicitacao.status === "pending" && (
-                        <Button size="sm" className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800" asChild>
+                        <Button size="sm" className="btn-medical-primary" asChild>
                           <Link to={`/admin/solicitacoes/${solicitacao.id}`}>Revisar</Link>
                         </Button>
                       )}

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState } from "react"
+import { createContext, useContext, useState, useCallback, useMemo } from "react"
 
 const UserContext = createContext(undefined)
 
@@ -16,25 +16,25 @@ export function UserProvider({ children }) {
   // Ephemeral certificado para assinatura (não persistir)
   const [ephemeralCertFile, setEphemeralCertFile] = useState(null)
   const [ephemeralCertPassword, setEphemeralCertPassword] = useState("")
-  const clearEphemeralCert = () => {
+  const clearEphemeralCert = useCallback(() => {
     setEphemeralCertFile(null)
     setEphemeralCertPassword("")
-  }
+  }, [])
 
-  const toggleRole = () => {
+  const toggleRole = useCallback(() => {
     // Só permite alternar se o usuário tem permissão de médico
     if (userPermissions.isMedico && userPermissions.medicoStatus === "approved") {
       setActiveRole(activeRole === "medico" ? "paciente" : "medico")
     }
-  }
+  }, [userPermissions.isMedico, userPermissions.medicoStatus, activeRole])
 
-  const login = (role = "paciente", permissions = {}) => {
+  const login = useCallback((role = "paciente", permissions = {}) => {
     setIsAuthenticated(true)
     setActiveRole(role)
     setUserPermissions(permissions)
-  }
+  }, [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setIsAuthenticated(false)
     setActiveRole("paciente")
     setUserPermissions({
@@ -44,27 +44,37 @@ export function UserProvider({ children }) {
       medicoStatus: "none",
     })
     clearEphemeralCert()
-  }
+  }, [clearEphemeralCert])
+
+  const contextValue = useMemo(() => ({
+    activeRole,
+    setActiveRole,
+    toggleRole,
+    isAuthenticated,
+    userPermissions,
+    setUserPermissions,
+    login,
+    logout,
+    // Ephemeral certificado
+    ephemeralCertFile,
+    setEphemeralCertFile,
+    ephemeralCertPassword,
+    setEphemeralCertPassword,
+    clearEphemeralCert,
+  }), [
+    activeRole,
+    toggleRole,
+    isAuthenticated,
+    userPermissions,
+    login,
+    logout,
+    ephemeralCertFile,
+    ephemeralCertPassword,
+    clearEphemeralCert,
+  ])
 
   return (
-    <UserContext.Provider
-      value={{
-        activeRole,
-        setActiveRole,
-        toggleRole,
-        isAuthenticated,
-        userPermissions,
-        setUserPermissions,
-        login,
-        logout,
-        // Ephemeral certificado
-        ephemeralCertFile,
-        setEphemeralCertFile,
-        ephemeralCertPassword,
-        setEphemeralCertPassword,
-        clearEphemeralCert,
-      }}
-    >
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   )

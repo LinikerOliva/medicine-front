@@ -165,7 +165,7 @@ export function PatientProfileSummary({ patientId, isPacienteView = true, profil
               <Button 
                 size="sm" 
                 asChild
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+                className="w-full btn-medical-primary shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 <Link to={`/medico/paciente/${patientId || profile?.id}/iniciar-consulta`}>
                   Iniciar Consulta

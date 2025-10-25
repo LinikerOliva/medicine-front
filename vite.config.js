@@ -425,6 +425,17 @@ export default defineConfig(({ mode }) => {
           req.on('end', async () => {
             try {
               const body = Buffer.concat(chunks);
+              // Regras simples de validação: se houver PFX, exigir senha presente
+              try {
+                const bodyStr = body.toString('utf-8');
+                const hasPfx = /(name="(pfx|certificado|pkcs12)")/i.test(bodyStr);
+                const hasPw = /(name="(senha|pfx_password|password)")/i.test(bodyStr);
+                if (hasPfx && !hasPw) {
+                  res.statusCode = 422;
+                  res.setHeader('Content-Type', 'application/json');
+                  return res.end(JSON.stringify({ ok: false, detail: 'Senha do certificado PFX é obrigatória (MOCK).' }));
+                }
+              } catch {}
               // Detecta PDF dentro do multipart de forma simples
               const start = body.indexOf(Buffer.from('%PDF'));
               const end = body.lastIndexOf(Buffer.from('%%EOF'));
@@ -484,7 +495,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      mockReceitaPlugin(),
+      ...(enableMockReceita ? [mockReceitaPlugin()] : []),
       ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
     ],
     resolve: {
@@ -495,6 +506,12 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true, // permite acesso via IP (ex.: http://192.168.x.x:5174)
       port: 5174,
+      cors: {
+        origin: true,
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+      },
       proxy: {
         [apiBasePath]: {
           target: apiTarget,

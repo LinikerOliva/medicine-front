@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { pacienteService } from "@/services/pacienteService"
+import { secretariaService } from "@/services/secretariaService"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
+
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -42,7 +45,7 @@ const getDoctorSpecialty = (m) => {
   return null
 }
 
-export default function AgendarConsultaPaciente() {
+export default function ContatoMedicoPaciente() {
   const [medicos, setMedicos] = useState([])
   const [loadingMedicos, setLoadingMedicos] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -52,15 +55,15 @@ export default function AgendarConsultaPaciente() {
 
   const [form, setForm] = useState({
     medico: "",
-    data: "",
-    hora: "",
-    modalidade: "online", // "online" | "presencial" (visual)
+    modalidade: "presencial", // fixo: apenas presencial neste fluxo
     local: "",
-    tipo: "primeira_consulta",
+    tipo: "primeira",
+    preferenciaData: "",
+    preferenciaTurno: "indiferente",
     motivo: "",
     observacoes: "",
   })
-  const [horariosDisponiveis, setHorariosDisponiveis] = useState([])
+
 
   // Helpers locais para extrair local do médico e montar slots
   const formatAddress = (addr) => {
@@ -81,66 +84,7 @@ export default function AgendarConsultaPaciente() {
       null
     )
   }
-  const buildSlots = (items, selectedDate) => {
-    const slots = []
-    const pushSlot = (timeStr) => {
-      if (!timeStr) return
-      const [hh, mm] = String(timeStr).split(":")
-      if (hh != null && mm != null) {
-        slots.push(`${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`)
-      }
-    }
-    const addInterval = (startIso, endIso) => {
-      const ini = new Date(startIso)
-      const fim = new Date(endIso)
-      const cur = new Date(ini)
-      while (cur < fim) {
-        const hh = String(cur.getHours()).padStart(2, "0")
-        const mm = String(cur.getMinutes()).padStart(2, "0")
-        slots.push(`${hh}:${mm}`)
-        cur.setMinutes(cur.getMinutes() + 30)
-      }
-    }
-    items.forEach((it) => {
-      if (it?.data_hora_inicio && it?.data_hora_fim) {
-        addInterval(it.data_hora_inicio, it.data_hora_fim)
-        return
-      }
-      if (it?.inicio && it?.fim) {
-        addInterval(it.inicio, it.fim)
-        return
-      }
-      if (it?.start && it?.end) {
-        addInterval(it.start, it.end)
-        return
-      }
-      if (Array.isArray(it?.horarios)) {
-        it.horarios.forEach((h) => {
-          if (typeof h === "string") pushSlot(h.slice(0, 5))
-          else pushSlot(h?.hora || h)
-        })
-        return
-      }
-      if (it?.hora) {
-        pushSlot(String(it.hora).slice(0, 5))
-        return
-      }
-      if (it?.horario) {
-        pushSlot(String(it.horario).slice(0, 5))
-        return
-      }
-      if (it?.data_hora) {
-        const d = new Date(it.data_hora)
-        const ymd = d.toISOString().slice(0, 10)
-        if (ymd === selectedDate) {
-          const hh = String(d.getHours()).padStart(2, "0")
-          const mm = String(d.getMinutes()).padStart(2, "0")
-          slots.push(`${hh}:${mm}`)
-        }
-      }
-    })
-    return Array.from(new Set(slots)).sort()
-  }
+
 
   useEffect(() => {
     let mounted = true
@@ -163,28 +107,7 @@ export default function AgendarConsultaPaciente() {
     }
   }, [])
 
-  useEffect(() => {
-    // Carregar agenda quando medico e data estiverem definidos
-    const carregarAgenda = async () => {
-      if (!form.medico || !form.data) {
-        setHorariosDisponiveis([])
-        return
-      }
-      try {
-        const res = await pacienteService.getAgendaMedico({ medico: form.medico, date: form.data, apenas_disponiveis: true })
-        const items = Array.isArray(res) ? res : res?.results || []
-        const slots = buildSlots(items, form.data)
-        setHorariosDisponiveis(slots)
-        if (form.hora && !slots.includes(form.hora)) {
-          setForm((p) => ({ ...p, hora: "" }))
-        }
-      } catch (e) {
-        console.error("Erro ao carregar agenda do médico:", e)
-        setHorariosDisponiveis([])
-      }
-    }
-    carregarAgenda()
-  }, [form.medico, form.data])
+
 
   // NOVO: quando a modalidade for presencial, o local é sempre o do médico (auto-preenchido e bloqueado)
   useEffect(() => {
@@ -204,14 +127,13 @@ export default function AgendarConsultaPaciente() {
 
   const validate = () => {
     if (!form.medico) return "Selecione um médico."
-    if (!form.data) return "Selecione uma data."
-    if (!form.hora) return "Selecione um horário disponível."
-    if (!form.motivo) return "Informe o motivo da consulta."
-    if (form.modalidade === "presencial" && !form.local) return "Este médico não possui um local de atendimento definido."
+    if (!form.motivo) return "Informe o motivo principal."
+    if (form.modalidade === "presencial" && !form.local) return "Local do médico não definido."
+    if (!form.preferenciaData) return "Selecione uma data preferida."
     return null
-    }
+  }
 
-  const handleSubmit = async (e) => {
+  const handleContact = async (e) => {
     e.preventDefault()
     const msg = validate()
     if (msg) {
@@ -222,25 +144,58 @@ export default function AgendarConsultaPaciente() {
     setSaving(true)
     setError(null)
     try {
-      await pacienteService.agendarConsulta({
-        medico: form.medico,
-        data: form.data,
-        hora: form.hora,
+      // Enviar solicitação de agendamento para a Secretaria (interno)
+      const selected = medicos.find((m) => String(m.id || m?.user?.id || m?.nome) === String(form.medico))
+      const medicoId =
+        selected?.id ||
+        selected?.user?.id ||
+        (Number(form.medico) ? Number(form.medico) : undefined)
+
+      if (!medicoId) {
+        throw new Error("Não foi possível identificar o médico selecionado.")
+      }
+
+      const turnoToHora = (t) => {
+        if (!t || t === "indiferente") return "08:00"
+        if (t === "manha") return "08:00"
+        if (t === "tarde") return "14:00"
+        if (t === "noite") return "19:00"
+        return "08:00"
+      }
+
+      // Obter ID do paciente atual para enviar ao backend
+      const me = await pacienteService.getPacienteDoUsuario()
+      const pacienteId = me?.id
+      if (!pacienteId) throw new Error("Paciente atual não encontrado.")
+
+      // Enviar via endpoint de consultas do paciente (sem exigir data_hora_inicio/fim)
+      const consultaPayload = {
+        medico: medicoId,
         modalidade: form.modalidade,
-        local: form.modalidade === "presencial" ? form.local : undefined,
         tipo: form.tipo,
         motivo: form.motivo,
-        observacoes: form.observacoes,
+      }
+      if (form.preferenciaData) consultaPayload.data = form.preferenciaData
+      const h = turnoToHora(form.preferenciaTurno)
+      if (h) consultaPayload.hora = h
+      if (form.observacoes) consultaPayload.observacoes = form.observacoes
+      
+      await pacienteService.agendarConsulta(consultaPayload)
+
+      toast({
+        title: "Solicitação enviada",
+        description: "Sua solicitação foi enviada à Secretaria. Aguarde confirmação.",
       })
-      toast({ title: "Consulta agendada!", description: "Sua consulta foi marcada com sucesso." })
       navigate("/paciente/consultas")
     } catch (e) {
-      console.error("Erro ao agendar consulta:", e?.response?.data || e)
-      const backendMsg =
-        e?.response?.data?.error ||
-        e?.response?.data?.detail ||
-        e?.response?.data?.message ||
-        "Não foi possível agendar a consulta."
+      const raw = e?.response?.data
+      let backendMsg = (typeof raw === "string" && raw) || raw?.detail || e?.message || "Não foi possível enviar sua solicitação."
+      if (raw && typeof raw === "object") {
+        try {
+          const parts = Object.entries(raw).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : (typeof v === "object" ? JSON.stringify(v) : String(v))}`)
+          if (parts.length) backendMsg = parts.join(" | ")
+        } catch {}
+      }
       setError(backendMsg)
       toast({ title: "Erro", description: backendMsg, variant: "destructive" })
     } finally {
@@ -263,17 +218,17 @@ export default function AgendarConsultaPaciente() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Calendar className="h-5 w-5 text-primary" />
-        <h1 className="text-2xl font-bold tracking-tight">Agendar Consulta</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Entrar em contato com o médico</h1>
       </div>
 
       <ProfileTabs tabs={pacienteTabs} basePath="/paciente" />
 
       <Card>
         <CardHeader>
-          <CardTitle>Dados da Consulta</CardTitle>
+          <CardTitle>Contato para agendamento</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleContact} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Médico</Label>
@@ -312,39 +267,11 @@ export default function AgendarConsultaPaciente() {
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="primeira_consulta">Primeira consulta</SelectItem>
+                    <SelectItem value="primeira">Primeira consulta</SelectItem>
                     <SelectItem value="retorno">Retorno</SelectItem>
-                    <SelectItem value="urgencia">Urgência</SelectItem>
                     <SelectItem value="rotina">Rotina</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Data</Label>
-                <Input type="date" value={form.data} onChange={handleChange("data")} />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Hora</Label>
-                {horariosDisponiveis.length > 0 ? (
-                  <Select value={form.hora} onValueChange={(v) => setForm((p) => ({ ...p, hora: v }))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um horário" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {horariosDisponiveis.map((h) => (
-                        <SelectItem key={h} value={h}>{h}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    type="time"
-                    value={form.hora}
-                    onChange={(e) => setForm((p) => ({ ...p, hora: e.target.value }))}
-                  />
-                )}
               </div>
 
               <div className="space-y-2">
@@ -354,53 +281,125 @@ export default function AgendarConsultaPaciente() {
                     <SelectValue placeholder="Selecione a modalidade" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="online">Online</SelectItem>
                     <SelectItem value="presencial">Presencial</SelectItem>
+                    <SelectItem value="online" disabled>Online (em breve)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {form.modalidade === "presencial" && (
-                <div className="space-y-2">
-                  <Label>Local</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input className="pl-9" placeholder="Local de atendimento definido pelo médico" value={form.local} readOnly disabled />
-                  </div>
-                  <p className="text-xs text-muted-foreground">O local é definido pelo médico e preenchido automaticamente.</p>
+              <div className="space-y-2">
+                <Label>Local</Label>
+                <div className="relative">
+                  <Input value={form.local} placeholder="Rua das Flores, 123" readOnly />
+                  <MapPin className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 </div>
-              )}
+                {form.modalidade === "presencial" && (
+                  <div className="text-xs text-muted-foreground">O local é definido pelo médico e preenchido automaticamente.</div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preferência de Data</Label>
+                <DatePicker id="preferenciaData" name="preferenciaData" value={form.preferenciaData} onChange={(v) => setForm((p) => ({ ...p, preferenciaData: v }))} />
+                <div className="text-xs text-muted-foreground">Opcional: ajuda a secretaria a oferecer horários próximos.</div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Turno período</Label>
+                <Select value={form.preferenciaTurno} onValueChange={(v) => setForm((p) => ({ ...p, preferenciaTurno: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o período" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="indiferente">Indiferente</SelectItem>
+                    <SelectItem value="manha">Manhã</SelectItem>
+                    <SelectItem value="tarde">Tarde</SelectItem>
+                    <SelectItem value="noite">Noite</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="text-xs text-muted-foreground">Opcional: a secretaria tenta encaixar nesse período.</div>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Motivo</Label>
+                <Input value={form.motivo} onChange={handleChange("motivo")} placeholder="Ex: dor, retorno de exame, etc." />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Observações</Label>
+                <Textarea value={form.observacoes} onChange={handleChange("observacoes")} placeholder="Opcional" />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Motivo</Label>
-              <Textarea
-                rows={3}
-                placeholder="Descreva o motivo principal da consulta (obrigatório)"
-                value={form.motivo}
-                onChange={handleChange("motivo")}
-              />
-              <p className="text-xs text-muted-foreground">Obrigatório. Ex: dor de cabeça, retorno de exame, etc.</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Observações</Label>
-              <Textarea rows={4} placeholder="Opcional: descreva sintomas, preferências, etc." value={form.observacoes} onChange={handleChange("observacoes")} />
-            </div>
-
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <div className="text-sm text-red-600">{error}</div>}
 
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => navigate("/paciente/consultas")} disabled={saving}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? "Agendando..." : "Agendar Consulta"}
-              </Button>
+              <Button type="button" variant="outline" onClick={() => navigate("/paciente/consultas")}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>Entrar em contato</Button>
             </div>
           </form>
         </CardContent>
       </Card>
     </div>
   )
+}
+
+async function handleContact() {
+  try {
+    setSubmitting(true)
+    setError(null)
+
+    const validationError = validate()
+    if (validationError) {
+      setError(validationError)
+      toast({ title: "Atenção", description: validationError, variant: "destructive" })
+      return
+    }
+
+    // Identificar paciente atual
+    const me = await pacienteService.getPacienteDoUsuario?.()
+    const pacienteId = me?.id
+
+    // Identificar médico selecionado
+    const selected = medicos.find((m) => String(m.id || m?.user?.id || m?.nome) === String(form.medico))
+    const medicoId = selected?.id || selected?.user?.id || Number(form.medico)
+
+    if (!pacienteId || !medicoId || Number.isNaN(medicoId)) {
+      throw new Error("Não foi possível identificar o médico selecionado.")
+    }
+
+    // Enviar solicitação via endpoint de consultas (paciente)
+    const consultaPayload = {
+      medico: medicoId,
+      modalidade: form.modalidade,
+      tipo: form.tipo,
+      motivo: form.motivo,
+    }
+    if (form.preferenciaData) consultaPayload.data = form.preferenciaData
+    const h = turnoToHora(form.preferenciaTurno)
+    if (h) consultaPayload.hora = h
+    if (form.observacoes) consultaPayload.observacoes = form.observacoes
+
+    const res = await pacienteService.agendarConsulta(consultaPayload)
+
+    toast({ title: "Solicitação enviada", description: "A secretaria entrará em contato para confirmar.", variant: "success" })
+    setForm((f) => ({
+      ...f,
+      motivo: "",
+      observacoes: "",
+    }))
+  } catch (e) {
+    const raw = e?.response?.data
+    let backendMsg = (typeof raw === "string" && raw) || raw?.detail || e?.message || "Não foi possível enviar sua solicitação."
+    if (raw && typeof raw === "object") {
+      try {
+        const parts = Object.entries(raw).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : (typeof v === "object" ? JSON.stringify(v) : String(v))}`)
+        if (parts.length) backendMsg = parts.join(" | ")
+      } catch {}
+    }
+    setError(backendMsg)
+    toast({ title: "Erro", description: backendMsg, variant: "destructive" })
+  } finally {
+    setSubmitting(false)
+  }
 }

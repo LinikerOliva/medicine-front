@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, Search, Eye, Download, ClipboardList, Plus } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useParams } from "react-router-dom"
 
-export default function PacienteExames({ params }) {
-  const { id } = params
+export default function PacienteExames() {
+  const { id } = useParams()
 
   const medicoTabs = [
     { label: "Resumo", href: `/medico/paciente/${id}/perfil` },
@@ -40,73 +41,49 @@ export default function PacienteExames({ params }) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="laboratoriais">Laboratoriais</SelectItem>
               <SelectItem value="imagem">Imagem</SelectItem>
-              <SelectItem value="cardio">Cardiológicos</SelectItem>
+              <SelectItem value="laboratorial">Laboratorial</SelectItem>
+              <SelectItem value="outros">Outros</SelectItem>
             </SelectContent>
           </Select>
+          <Button variant="outline">
+            <Calendar className="mr-2 h-4 w-4" />
+            Período
+          </Button>
           <Button>
-            <ClipboardList className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-4 w-4" />
             Solicitar Exame
           </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="todos">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="todos">Todos</TabsTrigger>
+      <Tabs defaultValue="pendentes">
+        <TabsList>
           <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
-          <TabsTrigger value="realizados">Realizados</TabsTrigger>
-          <TabsTrigger value="solicitados-por-mim">Solicitados por Mim</TabsTrigger>
+          <TabsTrigger value="concluidos">Concluídos</TabsTrigger>
+          <TabsTrigger value="todos">Todos</TabsTrigger>
         </TabsList>
-
-        {/* TabsContent "todos" e "pendentes" você já tem completos */}
-
-        <TabsContent value="realizados">
+        <TabsContent value="pendentes">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5" />
-                Exames Realizados
-              </CardTitle>
+              <CardTitle>Exames Pendentes</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[3, 4, 5, 6].map((i) => (
-                  <div key={i} className="border rounded-lg p-4">
-                    <div className="flex flex-col md:flex-row justify-between gap-2">
-                      <div>
-                        <h3 className="font-bold">
-                          {i % 3 === 0 ? "Hemograma Completo" : i % 3 === 1 ? "Perfil Lipídico" : "Eletrocardiograma"}
-                        </h3>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          Solicitado por: {i % 2 === 0 ? "Dr. Carlos Oliveira" : "Dra. Ana Souza"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">
-                          Realizado em: {new Date(Date.now() - i * 15 * 86400000).toLocaleDateString()}
-                        </span>
-                      </div>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="border rounded-lg p-4 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="font-medium">Hemograma Completo</p>
+                      <p className="text-sm text-muted-foreground">Solicitado em {new Date(Date.now() - i * 86400000).toLocaleDateString()}</p>
                     </div>
-                    <div className="mt-2">
-                      <div className="rounded-full px-2 py-1 text-xs inline-flex bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
-                        Realizado
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="flex gap-2">
                       <Button variant="outline" size="sm">
                         <Eye className="mr-2 h-4 w-4" />
-                        Visualizar Resultado
+                        Ver Solicitação
                       </Button>
                       <Button variant="outline" size="sm">
                         <Download className="mr-2 h-4 w-4" />
-                        Baixar PDF
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <ClipboardList className="mr-2 h-4 w-4" />
-                        Solicitar Novo
+                        Baixar Pedido
                       </Button>
                     </div>
                   </div>
@@ -115,46 +92,56 @@ export default function PacienteExames({ params }) {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="solicitados-por-mim">
+        <TabsContent value="concluidos">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5" />
-                Exames Solicitados por Mim
-              </CardTitle>
+              <CardTitle>Exames Concluídos</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="border rounded-lg p-4">
-                    <div className="flex flex-col md:flex-row justify-between gap-2">
-                      <div>
-                        <h3 className="font-bold">{i % 2 === 0 ? "Hemograma Completo" : "Perfil Lipídico"}</h3>
-                        <div className="mt-1 text-sm text-muted-foreground">Solicitado por: Você</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">
-                          Solicitado em: {new Date(Date.now() - i * 10 * 86400000).toLocaleDateString()}
-                        </span>
-                      </div>
+                {[1, 2].map((i) => (
+                  <div key={i} className="border rounded-lg p-4 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="font-medium">Raio-X de Tórax</p>
+                      <p className="text-sm text-muted-foreground">Concluído em {new Date(Date.now() - i * 3 * 86400000).toLocaleDateString()}</p>
                     </div>
-                    <div className="mt-2">
-                      <div className="rounded-full px-2 py-1 text-xs inline-flex bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300">
-                        Pendente
-                      </div>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="flex gap-2">
                       <Button variant="outline" size="sm">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Registrar Resultado
+                        <Eye className="mr-2 h-4 w-4" />
+                        Visualizar Resultado
                       </Button>
                       <Button variant="outline" size="sm">
-                        Reagendar
+                        <Download className="mr-2 h-4 w-4" />
+                        Baixar Resultado
                       </Button>
-                      <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
-                        Cancelar
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="todos">
+          <Card>
+            <CardHeader>
+              <CardTitle>Todos os Exames</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="border rounded-lg p-4 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="font-medium">Exame #{i}</p>
+                      <p className="text-sm text-muted-foreground">Status: {i % 2 === 0 ? "Concluído" : "Pendente"}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Detalhes
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Baixar
                       </Button>
                     </div>
                   </div>

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { FileText, ListChecks, ClipboardList, FileSignature } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { medicoService } from "@/services/medicoService"
+import { DatePicker } from "@/components/ui/date-picker"
 
 export default function ResumoConsultaMedico() {
   const { id } = useParams()
@@ -112,7 +113,7 @@ export default function ResumoConsultaMedico() {
             </div>
             <div className="space-y-2">
               <Label>Validade da Receita</Label>
-              <input type="date" name="validade" className="border rounded h-10 px-3 bg-background" value={form.validade} onChange={handleChange} />
+              <DatePicker name="validade" value={form.validade} onChange={(val) => handleChange({ target: { name: "validade", value: val } })} className="border rounded h-10 px-3 bg-background" minDate={new Date()} />
             </div>
             <div className="flex gap-2">
               <Button onClick={handleConfirmar}>

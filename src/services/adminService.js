@@ -284,6 +284,114 @@ export const adminService = {
 
   },
 
+  async visualizarDocumento(documentoUrl) {
+    try {
+      // Se for uma URL completa, abrir diretamente
+      if (documentoUrl.startsWith('http')) {
+        window.open(documentoUrl, '_blank')
+        return
+      }
+
+      // Tentar diferentes endpoints para visualização
+      const bases = getBaseCandidates()
+      let lastErr
+
+      for (const base of bases) {
+        const endpoints = [
+          `${ensureTrailingSlash(base)}documentos/visualizar/${documentoUrl}`,
+          `${ensureTrailingSlash(base)}documentos/${documentoUrl}`,
+          `/media/documentos/${documentoUrl}`,
+          `/static/documentos/${documentoUrl}`,
+          documentoUrl
+        ]
+
+        for (const endpoint of endpoints) {
+          try {
+            if (VERBOSE) console.debug("[adminService.visualizarDocumento] Tentando", endpoint)
+            
+            // Verificar se o documento existe
+            const response = await api.head(endpoint)
+            if (response.status === 200) {
+              window.open(endpoint, '_blank')
+              return
+            }
+          } catch (err) {
+            if (VERBOSE) console.warn("[adminService.visualizarDocumento] Falhou", endpoint, err?.response?.status)
+            lastErr = err
+            continue
+          }
+        }
+      }
+
+      throw lastErr || new Error("Documento não encontrado")
+    } catch (error) {
+      console.error("Erro ao visualizar documento:", error)
+      throw new Error("Não foi possível visualizar o documento")
+    }
+  },
+
+  async baixarDocumento(documentoUrl, nomeArquivo = "documento") {
+    try {
+      // Se for uma URL completa, fazer download direto
+      if (documentoUrl.startsWith('http')) {
+        const link = document.createElement('a')
+        link.href = documentoUrl
+        link.download = nomeArquivo
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        return
+      }
+
+      // Tentar diferentes endpoints para download
+      const bases = getBaseCandidates()
+      let lastErr
+
+      for (const base of bases) {
+        const endpoints = [
+          `${ensureTrailingSlash(base)}documentos/download/${documentoUrl}`,
+          `${ensureTrailingSlash(base)}documentos/${documentoUrl}`,
+          `/media/documentos/${documentoUrl}`,
+          `/static/documentos/${documentoUrl}`,
+          documentoUrl
+        ]
+
+        for (const endpoint of endpoints) {
+          try {
+            if (VERBOSE) console.debug("[adminService.baixarDocumento] Tentando", endpoint)
+            
+            const response = await api.get(endpoint, {
+              responseType: 'blob'
+            })
+
+            if (response.status === 200) {
+              // Criar blob e fazer download
+              const blob = new Blob([response.data])
+              const url = window.URL.createObjectURL(blob)
+              const link = document.createElement('a')
+              link.href = url
+              link.download = nomeArquivo
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+              window.URL.revokeObjectURL(url)
+              return
+            }
+          } catch (err) {
+            if (VERBOSE) console.warn("[adminService.baixarDocumento] Falhou", endpoint, err?.response?.status)
+            lastErr = err
+            continue
+          }
+        }
+      }
+
+      throw lastErr || new Error("Documento não encontrado")
+    } catch (error) {
+      console.error("Erro ao baixar documento:", error)
+      throw new Error("Não foi possível baixar o documento")
+    }
+  },
+
   async getAuditoria(params = {}) {
     const response = await api.get("/admin/auditoria/", { params })
     return response.data
@@ -558,7 +666,7 @@ function normalizeParams(params = {}) {
 }
 
 function sanitizeListParams(params = {}) {
-  // adiciona filtros usados no backend: clinica e especialidade
+  // adiciona filtros usados no backend
   const allowed = new Set([
     "status",
     "ordering",
@@ -569,6 +677,9 @@ function sanitizeListParams(params = {}) {
     "offset",
     "clinica",
     "especialidade",
+    // Correção: permitir filtros de tipo e urgência
+    "tipo",
+    "urgencia",
   ])
   const out = {}
   for (const [k, v] of Object.entries(params || {})) {
@@ -586,13 +697,22 @@ function getBaseCandidates() {
 
   // Preferir o ViewSet real de solicitações baseado no modelo
   const preferred = [
-    "/solicitacaomedico/", // novo endpoint com approve/reject e auditoria
+    "/solicitacaomedico/", // novo endpoint com approve/reject e auditoria (sem hífen)
+    "/solicitacao-medico/", // variação com hífen muito comum nos backends
+    "/solicitacaomedicomodel/", // possível nome gerado pelo router
+    "/solicitacao-medico-model/", // variação com hífen
     "/admin/solicitacoes/", // manter como fallback
   ]
 
   const others = [
     "/medicos/solicitacoes/", // ViewSet que lista Médicos com status
     "/solicitacoes/medicos/", // alias
+    "/solicitacoes/solicitacaomedico/", // possíveis aliases
+    "/solicitacoes/solicitacao-medico/",
+    "/solicitacoes/solicitacaomedicomodel/", // aliases adicionais
+    "/solicitacoes/solicitacao-medico-model/",
+    "/meu_app/solicitacaomedico/", // rota com prefixo do app (casos raros)
+    "/meu_app/solicitacao-medico/",
   ]
 
   const candidates = Array.from(new Set([...preferred, ...envs, ...others].filter(Boolean)))

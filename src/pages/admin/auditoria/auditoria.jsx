@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { ChevronLeft, ChevronRight, RefreshCw, Search, Shield, Activity, Calendar, User, Filter, Eye } from "lucide-react"
 import api from "@/services/api"
+import { DatePicker } from "@/components/ui/date-picker"
 
 export default function AuditoriaAdmin() {
   const [items, setItems] = useState([])
@@ -140,20 +141,21 @@ export default function AuditoriaAdmin() {
           <div className="grid md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Data de Início</label>
-              <Input 
-                type="date" 
-                value={start} 
-                onChange={(e) => setStart(e.target.value)} 
+              <DatePicker
+                value={start}
+                onChange={setStart}
                 className="h-11 bg-white/70 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                maxDate={new Date()}
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Data de Fim</label>
-              <Input 
-                type="date" 
-                value={end} 
-                onChange={(e) => setEnd(e.target.value)} 
+              <DatePicker
+                value={end}
+                onChange={setEnd}
                 className="h-11 bg-white/70 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                minDate={start ? new Date(start) : undefined}
+                maxDate={new Date()}
               />
             </div>
             <div className="space-y-2">
@@ -215,7 +217,7 @@ export default function AuditoriaAdmin() {
               </div>
               <Button 
                 onClick={() => fetchPage(params)}
-                className="h-11 px-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+                className="h-11 px-6 btn-medical-primary shadow-lg hover:shadow-xl transition-all duration-200"
               >
                 <Search className="mr-2 h-4 w-4" /> 
                 Buscar

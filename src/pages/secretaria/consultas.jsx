@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar, Search, Stethoscope } from "lucide-react"
@@ -119,7 +120,7 @@ export default function ConsultasSecretaria() {
             </div>
             <div>
               <label className="text-sm text-muted-foreground">Data</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DatePicker value={date} onChange={setDate} />
             </div>
             <div className="md:col-span-2">
               <label className="text-sm text-muted-foreground">Pesquisar por paciente</label>

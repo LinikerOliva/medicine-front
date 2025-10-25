@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Link } from "react-router-dom"
+import { DatePicker } from "@/components/ui/date-picker"
 
 function formatName(obj) {
   if (!obj) return "—"
@@ -340,10 +341,10 @@ export default function DashboardSecretaria() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm text-muted-foreground">Data</label>
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={formAg.data}
-                        onChange={(e) => setFormAg((p) => ({ ...p, data: e.target.value }))}
+                        onChange={(val) => setFormAg((p) => ({ ...p, data: val }))}
+                        minDate={new Date()}
                       />
                     </div>
                     <div>

@@ -67,7 +67,7 @@ export function DashboardLayout({ children, sidebar: Sidebar, breadcrumbs = [] }
               <Search className="absolute left-3 size-4 text-slate-400" />
               <Input
                 placeholder="Buscar..."
-                className="pl-10 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:ring-blue-500 focus:border-blue-500"
+                className="pl-10 input-medical-primary bg-slate-100 dark:bg-slate-800"
               />
             </div>
 

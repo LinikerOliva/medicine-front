@@ -130,7 +130,7 @@ export default function DashboardPaciente() {
             <Button className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm transition-all duration-200 dark:bg-gray-800 dark:hover:bg-gray-700 dark:border-gray-600 dark:text-gray-200" asChild>
               <Link to="/paciente/consultas">
                 <CalendarDays className="h-4 w-4 mr-2" />
-                Agendar Consulta
+                Entrar em contato
               </Link>
             </Button>
             <Button className="bg-white text-blue-600 hover:bg-blue-50 transition-all duration-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700" asChild>
@@ -387,14 +387,14 @@ export default function DashboardPaciente() {
               <CardTitle className="text-lg text-slate-800">Ações Rápidas</CardTitle>
             </CardHeader>
             <CardContent className="p-6 space-y-3">
-              <Link to="/paciente/consultas">
+              <Link to="/paciente/consultas/nova">
                 <div className="flex items-center gap-4 p-4 rounded-xl border border-blue-200/50 bg-gradient-to-r from-blue-50 to-blue-100 hover:shadow-md transition-all duration-200 group cursor-pointer dark:border-gray-600/50 dark:from-gray-800 dark:to-gray-700 dark:hover:from-gray-700 dark:hover:to-gray-600">
                   <div className="p-2 bg-blue-500 rounded-lg group-hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:group-hover:bg-blue-500">
                     <CalendarDays className="h-4 w-4 text-white" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold text-blue-900 dark:text-gray-200">Agendar Consulta</p>
-                    <p className="text-sm text-blue-600 dark:text-gray-400">Marque uma consulta</p>
+                    <p className="font-semibold text-blue-900 dark:text-gray-200">Contato com médico</p>
+                    <p className="text-sm text-blue-600 dark:text-gray-400">Solicite um horário</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-blue-600 group-hover:translate-x-1 transition-transform dark:text-gray-400" />
                 </div>
@@ -445,7 +445,7 @@ export default function DashboardPaciente() {
                     <Calendar className="h-8 w-8 text-slate-400" />
                   </div>
                   <p className="text-slate-600 font-medium mb-2">Nenhuma consulta agendada</p>
-                  <p className="text-slate-500 text-sm">Agende sua próxima consulta</p>
+                  <p className="text-slate-500 text-sm">Entre em contato para marcar</p>
                 </div>
               ) : (
                 stats.proximasConsultas.slice(0, 3).map((consulta, index) => (

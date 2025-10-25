@@ -3,147 +3,349 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Variáveis CSS para cores médicas e sistema de design */
+/* Sistema de Design Médico Profissional */
 @layer base {
   :root {
-    /* Cores base do sistema - LIGHT */
-    --background: 0 0% 100%; /* #FFFFFF */
-    --foreground: 220.9 39.3% 11%; /* #111827 */
-    --card: 220 14.3% 95.9%; /* #F3F4F6 */
-    --card-foreground: 220.9 39.3% 11%; /* #111827 */
-    --popover: 220 14.3% 95.9%; /* #F3F4F6 */
-    --popover-foreground: 220.9 39.3% 11%; /* #111827 */
+    /* === CORES BASE - TEMA CLARO === */
+    --background: 0 0% 100%; /* #FFFFFF - Branco clínico */
+    --foreground: 215 25% 27%; /* #374151 - Cinza escuro profissional */
+    --card: 210 40% 98%; /* #F8FAFC - Branco levemente azulado */
+    --card-foreground: 215 25% 27%; /* #374151 */
+    --popover: 210 40% 98%; /* #F8FAFC */
+    --popover-foreground: 215 25% 27%; /* #374151 */
 
-    /* Primária (cor base, para componentes sólidos) */
-    --primary: 217 91% 60%; /* #3B82F6 */
-    --primary-foreground: 210 20% 98%; /* quase branco */
+    /* === COR PRIMÁRIA - AZUL MÉDICO === */
+    --primary: 210 100% 56%; /* #0EA5E9 - Azul médico confiável */
+    --primary-foreground: 0 0% 100%; /* Branco puro */
+    --primary-hover: 210 100% 50%; /* #0284C7 - Hover mais escuro */
 
-    /* Neutros complementares */
-    --secondary: 220 14.3% 95.9%; /* #F3F4F6 */
-    --secondary-foreground: 220.9 39.3% 11%; /* #111827 */
-    --muted: 220 14.3% 95.9%;
-    --muted-foreground: 220 8.9% 46.1%; /* #6B7280 */
+    /* === CORES SECUNDÁRIAS === */
+    --secondary: 210 40% 96%; /* #F1F5F9 - Cinza azulado muito claro */
+    --secondary-foreground: 215 25% 27%; /* #374151 */
+    --muted: 210 40% 94%; /* #E2E8F0 - Cinza azulado claro */
+    --muted-foreground: 215 16% 47%; /* #64748B - Cinza médio */
 
-    /* Feedback */
-    --destructive: 0 85% 60%; /* #EF4444 */
-    --destructive-foreground: 210 20% 98%;
-    --success: 158 64% 52%; /* #34D399 */
-    --success-foreground: 210 20% 98%;
-    --warning: 38 92% 50%; /* #F59E0B */
-    --warning-foreground: 210 20% 98%;
-    --info: 217 91% 60%; /* #3B82F6 */
-    --info-foreground: 210 20% 98%;
+    /* === CORES DE FEEDBACK MÉDICO === */
+    --success: 142 76% 36%; /* #16A34A - Verde saúde */
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 94%; /* #DCFCE7 - Verde claro */
+    
+    --warning: 38 92% 50%; /* #F59E0B - Amarelo atenção */
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 48 96% 89%; /* #FEF3C7 - Amarelo claro */
+    
+    --destructive: 0 84% 60%; /* #EF4444 - Vermelho crítico */
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 0 93% 94%; /* #FEE2E2 - Vermelho claro */
+    
+    --info: 210 100% 56%; /* #0EA5E9 - Azul informativo */
+    --info-foreground: 0 0% 100%;
+    --info-light: 204 94% 94%; /* #E0F2FE - Azul claro */
 
-    --border: 220 13% 91%; /* #E5E7EB */
-    --input: 220 13% 91%;
-    --ring: 217 91% 60%;
-    --radius: 0.5rem;
+    /* === BORDAS E CONTORNOS === */
+    --border: 214 32% 91%; /* #E2E8F0 - Cinza azulado */
+    --input: 214 32% 91%; /* #E2E8F0 */
+    --ring: 210 100% 56%; /* #0EA5E9 - Focus ring azul médico */
+    --radius: 0.75rem; /* Bordas mais suaves */
 
-    /* Títulos com alto contraste no claro */
-    --heading-foreground: 220.9 39.3% 11%;
+    /* === TIPOGRAFIA === */
+    --heading-foreground: 215 25% 27%; /* #374151 - Títulos escuros */
+    --text-primary: 215 25% 27%; /* #374151 - Texto principal */
+    --text-secondary: 215 16% 47%; /* #64748B - Texto secundário */
+    --text-muted: 215 20% 65%; /* #94A3B8 - Texto esmaecido */
 
-    /* Brand gradient tokens (parametriza gradiente principal) */
-    --brand-blue: 217 91% 60%; /* #3B82F6 */
-    --brand-green: 160 84% 39%; /* #10B981 */
+    /* === CORES MÉDICAS ESPECIALIZADAS === */
+    --medical-primary: 210 100% 56%; /* #0EA5E9 - Azul médico principal */
+    --medical-secondary: 142 76% 36%; /* #16A34A - Verde saúde */
+    --medical-accent: 210 40% 96%; /* #F1F5F9 - Fundo suave */
+    
+    /* Status médicos */
+    --status-normal: 142 76% 36%; /* #16A34A - Verde normal */
+    --status-attention: 38 92% 50%; /* #F59E0B - Amarelo atenção */
+    --status-critical: 0 84% 60%; /* #EF4444 - Vermelho crítico */
+    --status-urgent: 14 91% 43%; /* #DC2626 - Vermelho urgente */
+    
+    /* Prioridades */
+    --priority-low: 142 76% 36%; /* #16A34A - Verde baixa */
+    --priority-medium: 38 92% 50%; /* #F59E0B - Amarelo média */
+    --priority-high: 14 91% 43%; /* #DC2626 - Vermelho alta */
+    --priority-critical: 348 83% 47%; /* #BE185D - Rosa crítico */
 
-    /* Cores médicas temáticas (mantidas) */
-    --medical-blue: 210 88% 58%;
-    --medical-green: 142 71% 45%;
-    --medical-purple: 262 83% 58%;
-    --medical-orange: 25 95% 53%;
-    --medical-red: 0 84% 60%;
-    --medical-teal: 173 80% 40%;
-    --medical-gray: 215 28% 17%;
-
-    /* Cores específicas por perfil */
-    --doctor-primary: 210 88% 58%;
-    --doctor-secondary: 210 88% 95%;
-    --doctor-accent: 210 88% 85%;
-    --patient-primary: 142 71% 45%;
-    --patient-secondary: 142 71% 95%;
-    --patient-accent: 142 71% 85%;
-
-    /* Sidebar personalizada - TEMA CLARO (azulado suave) */
-    --sidebar-background: 210 33% 99%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-border: 213 27% 90%;
-    --sidebar-accent: 210 40% 97%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-ring: 217 91% 60%;
+    /* === SIDEBAR MÉDICA === */
+    --sidebar-background: 210 40% 98%; /* #F8FAFC - Fundo claro */
+    --sidebar-foreground: 215 25% 27%; /* #374151 - Texto escuro */
+    --sidebar-border: 214 32% 91%; /* #E2E8F0 - Borda sutil */
+    --sidebar-accent: 210 40% 96%; /* #F1F5F9 - Hover suave */
+    --sidebar-accent-foreground: 215 25% 27%; /* #374151 */
+    --sidebar-active: 210 100% 56%; /* #0EA5E9 - Item ativo */
+    --sidebar-active-foreground: 0 0% 100%; /* Branco */
   }
 
   .dark {
-    /* Base - DARK (tons fechados) */
-    --background: 220.9 39.3% 11%; /* #111827 */
-    --foreground: 210 20% 98%; /* #F9FAFB */
-    --heading-foreground: 210 20% 98%;
+    /* === CORES BASE - TEMA ESCURO === */
+    --background: 215 28% 17%; /* #1F2937 - Cinza escuro profissional */
+    --foreground: 210 40% 98%; /* #F8FAFC - Branco azulado */
+    --card: 215 25% 27%; /* #374151 - Cinza médio */
+    --card-foreground: 210 40% 98%; /* #F8FAFC */
+    --popover: 215 25% 27%; /* #374151 */
+    --popover-foreground: 210 40% 98%; /* #F8FAFC */
 
-    /* Primária */
-    --primary: 221 83% 53%; /* #2563EB */
-    --primary-foreground: 210 20% 98%;
+    /* === COR PRIMÁRIA - AZUL MÉDICO ESCURO === */
+    --primary: 210 100% 60%; /* #1E90FF - Azul médico mais claro no escuro */
+    --primary-foreground: 0 0% 100%; /* Branco puro */
+    --primary-hover: 210 100% 65%; /* #4DA6FF - Hover mais claro */
 
-    /* Superfícies */
-    --card: 215 28% 17%; /* #1F2937 */
-    --card-foreground: 210 20% 96%;
-    --popover: 215 28% 17%; /* #1F2937 */
-    --popover-foreground: 210 20% 96%;
+    /* === CORES SECUNDÁRIAS === */
+    --secondary: 215 25% 27%; /* #374151 - Cinza médio */
+    --secondary-foreground: 210 40% 98%; /* #F8FAFC */
+    --muted: 215 20% 35%; /* #4B5563 - Cinza mais claro */
+    --muted-foreground: 215 16% 65%; /* #9CA3AF - Cinza claro */
 
-    /* Neutros e acentos */
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 220 14% 18%;
-    --muted-foreground: 220 15% 80%; /* #D1D5DB aproximado */
-    --accent: 222 20% 20%;
-    --accent-foreground: 210 20% 96%;
+    /* === CORES DE FEEDBACK MÉDICO === */
+    --success: 142 76% 45%; /* #22C55E - Verde saúde mais claro */
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 76% 15%; /* #052E16 - Verde escuro */
+    
+    --warning: 38 92% 60%; /* #FBBF24 - Amarelo mais claro */
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 48 96% 15%; /* #1F2937 - Amarelo escuro */
+    
+    --destructive: 0 84% 70%; /* #F87171 - Vermelho mais claro */
+    --destructive-foreground: 0 0% 100%;
+    --destructive-light: 0 93% 15%; /* #1F1415 - Vermelho escuro */
+    
+    --info: 210 100% 60%; /* #1E90FF - Azul informativo */
+    --info-foreground: 0 0% 100%;
+    --info-light: 204 94% 15%; /* #0C1420 - Azul escuro */
 
-    /* Feedback e contornos */
-    --destructive: 0 90% 71%; /* #F87171 */
-    --destructive-foreground: 210 20% 98%;
-    --success: 160 84% 39%; /* #10B981 */
-    --success-foreground: 210 20% 98%;
-    --warning: 45 96% 58%; /* #FBBF24 */
-    --warning-foreground: 210 20% 98%;
-    --info: 221 83% 53%; /* #2563EB */
-    --info-foreground: 210 20% 98%;
+    /* === BORDAS E CONTORNOS === */
+    --border: 215 20% 35%; /* #4B5563 - Cinza médio */
+    --input: 215 20% 35%; /* #4B5563 */
+    --ring: 210 100% 60%; /* #1E90FF - Focus ring azul médico */
+    --radius: 0.75rem; /* Bordas mais suaves */
 
-    --border: 220 13% 35%; /* #374151 aprox */
-    --input: 220 13% 35%;
-    --ring: 221 83% 53%;
+    /* === TIPOGRAFIA === */
+    --heading-foreground: 210 40% 98%; /* #F8FAFC - Títulos claros */
+    --text-primary: 210 40% 98%; /* #F8FAFC - Texto principal */
+    --text-secondary: 215 16% 65%; /* #9CA3AF - Texto secundário */
+    --text-muted: 215 20% 55%; /* #6B7280 - Texto esmaecido */
 
-    /* Brand gradient tokens no dark */
-    --brand-blue: 221 83% 53%; /* #2563EB */
-    --brand-green: 162 93% 30%; /* #059669 */
+    /* === CORES MÉDICAS ESPECIALIZADAS === */
+    --medical-primary: 210 100% 60%; /* #1E90FF - Azul médico principal */
+    --medical-secondary: 142 76% 45%; /* #22C55E - Verde saúde */
+    --medical-accent: 215 25% 27%; /* #374151 - Fundo suave */
+    
+    /* Status médicos */
+    --status-normal: 142 76% 45%; /* #22C55E - Verde normal */
+    --status-attention: 38 92% 60%; /* #FBBF24 - Amarelo atenção */
+    --status-critical: 0 84% 70%; /* #F87171 - Vermelho crítico */
+    --status-urgent: 14 91% 60%; /* #EF4444 - Vermelho urgente */
+    
+    /* Prioridades */
+    --priority-low: 142 76% 45%; /* #22C55E - Verde baixa */
+    --priority-medium: 38 92% 60%; /* #FBBF24 - Amarelo média */
+    --priority-high: 14 91% 60%; /* #EF4444 - Vermelho alta */
+    --priority-critical: 348 83% 60%; /* #EC4899 - Rosa crítico */
 
-    /* Sidebar (alinhada com o resto do dark) */
-    --sidebar-background: 222 23% 12%;
-    --sidebar-foreground: 210 20% 96%;
-    --sidebar-border: 220 13% 22%;
-    --sidebar-accent: 222 20% 18%;
-    --sidebar-accent-foreground: 210 20% 98%;
-    --sidebar-ring: 221 83% 53%;
+    /* === SIDEBAR MÉDICA === */
+    --sidebar-background: 215 28% 17%; /* #1F2937 - Fundo escuro */
+    --sidebar-foreground: 210 40% 98%; /* #F8FAFC - Texto claro */
+    --sidebar-border: 215 20% 35%; /* #4B5563 - Borda sutil */
+    --sidebar-accent: 215 25% 27%; /* #374151 - Hover suave */
+    --sidebar-accent-foreground: 210 40% 98%; /* #F8FAFC */
+    --sidebar-active: 210 100% 60%; /* #1E90FF - Item ativo */
+    --sidebar-active-foreground: 0 0% 100%; /* Branco */
   }
 }
 
-/* Componentes personalizados */
+/* === COMPONENTES MÉDICOS ESPECIALIZADOS === */
 @layer components {
+  /* Layout principal */
   .layout-container {
     @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
   }
 
-  .card-elevated {
-    border: 1px solid hsla(var(--border) / 0.6);
-    background-color: hsl(var(--card));
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  }
-
+  /* Cards médicos modernos */
   .card-medical {
-    @apply border border-medical-blue/20 bg-gradient-to-br from-white via-blue-50/30 to-blue-100/20;
-    border-color: hsl(var(--medical-blue) / 0.2);
-    box-shadow: 0 4px 20px -4px hsl(var(--medical-blue) / 0.15);
+    @apply bg-card border border-border rounded-xl shadow-sm;
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--card) / 0.95) 100%);
+    border: 1px solid hsl(var(--border) / 0.8);
+    box-shadow: 
+      0 1px 3px 0 hsl(var(--foreground) / 0.1),
+      0 1px 2px -1px hsl(var(--foreground) / 0.1);
   }
 
-  .sidebar-mobile {
-    @apply fixed inset-0 z-50 lg:hidden;
+  .card-elevated {
+    @apply bg-card border border-border rounded-xl;
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--card) / 0.98) 100%);
+    border: 1px solid hsl(var(--border) / 0.6);
+    box-shadow: 
+      0 4px 6px -1px hsl(var(--foreground) / 0.1),
+      0 2px 4px -2px hsl(var(--foreground) / 0.1);
+  }
+
+  .card-priority-high {
+    @apply border-l-4 border-l-red-500 bg-red-50/50 dark:bg-red-950/20;
+  }
+
+  .card-priority-medium {
+    @apply border-l-4 border-l-yellow-500 bg-yellow-50/50 dark:bg-yellow-950/20;
+  }
+
+  .card-priority-low {
+    @apply border-l-4 border-l-green-500 bg-green-50/50 dark:bg-green-950/20;
+  }
+
+  /* Status badges médicos */
+  .status-badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
+  }
+
+  .status-normal {
+    @apply bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400;
+  }
+
+  .status-attention {
+    @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400;
+  }
+
+  .status-critical {
+    @apply bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  .status-urgent {
+    @apply bg-red-200 text-red-900 dark:bg-red-800/40 dark:text-red-300 animate-pulse;
+  }
+
+  /* Botões médicos especializados */
+  .btn-medical-primary {
+    @apply bg-medical-primary hover:bg-medical-primary/90 text-white;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5;
+    @apply text-sm font-medium transition-all duration-200;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-medical-primary/20;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .btn-medical-secondary {
+    @apply bg-medical-secondary hover:bg-medical-secondary/90 text-white;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5;
+    @apply text-sm font-medium transition-all duration-200;
+    @apply border border-medical-secondary/20;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-medical-secondary/20;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .btn-medical-ghost {
+    @apply hover:bg-medical-primary/10 hover:text-medical-primary;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5;
+    @apply text-sm font-medium transition-all duration-200;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-medical-primary/20;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  /* Sidebar médica */
+  .sidebar-medical {
+    @apply bg-sidebar-background border-r border-sidebar-border;
+    @apply flex flex-col h-full;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg;
+    @apply text-sm font-medium text-sidebar-foreground;
+    @apply transition-all duration-200;
+    @apply hover:bg-sidebar-accent hover:text-sidebar-accent-foreground;
+  }
+
+  .sidebar-item-active {
+    @apply bg-sidebar-active text-sidebar-active-foreground;
+    @apply shadow-sm;
+  }
+
+  /* Formulários médicos */
+  .form-medical {
+    @apply space-y-6;
+  }
+
+  .form-group {
+    @apply space-y-2;
+  }
+
+  .form-label {
+    @apply text-sm font-medium text-foreground;
+  }
+
+  .form-input {
+    @apply flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2;
+    @apply text-sm ring-offset-background file:border-0 file:bg-transparent;
+    @apply file:text-sm file:font-medium placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Tabelas médicas */
+  .table-medical {
+    @apply w-full border-collapse;
+  }
+
+  .table-medical th {
+    @apply border-b border-border px-4 py-3 text-left;
+    @apply text-sm font-semibold text-foreground;
+    @apply bg-muted/50;
+  }
+
+  .table-medical td {
+    @apply border-b border-border px-4 py-3;
+    @apply text-sm text-foreground;
+  }
+
+  .table-medical tr:hover {
+    @apply bg-muted/30;
+  }
+
+  /* Gradientes médicos suaves */
+  .gradient-medical-primary {
+    background: linear-gradient(135deg, 
+      hsl(var(--medical-primary) / 0.1) 0%, 
+      hsl(var(--medical-primary) / 0.05) 100%);
+  }
+
+  .gradient-medical-success {
+    background: linear-gradient(135deg, 
+      hsl(var(--success) / 0.1) 0%, 
+      hsl(var(--success) / 0.05) 100%);
+  }
+
+  .gradient-medical-warning {
+    background: linear-gradient(135deg, 
+      hsl(var(--warning) / 0.1) 0%, 
+      hsl(var(--warning) / 0.05) 100%);
+  }
+
+  /* Animações suaves */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { 
+      opacity: 0; 
+      transform: translateY(10px); 
+    }
+    to { 
+      opacity: 1; 
+      transform: translateY(0); 
+    }
   }
 }
 
@@ -189,6 +391,11 @@
   /* Gradiente principal atualizado para tokens brand */
   .bg-app-gradient {
     background: linear-gradient(135deg, hsl(var(--brand-blue)) 0%, hsl(var(--brand-green)) 100%);
+  }
+
+  /* Garante legibilidade de texto quando usado como fundo em botões */
+  .btn-app-text {
+    color: hsl(var(--primary-foreground)) !important;
   }
 
   .text-app-gradient {

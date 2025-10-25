@@ -2,12 +2,21 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "../../services/authService";
 import { useToast } from "../../hooks/use-toast";
+import { 
+  validateEmail, 
+  validatePassword, 
+  validateName, 
+  validateCPF, 
+  validateText,
+  VALIDATION_SCHEMAS 
+} from "../../utils/inputValidation";
 
 export default function RegisterForm() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [tipo, setTipo] = useState("paciente");
+  const [validationErrors, setValidationErrors] = useState({});
   // ADICIONE estes dois estados para controlar a visualização das senhas
   const [showSenha, setShowSenha] = useState(false);
   const [showConfirmSenha, setShowConfirmSenha] = useState(false);
@@ -53,6 +62,15 @@ export default function RegisterForm() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    
+    // Limpar erro de validação quando o usuário começar a digitar
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
     // Formatar CPF automaticamente para o padrão exigido pelo backend
     if (name === "cpf") {
       setFormData({ ...formData, cpf: formatCPF(value) });
@@ -100,6 +118,15 @@ export default function RegisterForm() {
 
   const handleMedicoChange = (e) => {
     const { name, value } = e.target;
+    
+    // Limpar erro de validação quando o usuário começar a digitar
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+    
     if (name === "crm") {
       setMedicoForm((prev) => ({ ...prev, crm: formatCRM(value) }));
     } else {
@@ -107,6 +134,14 @@ export default function RegisterForm() {
     }
   };
   const handleMedicoDocChange = (key, file) => {
+    // Limpar erro de validação quando o usuário fizer upload de um arquivo
+    if (validationErrors[key]) {
+      setValidationErrors(prev => ({
+        ...prev,
+        [key]: undefined
+      }));
+    }
+    
     setMedicoForm((prev) => ({
       ...prev,
       documentos: { ...prev.documentos, [key]: file },
@@ -238,6 +273,65 @@ export default function RegisterForm() {
     formData.email.length === 0 ||
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email);
 
+  // Função de validação do formulário
+  const validateForm = () => {
+    const errors = {};
+
+    // Validação do nome
+    const nameValidation = validateName(formData.nome);
+    if (!nameValidation.isValid) {
+      errors.nome = nameValidation.error;
+    }
+
+    // Validação do email
+    const emailValidation = validateEmail(formData.email);
+    if (!emailValidation.isValid) {
+      errors.email = emailValidation.error;
+    }
+
+    // Validação da senha
+    const passwordValidation = validatePassword(formData.senha);
+    if (!passwordValidation.isValid) {
+      errors.senha = passwordValidation.error;
+    }
+
+    // Validação da confirmação de senha
+    if (formData.senha !== formData.confirmSenha) {
+      errors.confirmSenha = "As senhas não conferem";
+    }
+
+    // Validação do CPF
+    const cpfValidation = validateCPF(formData.cpf);
+    if (!cpfValidation.isValid) {
+      errors.cpf = cpfValidation.error;
+    }
+
+    // Validações específicas para clínica
+    if (tipo === "clinica") {
+      if (!formData.nomeClinica.trim()) {
+        errors.nomeClinica = "Nome da clínica é obrigatório";
+      }
+      if (!formData.cnpj.trim()) {
+        errors.cnpj = "CNPJ é obrigatório";
+      }
+    }
+
+    // Validações específicas para médico
+    if (tipo === "medico") {
+      if (!medicoForm.crm.trim()) {
+        errors.crm = "CRM é obrigatório";
+      }
+      if (!medicoForm.especialidade.trim()) {
+        errors.especialidade = "Especialidade é obrigatória";
+      }
+      if (!medicoForm.documentos.diplomaMedicina) {
+        errors.diplomaMedicina = "Diploma de Medicina é obrigatório";
+      }
+    }
+
+    return errors;
+  };
+
   const passwordsMatch =
     formData.confirmSenha.length === 0 ||
     (formData.senha.length > 0 && formData.senha === formData.confirmSenha);
@@ -245,52 +339,17 @@ export default function RegisterForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validações
-    if (!formData.nome || !formData.email || !formData.senha || !formData.cpf) {
+    // Validação do formulário
+    const errors = validateForm();
+    setValidationErrors(errors);
+
+    if (Object.keys(errors).length > 0) {
       toast({
         title: "Erro de validação",
-        description: "Por favor, preencha todos os campos obrigatórios.",
+        description: "Por favor, corrija os erros no formulário.",
         variant: "destructive",
       });
       return;
-    }
-
-    if (formData.senha !== formData.confirmSenha) {
-      toast({
-        title: "Erro de validação",
-        description: "As senhas não conferem.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.senha.length < 6) {
-      toast({
-        title: "Erro de validação",
-        description: "A senha deve ter pelo menos 6 caracteres.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // NOVO: validações mínimas para médico
-    if (tipo === "medico") {
-      if (!medicoForm.crm) {
-        toast({
-          title: "CRM obrigatório",
-          description: "Informe o CRM para cadastro como médico.",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!medicoForm.documentos.diplomaMedicina) {
-        toast({
-          title: "Diploma obrigatório",
-          description: "Anexe o Diploma de Medicina.",
-          variant: "destructive",
-        });
-        return;
-      }
     }
 
     setLoading(true);
@@ -535,8 +594,13 @@ export default function RegisterForm() {
                     value={formData.nome}
                     onChange={handleChange}
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                    className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
+                      validationErrors.nome ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
+                    }`}
                   />
+                  {validationErrors.nome && (
+                    <p className="mt-1 text-xs text-rose-600">{validationErrors.nome}</p>
+                  )}
                 </div>
               </>
             ) : (
@@ -550,8 +614,13 @@ export default function RegisterForm() {
                     value={formData.nomeClinica}
                     onChange={handleChange}
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                    className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
+                      validationErrors.nomeClinica ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
+                    }`}
                   />
+                  {validationErrors.nomeClinica && (
+                    <p className="mt-1 text-xs text-rose-600">{validationErrors.nomeClinica}</p>
+                  )}
                 </div>
 
                 <div>
@@ -563,8 +632,13 @@ export default function RegisterForm() {
                     value={formData.cnpj}
                     onChange={handleChange}
                     required
-                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                    className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
+                      validationErrors.cnpj ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
+                    }`}
                   />
+                  {validationErrors.cnpj && (
+                    <p className="mt-1 text-xs text-rose-600">{validationErrors.cnpj}</p>
+                  )}
                 </div>
               </>
             )}
@@ -580,11 +654,11 @@ export default function RegisterForm() {
                 onChange={handleChange}
                 required
                 className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
-                  isValidEmail ? "border-slate-200 focus:ring-sky-500" : "border-rose-300 focus:ring-rose-500"
+                  validationErrors.email ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
                 }`}
               />
-              {!isValidEmail && (
-                <p className="mt-1 text-xs text-rose-600">Informe um e-mail válido.</p>
+              {validationErrors.email && (
+                <p className="mt-1 text-xs text-rose-600">{validationErrors.email}</p>
               )}
             </div>
 
@@ -598,8 +672,13 @@ export default function RegisterForm() {
                 value={formData.cpf}
                 onChange={handleChange}
                 required
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
+                  validationErrors.cpf ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
+                }`}
               />
+              {validationErrors.cpf && (
+                <p className="mt-1 text-xs text-rose-600">{validationErrors.cpf}</p>
+              )}
             </div>
 
             <div>
@@ -612,7 +691,9 @@ export default function RegisterForm() {
                   value={formData.senha}
                   onChange={handleChange}
                   required
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 pr-12 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition"
+                  className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 pr-12 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:border-sky-500 transition ${
+                    validationErrors.senha ? "border-rose-300 focus:ring-rose-500" : "border-slate-200 focus:ring-sky-500"
+                  }`}
                 />
                 <button
                   type="button"
@@ -623,6 +704,9 @@ export default function RegisterForm() {
                   {showSenha ? "Ocultar" : "Mostrar"}
                 </button>
               </div>
+              {validationErrors.senha && (
+                <p className="mt-1 text-xs text-rose-600">{validationErrors.senha}</p>
+              )}
             </div>
 
             <div>
@@ -638,7 +722,9 @@ export default function RegisterForm() {
                   onChange={handleChange}
                   required
                   className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 pr-12 text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 transition ${
-                    passwordsMatch
+                    validationErrors.confirmSenha 
+                      ? "border-rose-300 focus:ring-rose-500" 
+                      : passwordsMatch
                       ? "border-slate-200 focus:ring-sky-500 focus:border-sky-500"
                       : "border-amber-300 focus:ring-amber-400"
                   }`}
@@ -652,7 +738,9 @@ export default function RegisterForm() {
                   {showConfirmSenha ? "Ocultar" : "Mostrar"}
                 </button>
               </div>
-              {formData.confirmSenha.length > 0 && (
+              {validationErrors.confirmSenha ? (
+                <p className="mt-1 text-xs text-rose-600">{validationErrors.confirmSenha}</p>
+              ) : formData.confirmSenha.length > 0 && (
                 <p
                   className={`mt-1 text-xs ${
                     formData.senha === formData.confirmSenha
@@ -681,8 +769,13 @@ export default function RegisterForm() {
                       value={medicoForm.crm}
                       onChange={handleMedicoChange}
                       maxLength={7}
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                      className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 ${
+                        validationErrors.crm ? "border-rose-300 focus:ring-rose-500" : "border-slate-200"
+                      }`}
                     />
+                    {validationErrors.crm && (
+                      <p className="mt-1 text-xs text-rose-600">{validationErrors.crm}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700">Especialidade</label>
@@ -692,8 +785,13 @@ export default function RegisterForm() {
                       placeholder="Ex.: Cardiologia"
                       value={medicoForm.especialidade}
                       onChange={handleMedicoChange}
-                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                      className={`mt-1 w-full rounded-lg border bg-white px-3 py-2.5 ${
+                        validationErrors.especialidade ? "border-rose-300 focus:ring-rose-500" : "border-slate-200"
+                      }`}
                     />
+                    {validationErrors.especialidade && (
+                      <p className="mt-1 text-xs text-rose-600">{validationErrors.especialidade}</p>
+                    )}
                   </div>
                   <div>
                     <label className="text-sm font-medium text-slate-700">Instituição de Formação</label>
@@ -788,6 +886,9 @@ export default function RegisterForm() {
                     onFile={(file) => handleMedicoDocChange("diplomaMedicina", file)}
                     onRemove={() => removeMedicoDoc("diplomaMedicina", diplomaInputRef)}
                   />
+                  {validationErrors.diplomaMedicina && (
+                    <p className="mt-1 text-xs text-rose-600">{validationErrors.diplomaMedicina}</p>
+                  )}
 
                   <DocUpload
                     label="Certificado de Residência"
@@ -815,11 +916,16 @@ export default function RegisterForm() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg font-semibold text-white bg-app-gradient hover:opacity-90 shadow-app transition disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-400 shadow-app transition disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading
                 ? "Registrando..."
-                : `Registrar ${({ paciente: "Paciente", clinica: "Clínica", medico: "Médico" }[tipo] || "Usuário")}`}
+                : `Registrar ${
+                    tipo === "paciente" ? "Paciente" :
+                    tipo === "clinica" ? "Clínica" :
+                    tipo === "medico" ? "Médico" :
+                    "Usuário"
+                  }`}
             </button>
           </form>
         </div>

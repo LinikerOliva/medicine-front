@@ -724,8 +724,51 @@ export const medicoService = {
       }
     }
 
-    if (lastErr) throw lastErr
-    throw new Error("Falha ao gerar documento de receita: nenhum endpoint compatível encontrado.")
+    // Fallback local: gerar PDF no cliente quando nenhum endpoint for compatível
+    try {
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+      const pdfDoc = await PDFDocument.create()
+      const page = pdfDoc.addPage([595.28, 841.89]) // A4
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+      const draw = (text, x, y, size = 12, color = rgb(0, 0, 0)) => {
+        page.drawText(String(text || ""), { x, y, size, font, color })
+      }
+
+      let y = 800
+      draw("Receita Médica (pré-assinatura, não assinada)", 50, y, 16); y -= 30
+
+      // Cabeçalho paciente
+      draw(`Paciente: ${normalized.nome_paciente || normalized.paciente_nome || normalized.paciente_id || ""}` , 50, y); y -= 18
+      draw(`Idade: ${normalized.idade || ""}` , 50, y); y -= 18
+      draw(`RG/CPF: ${normalized.rg || normalized.cpf || ""}` , 50, y); y -= 18
+      draw(`Nascimento: ${normalized.data_nascimento || ""}` , 50, y); y -= 24
+
+      // Conteúdo principal
+      draw("Medicamentos", 50, y, 14); y -= 18
+      draw(String(normalized.medicamentos || normalized.medicamento || ""), 50, y); y -= 36
+
+      draw("Posologia", 50, y, 14); y -= 18
+      draw(String(normalized.posologia || ""), 50, y); y -= 36
+
+      if (normalized.observacoes) {
+        draw("Observações", 50, y, 14); y -= 18
+        draw(String(normalized.observacoes), 50, y); y -= 36
+      }
+
+      // Rodapé médico
+      draw(`Médico: ${normalized.medico || ""}` , 50, y); y -= 18
+      draw(`CRM: ${normalized.crm || ""}` , 50, y); y -= 18
+      draw(`Endereço: ${normalized.endereco_consultorio || ""}` , 50, y); y -= 18
+      draw(`Telefone: ${normalized.telefone_consultorio || ""}` , 50, y); y -= 24
+
+      const bytes = await pdfDoc.save()
+      const blob = new Blob([bytes], { type: "application/pdf" })
+      const filename = `receita.${formato}`
+      return { filename, blob }
+    } catch (e) {
+      if (lastErr) throw lastErr
+      throw new Error("Falha ao gerar documento de receita: nenhum endpoint compatível e fallback local indisponível.")
+    }
   },
 
   // Busca simplificada de pacientes por nome
@@ -843,24 +886,24 @@ export const medicoService = {
       // 2) Não existe: tentar criar uma consulta mínima
       try {
         const mid = medicoId || (await this._resolveMedicoId().catch(() => null))
+        // Não tente criar sem médico resolvido
+        if (!mid) {
+          if (VERBOSE) { try { console.warn("[_ensureConsultaId] médico não resolvido; abortando criação da consulta") } catch {} }
+          return null
+        }
         const body = {
+          medico: mid,
+          medico_id: mid,
           paciente: pacienteId,
           paciente_id: pacienteId,
-          data: day,
-          date: day,
-          dia: day,
-          "data__date": day,
           data_hora: `${day}T00:00:00`,
-        }
-        if (mid) {
-          body.medico = mid
-          body.medico_id = mid
+          tipo: "rotina",
+          motivo: "Emissão de receita automática",
         }
 
+        // Evita endpoints alternativos que retornam 405
         const endpoints = [
           baseConsultas,
-          `${baseConsultas}criar/`,
-          `${baseConsultas}create/`,
         ]
 
         for (const urlRaw of endpoints) {
@@ -1516,6 +1559,82 @@ export const medicoService = {
     throw new Error("Falha ao atualizar dados do médico: nenhum endpoint compatível.")
   },
 
+  // NOVO: Selo visual de assinatura e QR
+  async _applySignatureStampToPdf(fileOrBlob, opts = {}) {
+    try {
+      const signerName = String(opts.signerName || "Médico(a)").trim()
+      const dateStr = String(
+        opts.dateString || (() => {
+          const d = new Date()
+          const pad = (n) => String(n).padStart(2, "0")
+          return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+        })()
+      )
+      const receitaId = opts.receitaId || null
+      const verifyUrl = opts.verifyUrl || this.buildVerifyUrl(receitaId)
+
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+      const QRCode = await import("qrcode")
+
+      const srcBlob = fileOrBlob instanceof Blob ? fileOrBlob : new Blob([await fileOrBlob.arrayBuffer?.()])
+      const bytes = new Uint8Array(await srcBlob.arrayBuffer())
+      const pdfDoc = await PDFDocument.load(bytes)
+      const pages = pdfDoc.getPages()
+      const page = pages[pages.length - 1]
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+
+      // Gera QR em dataURL e incorpora como PNG
+      let qrPng
+      try {
+        const qrDataUrl = await QRCode.default.toDataURL(String(verifyUrl || ""), { errorCorrectionLevel: "H", margin: 1, width: 256 })
+        const base64 = (qrDataUrl || "").split(",")[1] || ""
+        const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        qrPng = await pdfDoc.embedPng(raw)
+      } catch (_) {}
+
+      const { width } = page.getSize()
+      const box = { x: 40, y: 60, w: width - 80, h: 120 }
+      page.drawRectangle({ x: box.x, y: box.y, width: box.w, height: box.h, color: rgb(0.97, 0.97, 0.97) })
+      page.drawText("Assinado de forma digital por:", { x: box.x + 110, y: box.y + 90, size: 11, font, color: rgb(0, 0, 0) })
+      page.drawText(signerName, { x: box.x + 110, y: box.y + 74, size: 12, font, color: rgb(0, 0, 0) })
+      page.drawText(`Dados: ${dateStr}`, { x: box.x + 110, y: box.y + 56, size: 10, font, color: rgb(0, 0, 0) })
+      // linha e legenda
+      page.drawText("Carimbo e Assinatura do Médico", { x: box.x + 110, y: box.y + 30, size: 9, font, color: rgb(0.3, 0.3, 0.3) })
+
+      if (qrPng) {
+        const qrSize = 90
+        page.drawImage(qrPng, { x: box.x + 10, y: box.y + 20, width: qrSize, height: qrSize })
+      }
+
+      const out = await pdfDoc.save()
+      return new Blob([out], { type: "application/pdf" })
+    } catch (err) {
+      // Em caso de erro no selo, devolve o arquivo original
+      try { console.warn("[medicoService] selo visual falhou:", err?.message || err) } catch {}
+      const srcBlob = fileOrBlob instanceof Blob ? fileOrBlob : new Blob([await fileOrBlob.arrayBuffer?.()])
+      return srcBlob
+    }
+  },
+
+  buildVerifyUrl(receitaId) {
+    try {
+      const explicit = String(import.meta.env.VITE_RECEITA_VERIFY_URL || "").trim()
+      if (explicit) {
+        const base = explicit.replace(/\/?$/, "/")
+        return receitaId ? `${base}${receitaId}` : base
+      }
+      const api = String(import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+      if (receitaId) return `${api}/receitas/${receitaId}/verificar/`
+      return api || window?.location?.origin || ""
+    } catch (_) {
+      return ""
+    }
+  },
+
+  async applySignatureStamp(blobOrFile, opts = {}) {
+    return await this._applySignatureStampToPdf(blobOrFile, opts)
+  },
+
   // NOVO: assinar documento (PDF) com o certificado do médico
   async signDocumento(fileOrForm, meta = {}) {
     // fileOrForm pode ser File (PDF) ou FormData
@@ -1527,15 +1646,50 @@ export const medicoService = {
       formData.append("file", fileOrForm)
       formData.append("documento", fileOrForm)
       formData.append("pdf", fileOrForm)
+      formData.append("arquivo", fileOrForm)
     } else {
       throw new Error("Parâmetro inválido: é esperado FormData ou File PDF.")
     }
+
+    // Carimbo visual e QR (antes da assinatura), se habilitado
+    try {
+      const enableStamp = meta?.visibleStamp !== false
+      if (enableStamp) {
+        let srcFile = (formData.get("file") || formData.get("pdf") || formData.get("documento"))
+        if (!srcFile && fileOrForm && fileOrForm.name) srcFile = fileOrForm
+        if (srcFile) {
+          const rid = meta?.receitaId || meta?.id || meta?.receita || null
+          let signerName = meta?.signerName
+          if (!signerName) {
+            const cert = await this.getCertificadoInfo().catch(() => null)
+            signerName = cert?.subject_name || cert?.subject || cert?.nome || meta?.medicoNome || "Médico(a)"
+          }
+          const stampedBlob = await this._applySignatureStampToPdf(srcFile, {
+            signerName,
+            dateString: new Date().toLocaleString(),
+            receitaId: rid,
+          })
+          const stampedFile = new File([stampedBlob], srcFile.name || "documento.pdf", { type: "application/pdf" })
+          ;["file","pdf","documento","arquivo"].forEach((k) => {
+            if (formData.has(k)) formData.set(k, stampedFile)
+          })
+        }
+      }
+    } catch (_) {}
 
     // Metadados opcionais (motivo, local, contact etc.)
     const reason = meta.reason || meta.motivo
     const location = meta.location || meta.local
     if (reason) formData.append("reason", reason), formData.append("motivo", reason)
     if (location) formData.append("location", location), formData.append("local", location)
+
+    // Informar formato/tipo para compatibilidade
+    try {
+      formData.append("formato", "pdf")
+      formData.append("format", "pdf")
+      formData.append("tipo", "PADES")
+      formData.append("assinar", "true")
+    } catch {}
 
     // Determinar modo de assinatura: token físico vs PFX
     const flagFromForm = (k) => {
@@ -1587,9 +1741,13 @@ export const medicoService = {
       formData.append("pfx", pfx)
       formData.append("certificado", pfx)
       formData.append("pkcs12", pfx)
+      // aliases adicionais para compatibilidade
+      formData.append("arquivo_pfx", pfx)
       formData.append("pfx_password", pw)
       formData.append("senha", pw)
       formData.append("password", pw)
+      // alias extra da senha conforme backend
+      formData.append("senha_certificado", pw)
       formData.append("no_persist", "true")
       formData.append("ephemeral", "true")
     }
@@ -1600,8 +1758,11 @@ export const medicoService = {
       formData.append("receita", rid)
       formData.append("receita_id", rid)
       formData.append("id", rid)
+      // alias adicional usado por alguns endpoints
+      formData.append("id_receita", rid)
     }
 
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
     const candidates = []
     const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
     if (envSign) candidates.push(envSign)
@@ -1611,6 +1772,9 @@ export const medicoService = {
 
     candidates.push(`/api/assinatura/assinar/`)
     candidates.push(`/assinatura/assinar/`)
+    // endpoints explícitos de receita
+    candidates.push(`/api/assinar-receita/`)
+    candidates.push(`/assinar-receita/`)
     candidates.push(`/documentos/assinar/`)
     candidates.push(`/receitas/assinar/`)
     candidates.push(`${medBase}me/assinar/`)
@@ -1623,32 +1787,115 @@ export const medicoService = {
       candidates.push(`${medBase}${medicoId}/assinatura/`)
     }
 
+    // Preparar JSON fallback (base64)
+    const blobToBase64 = async (f) => {
+      try {
+        const ab = await f.arrayBuffer()
+        const bytes = new Uint8Array(ab)
+        let binary = ""
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+        return btoa(binary)
+      } catch { return null }
+    }
+    const srcFileJson = formData.get("file") || formData.get("pdf") || formData.get("documento")
+    const pfxJson = formData.get("pfx") || formData.get("certificado") || formData.get("pkcs12")
+    const pdfBase64 = srcFileJson ? await blobToBase64(srcFileJson) : null
+    const pfxBase64 = pfxJson ? await blobToBase64(pfxJson) : null
+
+    const jsonPayload = {
+      formato: "pdf",
+      id: rid,
+      receita: rid,
+      receita_id: rid,
+      file_base64: pdfBase64,
+      pdf_base64: pdfBase64,
+      documento_base64: pdfBase64,
+      arquivo_base64: pdfBase64,
+      pfx_base64: pfxBase64,
+      certificado_base64: pfxBase64,
+      pkcs12_base64: pfxBase64,
+      password: pw,
+      senha: pw,
+      pfx_password: pw,
+      reason,
+      motivo: reason,
+      location,
+      local: location,
+      use_token: useToken ? true : undefined,
+      pkcs11: useToken ? true : undefined,
+      hardware: useToken ? true : undefined,
+      pin,
+      token_pin: pin || undefined,
+      pin_code: pin || undefined,
+      tipo_assinatura: "pades",
+      algoritmo: "sha256",
+    }
+
     let lastErr = null
     for (const raw of candidates) {
       if (!raw) continue
       const url = raw.endsWith("/") ? raw : `${raw}/`
       const methods = ["post", "put"]
       for (const m of methods) {
+        // 1) Tenta multipart
         try {
+          if (VERBOSE) console.debug(`[signDocumento] ${m.toUpperCase()} multipart ->`, url)
           const res = await api[m](url, formData, { responseType: "blob" })
-          const contentDisposition = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+          const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
           let filename = "documento_assinado.pdf"
-          if (contentDisposition) {
-            const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition)
-            filename = decodeURIComponent(match?.[1] || match?.[2] || filename)
+          if (cd) {
+            const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+            try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
           }
           const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
           return { filename, blob }
-        } catch (e) {
-          const st = e?.response?.status
-          if (st === 404) { lastErr = e; break }
-          if (st === 405) { lastErr = e; continue }
-          if (st === 401) throw e
-          if (st && [400, 422].includes(st)) throw e
-          lastErr = e; break
+        } catch (e1) {
+          const st1 = e1?.response?.status
+          if (st1 === 404) { lastErr = e1; break }
+          if (st1 === 405) { lastErr = e1; continue }
+          if (st1 === 401) throw e1
+          // 2) Fallback: JSON base64
+          try {
+            if (VERBOSE) console.debug(`[signDocumento] ${m.toUpperCase()} json ->`, url)
+            const res = await api[m](url, jsonPayload, { responseType: "json" })
+            const ct = res.headers?.["content-type"] || ""
+            if (/application\/pdf/i.test(ct)) {
+              const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+              let filename = "documento_assinado.pdf"
+              if (cd) {
+                const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+                try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
+              }
+              const blob = new Blob([res.data], { type: "application/pdf" })
+              return { filename, blob }
+            }
+            // Se vier JSON com base64
+            const payload = res.data || {}
+            const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64 || null
+            if (b64) {
+              const byteChars = atob(String(b64))
+              const byteNumbers = new Array(byteChars.length)
+              for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
+              const byteArray = new Uint8Array(byteNumbers)
+              const blob = new Blob([byteArray], { type: "application/pdf" })
+              const filename = payload?.filename || payload?.nome_arquivo || "documento_assinado.pdf"
+              return { filename, blob }
+            }
+            // Se 400/422 no JSON, seguir tentando outros endpoints
+            const st2 = res?.status
+            if (st2 && [400,422].includes(st2)) { lastErr = e1; continue }
+          } catch (e2) {
+            const st2 = e2?.response?.status
+            if (st2 === 404) { lastErr = e2; break }
+            if (st2 === 405) { lastErr = e2; continue }
+            if (st2 === 401) throw e2
+            if (st2 && [400,422].includes(st2)) { lastErr = e2; continue }
+            lastErr = e2; break
+          }
         }
       }
     }
+
     if (lastErr) throw lastErr
     throw new Error("Falha ao assinar documento: nenhum endpoint compatível.")
   },

@@ -179,21 +179,21 @@ export function MedicoRegistration() {
     switch (applicationStatus) {
       case "pending":
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Badge variant="outline" className="badge-medical-warning">
             <Clock className="mr-1 h-3 w-3" />
             Aguardando Aprovação
           </Badge>
         )
       case "approved":
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="outline" className="badge-medical-success">
             <CheckCircle className="mr-1 h-3 w-3" />
             Aprovado
           </Badge>
         )
       case "rejected":
         return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+          <Badge variant="outline" className="badge-medical-error">
             <XCircle className="mr-1 h-3 w-3" />
             Rejeitado
           </Badge>

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { medicoService } from "@/services/medicoService"
+import { DatePicker } from "@/components/ui/date-picker"
 
 export default function MinhasConsultas() {
   const [loadingHoje, setLoadingHoje] = useState(true)
@@ -106,8 +107,7 @@ export default function MinhasConsultas() {
               <SelectItem value="cancelado">Cancelado</SelectItem>
             </SelectContent>
           </Select>
-          <Input 
-            type="date" 
+          <DatePicker 
             className="w-[180px] dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200" 
           />
           <Button>

@@ -10,6 +10,7 @@ import { secretariaService } from "@/services/secretariaService"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { DatePicker } from "@/components/ui/date-picker"
 
 function formatPaciente(p = {}) {
   const user = p?.user || {}
@@ -169,7 +170,7 @@ export default function PacientesSecretaria() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm text-muted-foreground">Data de nascimento</label>
-                      <Input name="data_nascimento" type="date" value={form.data_nascimento} onChange={handleChange} />
+                     <DatePicker name="data_nascimento" value={form.data_nascimento} onChange={(val) => handleChange({ target: { name: "data_nascimento", value: val } })} maxDate={new Date()} />
                     </div>
                     <div>
                       <label className="text-sm text-muted-foreground">Endereço</label>

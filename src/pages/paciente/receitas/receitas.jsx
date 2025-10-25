@@ -36,7 +36,7 @@ export default function ReceitasPaciente() {
   const [receitas, setReceitas] = useState([])
   const [medicos, setMedicos] = useState([])
   const [solicitarOpen, setSolicitarOpen] = useState(false)
-  const [form, setForm] = useState({ medico: "", mensagem: "" })
+  const [form, setForm] = useState({ medico: "", mensagem: "", receita: null, renovacao: false })
   const [submitting, setSubmitting] = useState(false)
   const [busca, setBusca] = useState("")
 
@@ -133,10 +133,15 @@ export default function ReceitasPaciente() {
     }
     setSubmitting(true)
     try {
-      await pacienteService.solicitarReceita({ medico: form.medico, mensagem: form.mensagem })
-      toast({ title: "Solicitação enviada", description: "Seu pedido de receita foi enviado ao médico." })
+      if (form.renovacao) {
+        await pacienteService.solicitarRenovacao({ medico: form.medico, mensagem: form.mensagem, receita: form.receita })
+        toast({ title: "Renovação enviada", description: "Seu pedido de renovação foi enviado ao médico." })
+      } else {
+        await pacienteService.solicitarReceita({ medico: form.medico, mensagem: form.mensagem, receita: form.receita })
+        toast({ title: "Solicitação enviada", description: "Seu pedido de receita foi enviado ao médico." })
+      }
       setSolicitarOpen(false)
-      setForm({ medico: "", mensagem: "" })
+      setForm({ medico: "", mensagem: "", receita: null, renovacao: false })
     } catch (err) {
       toast({
         title: "Erro ao solicitar",
@@ -323,14 +328,6 @@ export default function ReceitasPaciente() {
                 <Stethoscope className="mr-2 h-4 w-4" />
                 Médicos
               </Button>
-              <Button 
-                variant="secondary"
-                className="bg-white/20 border-white/30 text-white hover:bg-white/30 backdrop-blur-sm"
-                onClick={() => setSolicitarOpen(true)}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Solicitar Receita
-              </Button>
             </div>
           </div>
         </div>
@@ -428,10 +425,7 @@ export default function ReceitasPaciente() {
               <Pill className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-muted-foreground mb-2">Nenhuma receita encontrada</h3>
               <p className="text-muted-foreground mb-6">Você ainda não possui receitas médicas.</p>
-              <Button onClick={() => setSolicitarOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Solicitar Receita
-              </Button>
+
             </div>
           </CardContent>
         </Card>
@@ -587,6 +581,31 @@ export default function ReceitasPaciente() {
                         </div>
                       </>
                     )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const mid = r?.medico?.id || r?.consulta?.medico?.id || r?.medico_id || ""
+                        setForm({ medico: String(mid || ""), mensagem: "", receita: r?.id || null, renovacao: false })
+                        setSolicitarOpen(true)
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Solicitar Receita
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const mid = r?.medico?.id || r?.consulta?.medico?.id || r?.medico_id || ""
+                        const msg = `Solicito renovação da receita #${r?.id ?? ""}`.trim()
+                        setForm({ medico: String(mid || ""), mensagem: msg, receita: r?.id || null, renovacao: true })
+                        setSolicitarOpen(true)
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Pedir Renovação
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -599,7 +618,7 @@ export default function ReceitasPaciente() {
       {solicitarOpen ? (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-card text-card-foreground border rounded-lg p-6 w-full max-w-lg shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">Solicitar Receita</h2>
+            <h2 className="text-lg font-semibold mb-4">{form.renovacao ? "Pedir Renovação de Receita" : "Solicitar Receita"}</h2>
             <form onSubmit={handleSolicitar} className="space-y-4">
               <div>
                 <Label className="mb-1 block">Médico</Label>
@@ -627,7 +646,7 @@ export default function ReceitasPaciente() {
                 <Label className="mb-1 block">Mensagem (opcional)</Label>
                 <Textarea
                   rows={3}
-                  placeholder="Descreva sua necessidade (ex: renovação de medicamento de uso contínuo)"
+                  placeholder={form.renovacao ? "Explique sua necessidade de renovação (uso contínuo, desabastecimento, etc.)" : "Descreva sua necessidade (ex: nova receita de medicamento)"}
                   value={form.mensagem}
                   onChange={(e) => setForm((f) => ({ ...f, mensagem: e.target.value }))}
                 />
@@ -638,13 +657,13 @@ export default function ReceitasPaciente() {
                   variant="outline"
                   onClick={() => {
                     setSolicitarOpen(false)
-                    setForm({ medico: "", mensagem: "" })
+                    setForm({ medico: "", mensagem: "", receita: null, renovacao: false })
                   }}
                 >
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? "Enviando..." : "Enviar solicitação"}
+                  {submitting ? "Enviando..." : (form.renovacao ? "Enviar pedido de renovação" : "Enviar solicitação")}
                 </Button>
               </div>
             </form>

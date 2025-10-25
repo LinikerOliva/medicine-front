@@ -1,14 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useToast } from "./use-toast"
+import { useErrorHandler } from "../utils/errorHandler"
 
 export function useMutation(mutationFunction, options = {}) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const { toast } = useToast()
+  const { handleApiError } = useErrorHandler()
 
-  const mutate = async (variables) => {
+  const mutate = useCallback(async (variables) => {
     try {
       setLoading(true)
       setError(null)
@@ -28,24 +30,28 @@ export function useMutation(mutationFunction, options = {}) {
 
       return result
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Erro na operação"
-      setError(errorMessage)
+      // Usa o sistema centralizado de tratamento de erros
+      const errorInfo = handleApiError(err, options.context || 'MUTATION')
+      setError(errorInfo.message)
 
       if (options.onError) {
-        options.onError(err)
+        options.onError(errorInfo)
       }
 
-      toast({
-        title: "Erro",
-        description: errorMessage,
-        variant: "destructive",
-      })
+      // Só mostra toast se não foi tratado pelo onError
+      if (!options.onError || options.showToastOnError !== false) {
+        toast({
+          title: "Erro",
+          description: errorInfo.message,
+          variant: "destructive",
+        })
+      }
 
-      throw err
+      throw errorInfo
     } finally {
       setLoading(false)
     }
-  }
+  }, [mutationFunction, options, toast, handleApiError])
 
   return { mutate, loading, error }
 }

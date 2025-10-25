@@ -28,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "../ui/avatar"
-import { Badge } from "../ui/badge"
+import { Badge, PatientStatusBadge } from "../ui/badge"
 import { Separator } from "../ui/separator"
 import { 
   LogOut, 
@@ -44,12 +44,16 @@ import {
   UserCircle,
   Palette,
   Zap,
-  Activity
+  Activity,
+  Heart,
+  Plus,
+  Calendar,
+  Clock
 } from "lucide-react"
 import sidebarConfig from "./sidebarConfig"
 import { pacienteService } from "../../services/pacienteService"
 
-// Sidebar unificada por role com design moderno e tema escuro
+// Sidebar médica profissional com hierarquia visual clara
 export function Sidebar({ role = "paciente" }) {
   const location = useLocation()
   const navigate = useNavigate()
@@ -57,12 +61,11 @@ export function Sidebar({ role = "paciente" }) {
   const { logout: userLogout } = useUser()
 
   const isAdmin = user?.role === "admin" || user?.tipo === "admin"
-
   const config = sidebarConfig[role] || sidebarConfig.paciente
 
   // Estados para funcionalidades da sidebar
   const [searchQuery, setSearchQuery] = useState("")
-  const [notifications, setNotifications] = useState(3) // Simulando notificações
+  const [notifications, setNotifications] = useState(3)
   const [isSearchFocused, setIsSearchFocused] = useState(false)
 
   // Carregar dados do paciente apenas quando role === "paciente"
@@ -91,136 +94,148 @@ export function Sidebar({ role = "paciente" }) {
     }
   }, [role])
 
-  // Telas de atalho visíveis apenas para administradores (independente da role atual)
+  // Telas de atalho visíveis apenas para administradores
   const adminTelas = [
-    { title: "Paciente", href: "/paciente/perfil", icon: User },
-    { title: "Médico", href: "/medico/dashboard", icon: Stethoscope },
-    { title: "Clínica", href: "/clinica/dashboard", icon: Building2 },
-    { title: "Admin", href: "/admin/dashboard", icon: Shield },
+    { title: "Paciente", path: "/paciente/perfil", icon: User },
+    { title: "Médico", path: "/medico/dashboard", icon: Stethoscope },
+    { title: "Clínica", path: "/clinica/dashboard", icon: Building2 },
+    { title: "Secretaria", path: "/secretaria/dashboard", icon: UserCircle },
+    { title: "Admin", path: "/admin/dashboard", icon: Shield },
   ]
 
-  // Dados para o header e avatar
-  const HeaderIcon = config.header?.icon || User
-  const headerSubtitle = config.header?.subtitle || "Portal"
-  const homePath = (config.sections?.[0]?.items?.[0]?.path) || "/"
+  // Função de logout
+  const handleLogout = async () => {
+    try {
+      await authLogout()
+      await userLogout()
+      navigate("/login")
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error)
+    }
+  }
 
-  const avatarSrc =
-    (patient?.foto_url || patient?.foto) ||
-    user?.avatar || user?.avatar_url || "/placeholder.svg"
-
+  // Informações do usuário para exibição
   const displayName = useMemo(() => {
-    const composedPatient =
-      [
-        patient?.user?.display_name,
-        [patient?.user?.first_name || patient?.first_name, patient?.user?.last_name || patient?.last_name]
-          .filter(Boolean)
-          .join(" ")
-          .trim(),
-      ]
-        .filter(Boolean)
-        .shift()
+    if (loadingPatient) return "Carregando..."
+    if (role === "paciente" && patient) return patient.nome || "Paciente"
+    return user?.nome || user?.name || "Usuário"
+  }, [user, patient, loadingPatient, role])
 
-    return (
-      patient?.nome ||
-      patient?.display_name ||
-      composedPatient ||
-      user?.display_name ||
-      user?.nome ||
-      [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
-      user?.name ||
-      "Usuário"
-    )
-  }, [patient, user])
+  const secondaryLine = useMemo(() => {
+    if (loadingPatient) return "..."
+    if (role === "paciente" && patient) {
+      return patient.cpf ? `CPF: ${patient.cpf}` : "Paciente"
+    }
+    return user?.email || config.header.subtitle
+  }, [user, patient, loadingPatient, role, config])
 
-  const cpf = useMemo(() => {
-    return (
-      patient?.cpf ||
-      patient?.user?.cpf ||
-      user?.cpf ||
-      user?.profile?.cpf ||
-      ""
-    )
-  }, [patient, user])
+  const avatarSrc = useMemo(() => {
+    if (role === "paciente" && patient?.foto) return patient.foto
+    return user?.avatar || user?.foto || null
+  }, [user, patient, role])
 
-  // Filtrar itens de menu baseado na pesquisa
-  const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return config.sections || []
-    
-    return config.sections?.map(section => ({
-      ...section,
-      items: section.items?.filter(item => 
-        item.label.toLowerCase().includes(searchQuery.toLowerCase())
-      ) || []
-    })).filter(section => section.items.length > 0) || []
-  }, [config.sections, searchQuery])
-
-  const secondaryLine = cpf || patient?.plano_saude || user?.email || ""
+  // Ícone do role atual
+  const RoleIcon = config.header.icon
 
   return (
-    <UISidebar variant="floating" className={cn("bg-gradient-to-b from-slate-900 to-slate-950 border-slate-800 text-white shadow-2xl")}>
-      {/* Header Moderno com Gradiente */}
-      <SidebarHeader className="border-b border-slate-800/50 bg-gradient-to-r from-slate-900/80 to-slate-800/80 backdrop-blur-xl">
-        <div className="flex items-center justify-between px-4 py-4">
-          <Link to={homePath} className="flex items-center gap-3 group">
-            <div className="flex aspect-square size-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 text-white shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
-              <HeaderIcon className="size-5" />
+    <UISidebar className="medical-sidebar group border-r border-medical-border/20 bg-gradient-to-b from-medical-background to-medical-background/95 backdrop-blur-xl">
+      {/* Header Médico Profissional */}
+      <SidebarHeader className="border-b border-medical-border/10 bg-gradient-to-r from-medical-primary/5 to-medical-secondary/5 p-6">
+        {/* Logo e Branding Médico */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-medical-primary to-medical-secondary shadow-lg">
+            <Heart className="size-5 text-white" />
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-lg font-bold text-medical-primary bg-gradient-to-r from-medical-primary to-medical-secondary bg-clip-text text-transparent">
+              {config.header.title}
+            </h1>
+            <div className="flex items-center gap-2">
+              <RoleIcon className="size-3 text-medical-secondary" />
+              <span className="text-xs font-medium text-medical-secondary uppercase tracking-wider">
+                {config.header.subtitle}
+              </span>
             </div>
-            <div className="flex flex-col leading-tight">
-              <span className="font-bold text-white text-lg group-hover:text-blue-200 transition-colors">Portal Médico</span>
-              <span className="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">{headerSubtitle}</span>
-            </div>
-          </Link>
-          <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="relative text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 hover:scale-105"
-            >
-              <Bell className="size-4" />
-              {notifications > 0 && (
-                <span className="absolute -top-1 -right-1 size-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                  {notifications}
-                </span>
-              )}
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-200 hover:scale-105"
-            >
-              <HelpCircle className="size-4" />
-            </Button>
           </div>
         </div>
-        
-        {/* Barra de Pesquisa */}
-        <div className="px-4 pb-4">
-          <div className={cn(
-            "relative transition-all duration-300",
-            isSearchFocused && "transform scale-[1.02]"
-          )}>
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 size-4 text-slate-400" />
-            <Input
-              placeholder="Pesquisar no menu..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => setIsSearchFocused(false)}
-              className={cn(
-                "pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-400",
-                "focus:bg-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20",
-                "transition-all duration-300"
-              )}
-            />
+
+        {/* Barra de Pesquisa Médica */}
+        <div className="relative">
+          <Search className={cn(
+            "absolute left-3 top-1/2 -translate-y-1/2 size-4 transition-colors duration-200",
+            isSearchFocused ? "text-medical-primary" : "text-muted-foreground"
+          )} />
+          <Input
+            placeholder="Buscar pacientes, exames..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            className={cn(
+              "pl-10 pr-4 h-10 bg-medical-background/50 border-medical-border/30",
+              "focus:border-medical-primary/50 focus:ring-medical-primary/20",
+              "placeholder:text-muted-foreground/70"
+            )}
+          />
+        </div>
+
+        {/* Ações Rápidas */}
+        <div className="flex items-center justify-between mt-4">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="btn-medical-ghost"
+              className="h-8 px-3 text-xs"
+            >
+              <Plus className="size-3 mr-1" />
+              Novo
+            </Button>
+            <Button
+              size="sm"
+              variant="btn-medical-ghost"
+              className="h-8 px-3 text-xs"
+            >
+              <Calendar className="size-3 mr-1" />
+              Agenda
+            </Button>
           </div>
+          
+          {/* Notificações Médicas */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="relative h-8 w-8 p-0 hover:bg-medical-primary/10"
+          >
+            <Bell className="size-4" />
+            {notifications > 0 && (
+              <span className="absolute -top-1 -right-1 size-4 bg-medical-red text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                {notifications}
+              </span>
+            )}
+          </Button>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-gradient-to-b from-slate-900 to-slate-950">
-        {filteredSections?.map((section, idx) => (
-          <SidebarGroup key={`${section.label}-${idx}`} className="px-3 py-2">
+      {/* Conteúdo da Navegação */}
+      <SidebarContent className="px-3 py-4 space-y-6">
+        {/* Status do Paciente (apenas para role paciente) */}
+        {role === "paciente" && patient && (
+          <div className="px-3 py-4 rounded-xl bg-gradient-to-r from-medical-primary/5 to-medical-secondary/5 border border-medical-border/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-medical-primary">Status do Paciente</span>
+              <PatientStatusBadge status="active" size="sm" />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Última consulta: {new Date().toLocaleDateString()}
+            </div>
+          </div>
+        )}
+
+        {/* Menu de Navegação por Seções */}
+        {config.sections.map((section, idx) => (
+          <SidebarGroup key={`${section.label}-${idx}`} className="space-y-3">
             {section.label && (
-              <SidebarGroupLabel className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+              <SidebarGroupLabel className="text-medical-secondary/80 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 px-3">
                 <Activity className="size-3" />
                 {section.label}
               </SidebarGroupLabel>
@@ -228,35 +243,42 @@ export function Sidebar({ role = "paciente" }) {
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
                 {(section.items || []).map((item, itemIdx) => {
-                  const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + "/")
                   const Icon = item.icon
+                  const isActive = location.pathname === item.path
+                  
                   return (
-                    <SidebarMenuItem key={item.path}>
-                      <SidebarMenuButton 
-                        asChild 
-                        data-active={isActive}
+                    <SidebarMenuItem key={`${item.label}-${itemIdx}`}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
                         className={cn(
-                          "group flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300",
-                          "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50",
-                          "hover:shadow-lg hover:shadow-slate-900/20 hover:scale-[1.02] hover:translate-x-1",
-                          isActive && "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-600/30 scale-[1.02] translate-x-1"
+                          "group relative h-11 px-3 rounded-xl transition-all duration-200",
+                          "hover:bg-medical-primary/10 hover:shadow-sm",
+                          isActive && [
+                            "bg-gradient-to-r from-medical-primary/15 to-medical-secondary/10",
+                            "border-l-4 border-medical-primary shadow-sm",
+                            "text-medical-primary font-medium"
+                          ]
                         )}
-                        style={{
-                          animationDelay: `${itemIdx * 50}ms`
-                        }}
                       >
                         <Link to={item.path} className="flex items-center gap-3 w-full">
                           {Icon && (
                             <div className={cn(
-                              "p-1.5 rounded-lg transition-all duration-300",
-                              isActive ? "bg-white/20" : "bg-slate-800/50 group-hover:bg-slate-700/50"
+                              "flex items-center justify-center size-8 rounded-lg transition-all duration-200",
+                              isActive 
+                                ? "bg-medical-primary/20 text-medical-primary" 
+                                : "bg-medical-background/50 text-muted-foreground group-hover:bg-medical-primary/10 group-hover:text-medical-primary"
                             )}>
-                              <Icon className="size-4 flex-shrink-0" />
+                              <Icon className="size-4" />
                             </div>
                           )}
-                          <span className="font-medium">{item.label}</span>
+                          <span className="font-medium flex-1">{item.label}</span>
                           {item.badge && (
-                            <Badge variant="secondary" className="ml-auto bg-slate-700 text-slate-200 text-xs animate-pulse">
+                            <Badge 
+                              variant="medical-secondary" 
+                              size="sm"
+                              className="ml-auto animate-pulse"
+                            >
                               {item.badge}
                             </Badge>
                           )}
@@ -270,43 +292,51 @@ export function Sidebar({ role = "paciente" }) {
           </SidebarGroup>
         ))}
 
+        {/* Seção Administrativa (apenas para admins) */}
         {isAdmin && role !== "admin" && (
-          <SidebarGroup className="px-3 py-2">
-            <SidebarGroupLabel className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+          <SidebarGroup className="space-y-3">
+            <SidebarGroupLabel className="text-amber-600/80 text-xs font-semibold uppercase tracking-wider flex items-center gap-2 px-3">
               <Shield className="size-3" />
-              Telas Administrativas
+              Acesso Administrativo
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="space-y-1">
                 {adminTelas.map((item, itemIdx) => {
-                  const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + "/")
                   const Icon = item.icon
+                  const isActive = location.pathname === item.path
+                  
                   return (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton 
-                        asChild 
-                        data-active={isActive}
+                    <SidebarMenuItem key={`admin-${item.title}-${itemIdx}`}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
                         className={cn(
-                          "group flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300",
-                          "text-slate-300 hover:text-white hover:bg-gradient-to-r hover:from-amber-800/30 hover:to-amber-700/30",
-                          "hover:shadow-lg hover:shadow-amber-900/20 hover:scale-[1.02] hover:translate-x-1",
-                          isActive && "bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-lg shadow-amber-600/30 scale-[1.02] translate-x-1"
+                          "group relative h-11 px-3 rounded-xl transition-all duration-200",
+                          "hover:bg-amber-500/10 hover:shadow-sm",
+                          isActive && [
+                            "bg-gradient-to-r from-amber-500/15 to-orange-500/10",
+                            "border-l-4 border-amber-500 shadow-sm",
+                            "text-amber-600 font-medium"
+                          ]
                         )}
-                        style={{
-                          animationDelay: `${itemIdx * 50}ms`
-                        }}
                       >
-                        <Link to={item.href} className="flex items-center gap-3 w-full">
+                        <Link to={item.path} className="flex items-center gap-3 w-full">
                           {Icon && (
                             <div className={cn(
-                              "p-1.5 rounded-lg transition-all duration-300",
-                              isActive ? "bg-white/20" : "bg-slate-800/50 group-hover:bg-amber-700/30"
+                              "flex items-center justify-center size-8 rounded-lg transition-all duration-200",
+                              isActive 
+                                ? "bg-amber-500/20 text-amber-600" 
+                                : "bg-amber-50 text-amber-600/70 group-hover:bg-amber-500/10 group-hover:text-amber-600"
                             )}>
-                              <Icon className="size-4 flex-shrink-0" />
+                              <Icon className="size-4" />
                             </div>
                           )}
-                          <span className="font-medium">{item.title}</span>
-                          <Badge variant="outline" className="ml-auto border-amber-500/50 text-amber-400 text-xs">
+                          <span className="font-medium flex-1">{item.title}</span>
+                          <Badge 
+                            variant="warning" 
+                            size="sm"
+                            className="ml-auto"
+                          >
                             Admin
                           </Badge>
                         </Link>
@@ -320,77 +350,78 @@ export function Sidebar({ role = "paciente" }) {
         )}
       </SidebarContent>
 
-      {/* Footer Moderno com Perfil do Usuário */}
-      <SidebarFooter className="border-t border-slate-800/50 bg-gradient-to-r from-slate-900/80 to-slate-800/80 backdrop-blur-xl">
-        {/* Perfil do Usuário com Dropdown */}
-        <div className="px-4 py-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-slate-800/50 to-slate-700/50 hover:from-slate-800 hover:to-slate-700 transition-all duration-300 cursor-pointer group hover:shadow-lg hover:shadow-slate-900/20 hover:scale-[1.02]">
-                <Avatar className="size-10 ring-2 ring-slate-700 group-hover:ring-blue-500/50 transition-all duration-300">
-                  <AvatarImage src={avatarSrc} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 text-white font-semibold">
-                    {(displayName || "U")?.charAt(0)?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col gap-0.5 leading-tight flex-1 min-w-0">
-                  <span className="text-sm font-semibold text-white truncate group-hover:text-blue-200 transition-colors">
-                    {displayName}
-                  </span>
-                  <span className="text-xs text-slate-400 truncate group-hover:text-slate-300 transition-colors">
-                    {secondaryLine}
-                  </span>
-                </div>
-                <ChevronDown className="size-4 text-slate-400 group-hover:text-white transition-all duration-300 group-hover:rotate-180" />
+      {/* Footer Médico Profissional */}
+      <SidebarFooter className="border-t border-medical-border/20 bg-gradient-to-r from-medical-background/80 to-medical-background/60 backdrop-blur-xl p-4">
+        {/* Perfil do Usuário */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-medical-background/50 to-medical-background/30 hover:from-medical-primary/5 hover:to-medical-secondary/5 transition-all duration-300 cursor-pointer group hover:shadow-lg border border-medical-border/10 hover:border-medical-primary/20">
+              <Avatar className="size-10 ring-2 ring-medical-border/20 group-hover:ring-medical-primary/30 transition-all duration-300">
+                <AvatarImage src={avatarSrc} />
+                <AvatarFallback className="bg-gradient-to-br from-medical-primary via-medical-secondary to-medical-accent text-white font-semibold">
+                  {(displayName || "U")?.charAt(0)?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col gap-0.5 leading-tight flex-1 min-w-0">
+                <span className="text-sm font-semibold text-medical-primary truncate group-hover:text-medical-primary/80 transition-colors">
+                  {displayName}
+                </span>
+                <span className="text-xs text-muted-foreground truncate group-hover:text-medical-secondary transition-colors">
+                  {secondaryLine}
+                </span>
               </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-56 bg-slate-800 border-slate-700 text-white shadow-2xl"
+              <ChevronDown className="size-4 text-muted-foreground group-hover:text-medical-primary transition-all duration-300 group-hover:rotate-180" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent 
+            align="end" 
+            className="w-64 bg-medical-background/95 backdrop-blur-xl border-medical-border/20"
+          >
+            <DropdownMenuLabel className="text-medical-primary font-semibold">
+              Minha Conta
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-medical-border/20" />
+            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+              <User className="size-4 mr-2 text-medical-primary" />
+              Perfil
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => navigate(`/${role}/configuracoes`)}
+              className="hover:bg-medical-primary/10 focus:bg-medical-primary/10"
             >
-              <DropdownMenuLabel className="text-slate-300">Minha Conta</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-slate-700" />
-              <DropdownMenuItem className="hover:bg-slate-700 focus:bg-slate-700 cursor-pointer">
-                <UserCircle className="mr-2 h-4 w-4" />
-                <span>Perfil</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="hover:bg-slate-700 focus:bg-slate-700 cursor-pointer"
-                onClick={() => {
-                  const basePath = location.pathname.split('/')[1] // pega 'paciente', 'medico', etc
-                  navigate(`/${basePath}/configuracoes`)
-                }}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Configurações</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-slate-700" />
-              <DropdownMenuItem 
-                className="hover:bg-red-900/50 focus:bg-red-900/50 cursor-pointer text-red-400"
-                onClick={async () => {
-                  try { await authLogout() } finally { userLogout?.(); navigate("/login") }
-                }}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Sair da Conta</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              <Settings className="size-4 mr-2 text-medical-primary" />
+              Configurações
+            </DropdownMenuItem>
+            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+              <Palette className="size-4 mr-2 text-medical-primary" />
+              Tema
+            </DropdownMenuItem>
+            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+              <HelpCircle className="size-4 mr-2 text-medical-primary" />
+              Ajuda
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-medical-border/20" />
+            <DropdownMenuItem 
+              onClick={handleLogout}
+              className="text-medical-red hover:bg-medical-red/10 focus:bg-medical-red/10"
+            >
+              <LogOut className="size-4 mr-2" />
+              Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <Separator className="bg-slate-800/50" />
+        <Separator className="bg-medical-border/20" />
 
-        {/* Status e Ações Rápidas */}
-        <div className="px-4 py-3 space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-400">
-            <div className="flex items-center gap-2">
-              <div className="size-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Online</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap className="size-3" />
-              <span>v2.1.0</span>
-            </div>
+        {/* Status e Informações do Sistema */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-3 py-2">
+          <div className="flex items-center gap-2">
+            <div className="size-2 bg-medical-green rounded-full animate-pulse"></div>
+            <span>Sistema Online</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock className="size-3" />
+            <span>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
         </div>
       </SidebarFooter>

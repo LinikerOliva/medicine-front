@@ -17,6 +17,9 @@ export default function RequireMedico({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  // Se ainda não temos o usuário carregado, não bloqueia — token está válido
+  if (!user) return children
+
   const role = user?.role || user?.tipo
   const isApprovedMedico = userPermissions?.medicoStatus === "approved"
 

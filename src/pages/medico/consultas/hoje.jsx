@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { medicoService } from "../../../services/medicoService"
+import { DatePicker } from "@/components/ui/date-picker"
 
 // Util simples para formatar datas
 function todayYMD() {
@@ -303,10 +304,9 @@ export default function MedicoConsultasHoje() {
             </svg>
           </div>
 
-          <input
-            type="date"
+          <DatePicker
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(val) => setSelectedDate(val)}
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm outline-none transition-colors hover:bg-gray-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 md:w-auto"
           />
         </div>

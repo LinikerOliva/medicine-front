@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs"
 import { ArrowLeft, Mail, User, Building2, CheckCircle, Loader2 } from "lucide-react"
 import { useToast } from "../../hooks/use-toast"
+import { authService } from "../../services/authService"
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = useState("")
@@ -33,8 +34,7 @@ export function ForgotPasswordForm() {
     setIsLoading(true)
 
     try {
-      // Simulação de envio de email
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      await authService.forgotPassword(email)
 
       setEmailSent(true)
       toast({
@@ -42,9 +42,10 @@ export function ForgotPasswordForm() {
         description: "Verifique sua caixa de entrada para redefinir sua senha.",
       })
     } catch (error) {
+      const backendMsg = error?.response?.data?.detail || error?.response?.data?.message || error?.message
       toast({
         title: "Erro",
-        description: "Não foi possível enviar o email. Tente novamente.",
+        description: backendMsg || "Não foi possível enviar o email. Tente novamente.",
         variant: "destructive",
       })
     } finally {
@@ -140,14 +141,14 @@ export function ForgotPasswordForm() {
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 h-12 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 transition-all duration-200"
+                  className="pl-10 h-12 input-medical-primary bg-white/50 transition-all duration-200"
                   required
                 />
               </div>
             </div>
             <Button 
               type="submit" 
-              className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]" 
+              className="w-full h-12 btn-medical-primary font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]" 
               disabled={isLoading}
             >
               {isLoading ? (

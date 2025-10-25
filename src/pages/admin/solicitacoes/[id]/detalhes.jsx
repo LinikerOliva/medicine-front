@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,6 +55,34 @@ export default function SolicitacaoDetalhes() {
       mounted = false
     }
   }, [id])
+
+  const handleVisualizarDocumento = async (documento) => {
+    try {
+      await adminService.visualizarDocumento(documento.url || documento.nome)
+    } catch (error) {
+      toast({
+        title: "Erro ao visualizar",
+        description: error.message || "Não foi possível visualizar o documento.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleBaixarDocumento = async (documento) => {
+    try {
+      await adminService.baixarDocumento(documento.url || documento.nome, documento.nome)
+      toast({
+        title: "Download iniciado",
+        description: "O download do documento foi iniciado.",
+      })
+    } catch (error) {
+      toast({
+        title: "Erro ao baixar",
+        description: error.message || "Não foi possível baixar o documento.",
+        variant: "destructive",
+      })
+    }
+  }
   // REMOVIDO: bloco de "Dados simulados" que redeclarava `const solicitacao = { ... }`
 
   // Guards para loading e ausência de dados
@@ -146,21 +172,21 @@ export default function SolicitacaoDetalhes() {
     switch (status) {
       case "pending":
         return (
-          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <Badge variant="outline" className="badge-medical-warning">
             <AlertTriangle className="mr-1 h-3 w-3" />
             Aguardando Análise
           </Badge>
         )
       case "approved":
         return (
-          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+          <Badge variant="outline" className="badge-medical-success">
             <CheckCircle className="mr-1 h-3 w-3" />
             Aprovado
           </Badge>
         )
       case "rejected":
         return (
-          <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+          <Badge variant="outline" className="badge-medical-error">
             <XCircle className="mr-1 h-3 w-3" />
             Rejeitado
           </Badge>
@@ -349,11 +375,19 @@ export default function SolicitacaoDetalhes() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleVisualizarDocumento(doc)}
+                      >
                         <Eye className="mr-2 h-4 w-4" />
                         Visualizar
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleBaixarDocumento(doc)}
+                      >
                         <Download className="mr-2 h-4 w-4" />
                         Baixar
                       </Button>

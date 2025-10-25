@@ -5,10 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Calendar, Search, User, FileText, Download } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 
-export default function PacienteConsultas({ params }) {
-  const { id } = params
+export default function PacienteConsultas() {
+  const { id } = useParams()
 
   const medicoTabs = [
     { label: "Resumo", href: `/medico/paciente/${id}/perfil` },
@@ -36,7 +36,7 @@ export default function PacienteConsultas({ params }) {
         </div>
         <div className="flex gap-2">
           <Button asChild>
-            <Link href={`/medico/paciente/${id}/iniciar-consulta`}>
+            <Link to={`/medico/paciente/${id}/iniciar-consulta`}>
               <Calendar className="mr-2 h-4 w-4" />
               Nova Consulta
             </Link>

@@ -42,6 +42,9 @@ export default function RequirePaciente({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  // Token válido mas usuário ainda não carregado: libera acesso
+  if (!user) return children
+
   const role = user?.role || user?.tipo
 
   // Permite paciente, admin e secretária com perfil de paciente

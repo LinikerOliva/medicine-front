@@ -145,6 +145,25 @@ module.exports = {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
         },
+        // Cores médicas especializadas
+        "medical-primary": "hsl(var(--medical-primary))",
+        "medical-secondary": "hsl(var(--medical-secondary))",
+        "medical-accent": "hsl(var(--medical-accent))",
+        "medical-background": "hsl(var(--sidebar-background))",
+        "medical-border": "hsl(var(--sidebar-border))",
+        // Status médicos
+        "status-normal": "hsl(var(--status-normal))",
+        "status-attention": "hsl(var(--status-attention))",
+        "status-critical": "hsl(var(--status-critical))",
+        "status-urgent": "hsl(var(--status-urgent))",
+        // Prioridades médicas
+        "priority-low": "hsl(var(--priority-low))",
+        "priority-medium": "hsl(var(--priority-medium))",
+        "priority-high": "hsl(var(--priority-high))",
+        "priority-critical": "hsl(var(--priority-critical))",
+      },
+      backgroundImage: {
+        "medical-gradient": "linear-gradient(135deg, hsl(var(--medical-primary) / 0.05) 0%, hsl(var(--medical-secondary) / 0.05) 50%, hsl(var(--medical-accent)) 100%)",
       },
       borderRadius: {
         lg: "var(--radius)",

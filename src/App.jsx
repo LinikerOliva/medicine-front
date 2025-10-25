@@ -16,6 +16,9 @@ import RegisterForm from "./components/auth/register-form";
 import ForgotPasswordForm from "./components/auth/forgot-password-form";
 import RequireSecretaria from "./components/auth/require-secretaria"
 import SecretariaLayout from "./layouts/secretaria-layout"
+import ResetPasswordForm from "./components/auth/reset-password-form";
+import SecretariaSolicitacoes from "@/pages/secretaria/solicitacoes"
+import SecretariaSolicitacaoDetalhes from "@/pages/secretaria/solicitacoes-detalhes"
 
 // Paciente
 import PerfilPaciente from "./pages/paciente/perfil/perfil";
@@ -24,8 +27,7 @@ import ConsultasPaciente from "./pages/paciente/consultas/consultas";
 import ExamesPaciente from "./pages/paciente/exames/exames";
 import HistoricoMedico from "./pages/paciente/historico-medico/historico-medico";
 import MedicosPaciente from "./pages/paciente/medicos/medicos";
-// Adicione esta linha:
-import ReceitasPaciente from "./pages/paciente/receitas/receitas"
+import ReceitasPaciente from "./pages/paciente/receitas/receitas";
 
 // Médico
 import DashboardMedico from "./pages/medico/dashboard/dashboard";
@@ -37,7 +39,7 @@ import ExamesPacienteMedico from "./pages/medico/paciente/[id]/exames/exames";
 import IniciarConsulta from "./pages/medico/paciente/[id]/iniciar-consulta/iniciar-consulta";
 import MedicoConsultasHoje from "./pages/medico/consultas/hoje";
 import PreviewReceitaMedico from "./pages/medico/paciente/[id]/receita/preview";
-import ConfirmacaoEnvioReceita from "./pages/medico/paciente/[id]/receita/confirmacao";
+import ConfirmacaoEnvioReceita from "@/pages/medico/paciente/[id]/receita/confirmacao";
 import ResumoConsultaMedico from "./pages/medico/paciente/[id]/consulta/resumo";
 
 // Clínica
@@ -74,6 +76,8 @@ import DashboardSecretaria from "./pages/secretaria/dashboard"
 import ConsultasSecretaria from "./pages/secretaria/consultas"
 import PacientesSecretaria from "./pages/secretaria/pacientes"
 import MedicosSecretaria from "./pages/secretaria/medicos"
+import AgendaSecretaria from "./pages/secretaria/agenda"
+import ReceberReceita from "./pages/receber/receita"
 function App() {
   return (
     <AuthProvider>
@@ -86,6 +90,8 @@ function App() {
             <Route path="/login" element={<LoginForm />} />
             <Route path="/registrar" element={<RegisterForm />} />
             <Route path="/esqueci-senha" element={<ForgotPasswordForm />} />
+            <Route path="/redefinir-senha/:uid/:token" element={<ResetPasswordForm />} />
+            <Route path="/receber/receita" element={<ReceberReceita />} />
 
             {/* Paciente */}
             <Route
@@ -190,8 +196,11 @@ function App() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<DashboardSecretaria />} />
               <Route path="consultas" element={<ConsultasSecretaria />} />
+              <Route path="agenda" element={<AgendaSecretaria />} />
               <Route path="pacientes" element={<PacientesSecretaria />} />
               <Route path="medicos" element={<MedicosSecretaria />} />
+              <Route path="solicitacoes" element={<SecretariaSolicitacoes />} />
+              <Route path="solicitacoes/:id" element={<SecretariaSolicitacaoDetalhes />} />
               <Route path="configuracoes" element={<Configuracao />} />
             </Route>
 

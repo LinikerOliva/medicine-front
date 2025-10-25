@@ -258,7 +258,7 @@ export default function ClinicaDashboard() {
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-3">
-                  <Button className="w-full justify-start bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl transition-all duration-300" asChild>
+                  <Button className="w-full justify-start btn-medical-primary shadow-lg hover:shadow-xl transition-all duration-300" asChild>
                     <Link to="/clinica/calendario">
                       <Calendar className="mr-2 h-4 w-4" />
                       Ver Calendário

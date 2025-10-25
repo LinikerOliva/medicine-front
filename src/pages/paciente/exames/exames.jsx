@@ -152,8 +152,8 @@ export default function PacienteExames() {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
       {/* Header moderno */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-8 text-white shadow-2xl">
-        <div className="absolute inset-0 bg-black/20"></div>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-medical-primary/90 via-medical-primary to-medical-secondary p-8 text-white shadow-2xl">
+        <div className="absolute inset-0 bg-black/10"></div>
         <div className="relative z-10">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div className="space-y-2">
@@ -163,7 +163,7 @@ export default function PacienteExames() {
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold">Meus Exames</h1>
-                  <p className="text-blue-100">Gerencie seus exames e resultados</p>
+                  <p className="text-white/90">Gerencie seus exames e resultados</p>
                 </div>
               </div>
             </div>
@@ -191,11 +191,11 @@ export default function PacienteExames() {
 
       {/* Cards de estatísticas */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-lg">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-medical-primary/80 to-medical-primary text-white shadow-lg">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="space-y-2">
-                <p className="text-blue-100 text-sm font-medium">Total de Exames</p>
+                <p className="text-white/90 text-sm font-medium">Total de Exames</p>
                 <p className="text-3xl font-bold">{totalExames}</p>
               </div>
               <div className="rounded-full bg-white/20 p-3">
@@ -206,11 +206,11 @@ export default function PacienteExames() {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-status-attention/80 to-status-attention text-white shadow-lg">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="space-y-2">
-                <p className="text-amber-100 text-sm font-medium">Próximos Exames</p>
+                <p className="text-white/90 text-sm font-medium">Próximos Exames</p>
                 <p className="text-3xl font-bold">{proximosExames}</p>
               </div>
               <div className="rounded-full bg-white/20 p-3">
@@ -221,11 +221,11 @@ export default function PacienteExames() {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 to-green-600 text-white shadow-lg">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-medical-secondary/80 to-medical-secondary text-white shadow-lg">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="space-y-2">
-                <p className="text-emerald-100 text-sm font-medium">Concluídos</p>
+                <p className="text-white/90 text-sm font-medium">Concluídos</p>
                 <p className="text-3xl font-bold">{examesConcluidos}</p>
               </div>
               <div className="rounded-full bg-white/20 p-3">
@@ -236,11 +236,11 @@ export default function PacienteExames() {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg">
+        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-medical-primary/60 to-medical-primary/80 text-white shadow-lg">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div className="space-y-2">
-                <p className="text-purple-100 text-sm font-medium">Este Ano</p>
+                <p className="text-white/90 text-sm font-medium">Este Ano</p>
                 <p className="text-3xl font-bold">{examesEsteAno}</p>
               </div>
               <div className="rounded-full bg-white/20 p-3">

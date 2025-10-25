@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../..
 import { Button } from "../../../components/ui/button"
 import { Badge } from "../../../components/ui/badge"
 import { Input } from "../../../components/ui/input"
+import { DatePicker } from "../../../components/ui/date-picker"
 import { Label } from "../../../components/ui/label"
 import { Clock, Calendar, Plus, Trash2, Save, Copy } from "lucide-react"
 import { clinicaService } from "../../../services/clinicaService"
@@ -192,12 +193,12 @@ export default function ClinicaDisponibilidade() {
               <CardContent className="space-y-4">
                 <div>
                   <Label htmlFor="data">Data</Label>
-                  <Input
+                  <DatePicker
                     id="data"
-                    type="date"
+                    name="data"
                     value={dataSelecionada}
-                    onChange={(e) => setDataSelecionada(e.target.value)}
-                    min={dataMinima}
+                    onChange={setDataSelecionada}
+                    minDate={dataMinima ? new Date(dataMinima) : undefined}
                   />
                 </div>
 

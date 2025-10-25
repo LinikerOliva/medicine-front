@@ -1,340 +1,328 @@
 import api from "./api"
+import { secureStorage } from "../utils/secureStorage"
+import { solicitacaoService } from "./solicitacaoService"
 
-// Helpers de normalização de usuário
+// Helper: converte data para formato input[type="date"]
 const toInputDate = (v) => {
   if (!v) return ""
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v
-  const iso = new Date(v)
-  if (!isNaN(iso)) {
-    const y = iso.getFullYear()
-    const m = String(iso.getMonth() + 1).padStart(2, "0")
-    const d = String(iso.getDate()).padStart(2, "0")
-    return `${y}-${m}-${d}`
+  try {
+    const d = new Date(v)
+    if (isNaN(d.getTime())) return ""
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  } catch {
+    return ""
   }
-  const m1 = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-  if (m1) return `${m1[3]}-${m1[2]}-${m1[1]}`
-  return ""
 }
 
 function normalizeUser(u) {
-  if (!u || typeof u !== "object") return u
-  const out = { ...u }
-  // Nome de exibição
-  const displayName = [out.first_name, out.last_name].filter(Boolean).join(" ") || out.display_name || out.nome || out.nome_completo || out.username || out.email || ""
-  out.display_name = displayName
-  // CPF e RG: mapear cpf a partir de vários campos e, se não houver rg, usar cpf para compatibilidade
-  const cpf = out.cpf || out.documento || out.doc || out.rg || out.cpf_number || (out.profile && (out.profile.cpf || out.profile.documento)) || ""
-  if (cpf) {
-    out.cpf = cpf
-    if (!out.rg) out.rg = cpf
+  if (!u) return null
+  return {
+    id: u.id,
+    username: u.username,
+    email: u.email,
+    first_name: u.first_name || "",
+    last_name: u.last_name || "",
+    is_staff: u.is_staff || false,
+    is_active: u.is_active !== false,
+    date_joined: u.date_joined,
+    last_login: u.last_login,
+    // Papel/tipo usados pelos guards de rota
+    role: u.role || u.tipo || u.tipo_usuario || u.user_type || "",
+    tipo: u.tipo || u.role || u.tipo_usuario || u.user_type || "",
+    // Campos específicos do perfil
+    tipo_usuario: u.tipo_usuario || u.user_type || "",
+    data_nascimento: toInputDate(u.data_nascimento || u.birth_date),
+    telefone: u.telefone || u.phone || "",
+    endereco: u.endereco || u.address || "",
+    crm: u.crm || "",
+    especialidade: u.especialidade || u.specialty || "",
   }
-  // Data de nascimento: priorizar campo da tabela meu_app_user e normalizar formato
-  const dn = out.data_nascimento || out.nascimento || out.dob || out.birth_date || (out.profile && (out.profile.data_nascimento || out.profile.nascimento)) || ""
-  const dnNorm = toInputDate(dn)
-  if (dnNorm) out.data_nascimento = dnNorm
-  return out
 }
 
 export const authService = {
   async login(credentials) {
-    const endpoint = import.meta.env.VITE_LOGIN_ENDPOINT || "/auth/login/"
-    // envia também 'username' se só tiver 'email'
-    const payload = {
-      ...credentials,
-      username: credentials.username || credentials.email,
-    }
-    const response = await api.post(endpoint, payload)
-
-    const { access, refresh, access_token, refresh_token, token, key, user } = response.data
-    const accessToken = access || access_token || token || key
-    const refreshToken = refresh || refresh_token
-
-    // Detecta e salva o esquema de auth (Bearer para JWT; Token para DRF TokenAuth)
-    if (access || access_token) {
-      localStorage.setItem("auth_scheme", "Bearer")
-    } else if (token || key) {
-      const val = token || key
-      const looksLikeJwt = typeof val === "string" && val.includes(".")
-      localStorage.setItem("auth_scheme", looksLikeJwt ? "Bearer" : "Token")
-    }
-
-    if (accessToken) localStorage.setItem("access_token", accessToken)
-    if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
-
-    // Salva usuário se vier no payload (normalizado)
-    if (user !== undefined) {
-      try {
-        if (user && typeof user === "object") {
-          const nu = normalizeUser(user)
-          localStorage.setItem("user", JSON.stringify(nu))
-          response.data.user = nu
-        } else {
-          localStorage.removeItem("user")
-        }
-      } catch {
-        // ignore
+    try {
+      // Envia ambos os campos para compatibilizar com backends que exigem 'username' OU 'email'
+      const payload = {
+        username: (credentials.username?.trim?.() || credentials.email?.trim?.() || undefined),
+        email: (credentials.email?.trim?.() || credentials.username?.trim?.() || undefined),
+        password: credentials.password,
       }
-    }
 
-    // NOVO: Sempre tenta descobrir o usuário atual se não houver user no retorno
-    if (!response.data.user) {
-      try {
-        const me = await fetchCurrentUserFromApi()
-        if (me) {
-          const nu = normalizeUser(me)
-          localStorage.setItem("user", JSON.stringify(nu))
-          response.data.user = nu
+      const response = await api.post(
+        import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
+        payload
+      )
+
+      if (response.data) {
+        const authScheme = import.meta.env.VITE_AUTH_SCHEME || "Token"
+        secureStorage.setItem("auth_scheme", authScheme)
+
+        // Extrai tokens da resposta
+        const accessToken = response.data.access_token || response.data.access || response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refresh
+
+        if (accessToken) {
+          secureStorage.setItem("access_token", accessToken)
         }
-      } catch {
-        // manter sem user
-      }
-    }
+        if (refreshToken) {
+          secureStorage.setItem("refresh_token", refreshToken)
+        }
 
-    return response.data
+        // Se não veio nenhum token, assumir sessão via cookie
+        try {
+          if (!accessToken && !refreshToken) {
+            secureStorage.setItem("auth_storage", "cookie")
+            // Garante que chamadas subsequentes incluam cookies
+            try { api.defaults.withCredentials = true } catch {}
+          }
+        } catch {}
+
+        // Tenta buscar dados do usuário
+        try {
+          const userData = await fetchCurrentUserFromApi()
+          if (userData) {
+            secureStorage.setItem("user", normalizeUser(userData))
+          } else {
+            secureStorage.removeItem("user")
+          }
+        } catch (userError) {
+          console.warn("Não foi possível carregar dados do usuário:", userError)
+          secureStorage.removeItem("user")
+        }
+
+        return response.data
+      }
+
+      throw new Error("Resposta de login inválida")
+    } catch (error) {
+      console.error("Erro no login:", error)
+      throw error
+    }
   },
 
   async register(userData, options = {}) {
-    const endpoint = import.meta.env.VITE_REGISTER_ENDPOINT || "/auth/register/"
-    const response = await api.post(endpoint, userData)
+    try {
+      const endpoint = import.meta.env.VITE_REGISTER_ENDPOINT || "/api/auth/register/"
+      const response = await api.post(endpoint, userData)
 
-    // Normaliza possíveis formatos de resposta
-    const { access, refresh, access_token, refresh_token, token, user } = response.data
-    const accessToken = access || access_token || token
-    const refreshToken = refresh || refresh_token
+      let currentUserData = null
 
-    if (access || access_token) {
-      localStorage.setItem("auth_scheme", "Bearer")
-    } else if (token) {
-      const looksLikeJwt = typeof token === "string" && token.includes(".")
-      localStorage.setItem("auth_scheme", looksLikeJwt ? "Bearer" : "Token")
-    }
+      if (response.data && !options.skipAutoLogin) {
+        const authScheme = import.meta.env.VITE_AUTH_SCHEME || "Token"
+        secureStorage.setItem("auth_scheme", authScheme)
 
-    if (accessToken) localStorage.setItem("access_token", accessToken)
-    if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
-    if (user !== undefined) {
-      const nu = user && typeof user === "object" ? normalizeUser(user) : user
-      if (nu && typeof nu === "object") {
-        localStorage.setItem("user", JSON.stringify(nu))
-        response.data.user = nu
-      } else {
-        localStorage.removeItem("user")
-      }
-    } else {
-      // Também tenta descobrir o usuário após registro, quando aplicável
-      try {
-        const me = await fetchCurrentUserFromApi()
-        if (me) {
-          const nu = normalizeUser(me)
-          localStorage.setItem("user", JSON.stringify(nu))
-          response.data.user = nu
+        // Extrai tokens da resposta
+        const accessToken = response.data.access_token || response.data.access || response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refresh
+
+        if (accessToken) {
+          secureStorage.setItem("access_token", accessToken)
         }
-      } catch {}
-    }
-
-    const result = { ...response.data }
-    
-    // NOVO: criação automática da solicitação de médico, se dados forem fornecidos
-    let medicoApplication = null
-    const medicoData = options?.medicoData
-    if (medicoData && typeof medicoData === "object") {
-      try {
-        // Fallback robusto: se não houve token após o registro, tenta login silencioso
-        const hasToken = !!localStorage.getItem("access_token")
-        if (!hasToken && userData?.password) {
-          // 1) tenta com username (se existir)
-          if (userData?.username) {
-            try {
-              await authService.login({ username: userData.username, password: userData.password })
-            } catch {}
-          }
-          // 2) tenta com email como username
-          if (!localStorage.getItem("access_token") && userData?.email) {
-            try {
-              await authService.login({ username: userData.email, email: userData.email, password: userData.password })
-            } catch {}
-          }
+        if (refreshToken) {
+          secureStorage.setItem("refresh_token", refreshToken)
         }
 
-        const mod = await import("./solicitacaoService")
-        // Enriquecer payload com dados do usuário (alguns backends exigem nome/email/cpf na solicitação)
-        const fullName = [userData.first_name || "", userData.last_name || ""].filter(Boolean).join(" ") || userData.username || ""
-        const medicoPayload = {
-          ...medicoData,
-          nome: medicoData.nome || fullName,
-          nome_completo: medicoData.nome_completo || fullName,
-          email: medicoData.email || userData.email,
-          cpf: medicoData.cpf || userData.cpf,
-          tipo: "medico",
-        }
-        const created = await mod.solicitacaoService.criarSolicitacaoMedico(medicoPayload)
-        medicoApplication = { success: true, data: created }
-        // Após registrar a solicitação, garantir criação do registro do médico e do perfil com status pendente
+        // Se não veio nenhum token, assumir sessão via cookie
         try {
-          const { medicoService } = await import("./medicoService")
-          await medicoService.ensureMedicoAndPerfil(medicoPayload, {})
-        } catch (provisionErr) {
-          console.warn("[authService.register] ensureMedicoAndPerfil falhou:", provisionErr?.response?.data || provisionErr)
-        }
-      } catch (err) {
-        console.error("[authService.register] criarSolicitacaoMedico falhou:", err?.response?.data || err)
-        medicoApplication = {
-          success: false,
-          error: (err && (err.response?.data || err.message)) || String(err),
+          if (!accessToken && !refreshToken) {
+            secureStorage.setItem("auth_storage", "cookie")
+            try { api.defaults.withCredentials = true } catch {}
+          }
+        } catch {}
+
+        // Tenta buscar dados do usuário
+        try {
+          currentUserData = await fetchCurrentUserFromApi()
+          if (currentUserData) {
+            secureStorage.setItem("user", normalizeUser(currentUserData))
+          } else {
+            secureStorage.removeItem("user")
+          }
+        } catch (userError) {
+          console.warn("Não foi possível carregar dados do usuário após registro:", userError)
+          secureStorage.removeItem("user")
+          // Fallback: tenta usar token para buscar usuário
+          const token = secureStorage.getItem("access_token")
+          if (token) {
+            try {
+              const fallbackUserData = await fetchCurrentUserFromApi()
+              currentUserData = fallbackUserData
+              if (fallbackUserData) {
+                secureStorage.setItem("user", normalizeUser(fallbackUserData))
+              }
+            } catch (fallbackError) {
+              console.warn("Fallback para buscar usuário também falhou:", fallbackError)
+            }
+          }
         }
       }
-    }
 
-    if (medicoApplication) result.medicoApplication = medicoApplication
-    return result
+      // NOVO: criação automática de Solicitação de Médico quando desired_role=medico
+      let medicoApplication = undefined
+      try {
+        const wantsMedico = String(userData?.desired_role || "").toLowerCase() === "medico"
+        const medicoDataOpt = options?.medicoData
+        if (wantsMedico && medicoDataOpt) {
+          const normalizedUser = normalizeUser(currentUserData || secureStorage.getItem("user") || {})
+          const fullName = [normalizedUser?.first_name, normalizedUser?.last_name].filter(Boolean).join(" ") || normalizedUser?.username || ""
+          const medicoPayload = {
+            ...medicoDataOpt,
+            nome: medicoDataOpt.nome || fullName || userData?.first_name || "",
+            email: medicoDataOpt.email || normalizedUser?.email || userData?.email || "",
+            cpf: medicoDataOpt.cpf || userData?.cpf || "",
+            tipo: medicoDataOpt.tipo || "medico",
+          }
+
+          try {
+            const medResp = await solicitacaoService.criarSolicitacaoMedico(medicoPayload)
+            medicoApplication = { success: true, data: medResp }
+            // Marca status local para UX do médico
+            try {
+              const uid = (normalizedUser?.id) || (currentUserData?.id)
+              if (uid) localStorage.setItem(`medicoApplicationStatus:${uid}`, "pending")
+            } catch {}
+          } catch (e) {
+            medicoApplication = { success: false, error: e?.response?.data || e?.message || "Não foi possível criar a solicitação de médico." }
+          }
+        }
+      } catch (e) {
+        // Não interromper o fluxo de registro se a criação de solicitação falhar
+        medicoApplication = { success: false, error: e?.message || "Falha desconhecida ao criar solicitação." }
+      }
+
+      // Retorna dados do registro enriquecidos com o resultado da criação da solicitação (se houver)
+      if (medicoApplication) {
+        return { ...response.data, medicoApplication }
+      }
+      return response.data
+    } catch (error) {
+      console.error("Erro no registro:", error)
+      throw error
+    }
   },
 
   async logout() {
     try {
-      const endpoint = import.meta.env.VITE_LOGOUT_ENDPOINT || "/auth/logout/"
+      const endpoint = import.meta.env.VITE_LOGOUT_ENDPOINT || "/api/auth/logout/"
       await api.post(endpoint)
+    } catch (error) {
+      console.warn("Erro ao fazer logout no servidor:", error)
     } finally {
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
-      localStorage.removeItem("user")
-      localStorage.removeItem("auth_scheme")
-      // NOVO: limpar qualquer status de solicitação (todas as chaves que começam com medicoApplicationStatus)
-      try {
-        const toRemove = []
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i)
-          if (key && key.startsWith("medicoApplicationStatus")) {
-            toRemove.push(key)
-          }
-        }
-        toRemove.forEach((k) => localStorage.removeItem(k))
-      } catch {}
+      // Limpa dados locais independentemente do resultado da API
+      secureStorage.removeItem("access_token")
+      secureStorage.removeItem("refresh_token")
+      secureStorage.removeItem("user")
+      secureStorage.removeItem("auth_scheme")
+      secureStorage.removeItem("auth_storage")
     }
   },
 
   async forgotPassword(email) {
-    const response = await api.post("/auth/forgot-password/", { email })
-    return response.data
+    const endpoint = import.meta.env.VITE_FORGOT_PASSWORD_ENDPOINT || "/auth/password_reset/"
+    // Remetente é sempre definido no backend (DEFAULT_FROM_EMAIL)
+    const res = await api.post(endpoint, { email })
+    return res?.data ?? res
   },
 
   getCurrentUser() {
-    const raw = localStorage.getItem("user")
-    if (!raw || raw === "undefined" || raw === "null") return null
     try {
-      const parsed = JSON.parse(raw)
-      return normalizeUser(parsed)
-    } catch {
+      const userData = secureStorage.getItem("user")
+      return userData ? normalizeUser(userData) : null
+    } catch (error) {
+      console.error("Erro ao recuperar usuário atual:", error)
       return null
     }
   },
 
-  // Atualiza o usuário a partir dos endpoints “me” e persiste no localStorage
   async refreshCurrentUser() {
     try {
-      const me = await fetchCurrentUserFromApi()
-      if (me) {
-        const nu = normalizeUser(me)
-        localStorage.setItem("user", JSON.stringify(nu))
-        return nu
+      const userData = await fetchCurrentUserFromApi()
+      if (userData) {
+        secureStorage.setItem("user", normalizeUser(userData))
+        return normalizeUser(userData)
       } else {
-        localStorage.removeItem("user")
+        secureStorage.removeItem("user")
         return null
       }
-    } catch {
+    } catch (error) {
+      // Importante: se 401, repropaga para o AuthProvider poder fazer logout
+      if (error?.response?.status === 401) {
+        throw error
+      }
+      console.error("Erro ao atualizar dados do usuário:", error)
       return null
     }
   },
 
-  // NOVO: indica se há um token válido armazenado (sem validar expiração aqui)
   isAuthenticated() {
-    try {
-      const token = localStorage.getItem("access_token")
-      return !!token
-    } catch {
-      return false
-    }
+    const token = secureStorage.getItem("access_token")
+    const runtimeStorage = String(secureStorage.getItem("auth_storage") || import.meta.env.VITE_AUTH_STORAGE || "local").toLowerCase()
+    // Sessão por cookie: considerar autenticado e deixar rotas buscarem /me quando necessário
+    return !!token || runtimeStorage === "cookie"
   },
 
-  // NOVO: login social com Google (envia credential/id_token) e normaliza resposta
   async loginWithGoogle(credential) {
-    const endpoint = import.meta.env.VITE_GOOGLE_LOGIN_ENDPOINT || "/auth/google/"
-    const payload = { credential, id_token: credential }
-    const response = await api.post(endpoint, payload)
+    try {
+      const endpoint = import.meta.env.VITE_GOOGLE_LOGIN_ENDPOINT || "/api/auth/google/"
+      const response = await api.post(endpoint, { credential })
 
-    const { access, refresh, access_token, refresh_token, token, key, user } = response.data
-    const accessToken = access || access_token || token || key
-    const refreshToken = refresh || refresh_token
+      if (response.data) {
+        const authScheme = import.meta.env.VITE_AUTH_SCHEME || "Token"
+        secureStorage.setItem("auth_scheme", authScheme)
 
-    // Detecta esquema
-    if (access || access_token) {
-      localStorage.setItem("auth_scheme", "Bearer")
-    } else if (token || key) {
-      const val = token || key
-      const looksLikeJwt = typeof val === "string" && val.includes(".")
-      localStorage.setItem("auth_scheme", looksLikeJwt ? "Bearer" : "Token")
-    }
-    if (accessToken) localStorage.setItem("access_token", accessToken)
-    if (refreshToken) localStorage.setItem("refresh_token", refreshToken)
+        // Extrai tokens da resposta
+        const accessToken = response.data.access_token || response.data.access || response.data.token
+        const refreshToken = response.data.refresh_token || response.data.refresh
 
-    if (user !== undefined) {
-      try {
-        if (user && typeof user === "object") {
-          const nu = normalizeUser(user)
-          localStorage.setItem("user", JSON.stringify(nu))
-          response.data.user = nu
-        } else {
-          localStorage.removeItem("user")
+        if (accessToken) {
+          secureStorage.setItem("access_token", accessToken)
         }
-      } catch {}
-    } else {
-      // buscar usuário se o backend não retornar
-      try {
-        const me = await fetchCurrentUserFromApi()
-        if (me) {
-          const nu = normalizeUser(me)
-          localStorage.setItem("user", JSON.stringify(nu))
-          response.data.user = nu
-        } else {
-          response.data.user = null
+        if (refreshToken) {
+          secureStorage.setItem("refresh_token", refreshToken)
         }
-      } catch {}
-    }
 
-    return response.data
+        // Se não veio token, assumir cookie-mode
+        try {
+          if (!accessToken && !refreshToken) {
+            secureStorage.setItem("auth_storage", "cookie")
+            try { api.defaults.withCredentials = true } catch {}
+          }
+        } catch {}
+
+        // Tenta buscar dados do usuário
+        try {
+          const userData = await fetchCurrentUserFromApi()
+          if (userData) {
+            secureStorage.setItem("user", normalizeUser(userData))
+          } else {
+            secureStorage.removeItem("user")
+          }
+        } catch (userError) {
+          console.warn("Não foi possível carregar dados do usuário:", userError)
+          secureStorage.removeItem("user")
+        }
+
+        return response.data
+      }
+
+      throw new Error("Resposta de login com Google inválida")
+    } catch (error) {
+      console.error("Erro no login com Google:", error)
+      throw error
+    }
   },
 }
 
-// Helper: tenta descobrir o usuário atual em endpoints “me” comuns
+// Helper: busca o usuário atual usando o endpoint configurado
 async function fetchCurrentUserFromApi() {
-  // Prioriza endpoint de env, se configurado
-  const meEnv = (import.meta.env.VITE_ME_ENDPOINT || "").trim()
-
-  const candidates = []
-  if (meEnv) candidates.push(meEnv)
-  // Endpoints comuns (Djoser, DRF SimpleJWT, etc.)
-  candidates.push(
-    "/auth/users/me/", // Djoser padrão
-    "/users/me/",
-    "/auth/user/",
-    "/auth/me/",
-    "/me/",
-  )
-
-  // Normalização/remoção de duplicados
-  const seen = new Set()
-  const unique = candidates.filter((u) => {
-    const key = String(u).replace(/\/+$/g, "")
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-
-  for (const url of unique) {
-    try {
-      const res = await api.get(url)
-      return res.data
-    } catch (e) {
-      if (e?.response?.status === 404) continue
-    }
-  }
-  return null
+  // Usa o endpoint configurado no .env
+  const meEndpoint = import.meta.env.VITE_ME_ENDPOINT || "/api/auth/users/me/"
+  
+  // Não suprimir erros aqui: deixar o chamador decidir (para tratar 401)
+  const res = await api.get(meEndpoint)
+  return res.data
 }

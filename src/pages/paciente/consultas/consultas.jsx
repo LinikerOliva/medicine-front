@@ -11,6 +11,41 @@ import { Calendar, Clock, Search, User, MapPin, Phone, Video, Stethoscope, Calen
 import { ProfileTabs } from "@/components/profile-tabs"
 import { pacienteService } from "@/services/pacienteService"
 
+// Helpers para nome e especialidade do médico
+const getDoctorName = (m) => {
+  if (!m) return null
+  const fullName = [m?.user?.first_name, m?.user?.last_name].filter(Boolean).join(" ")
+  return (
+    m?.nome ||
+    m?.name ||
+    m?.usuario?.nome ||
+    fullName ||
+    m?.username ||
+    m?.email ||
+    null
+  )
+}
+
+const getDoctorSpecialty = (m) => {
+  const tryFromObj = (obj) => obj?.nome || obj?.titulo || obj?.name || obj?.descricao || obj?.description
+  if (Array.isArray(m?.especialidades) && m.especialidades.length) {
+    const parts = m.especialidades
+      .map((x) => tryFromObj(x) || (typeof x === "string" ? x : null))
+      .filter(Boolean)
+    if (parts.length) return parts.join(", ")
+  }
+  if (m?.especialidade && typeof m.especialidade === "object") {
+    const v = tryFromObj(m.especialidade)
+    if (v) return v
+  }
+  if (typeof m?.especialidade === "string" && m.especialidade.trim()) return m.especialidade.trim()
+  if (typeof m?.especialidade_nome === "string" && m.especialidade_nome.trim()) return m.especialidade_nome.trim()
+  if (typeof m?.specialty === "string" && m.specialty.trim()) return m.specialty.trim()
+  if (typeof m?.area === "string" && m.area.trim()) return m.area.trim()
+  if (typeof m?.user?.especialidade === "string" && m.user.especialidade.trim()) return m.user.especialidade.trim()
+  return null
+}
+
 export default function Consultas() {
   const [consultas, setConsultas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -31,72 +66,122 @@ export default function Consultas() {
     const carregarConsultas = async () => {
       try {
         console.log('[DEBUG] Consultas - Iniciando carregamento...')
-        
         const response = await pacienteService.getConsultas()
         console.log('[DEBUG] Consultas - Resposta da API:', response)
-        
         if (!mounted) return
 
         // Normalizar dados da API
         let consultasData = []
         if (response.results) {
-          console.log('[DEBUG] Consultas - Usando response.results')
           consultasData = response.results
         } else if (response.data?.results) {
-          console.log('[DEBUG] Consultas - Usando response.data.results')
           consultasData = response.data.results
         } else if (response.data && Array.isArray(response.data)) {
-          console.log('[DEBUG] Consultas - Usando response.data (array)')
           consultasData = response.data
         } else if (Array.isArray(response)) {
-          console.log('[DEBUG] Consultas - Usando response direto (array)')
           consultasData = response
         }
 
         // Normalizar cada consulta
-        const consultasNormalizadas = consultasData.map(consulta => {
-          console.log('[DEBUG] Consultas - Consulta original:', consulta)
-          
+        
+        let consultasNormalizadas = consultasData.map(consulta => {
+          const dataRaw = (
+            consulta.data ||
+            consulta.date ||
+            consulta.dia ||
+            consulta.data_consulta ||
+            consulta.data_hora ||
+            consulta.horario ||
+            consulta.data_hora_inicio ||
+            consulta.agendamento ||
+            consulta.data_agendamento ||
+            consulta.inicio ||
+            consulta.start ||
+            null
+          )
+
           const consultaNormalizada = {
             id: consulta.id,
-            data: consulta.data || consulta.data_consulta,
-            local: consulta.local || consulta.endereco || "Local não informado",
+            data: dataRaw,
+            local:
+              consulta.local ||
+              consulta.endereco ||
+              consulta.clinica?.endereco ||
+              consulta.medico?.local_atendimento ||
+              "Local não informado",
             tipo: consulta.tipo || consulta.tipo_consulta || "Presencial",
             status: consulta.status || "Agendada",
-            medico: null
+            medico: null,
           }
 
           // Normalizar dados do médico
           if (consulta.medico) {
             if (typeof consulta.medico === 'object') {
-              console.log('[DEBUG] Consultas - Médico como objeto:', consulta.medico)
+              const nome = getDoctorName(consulta.medico)
+              const esp = getDoctorSpecialty(consulta.medico) || consulta.especialidade || consulta.specialty || "Especialidade não informada"
               consultaNormalizada.medico = {
-                id: consulta.medico.id,
-                nome: consulta.medico.nome || consulta.medico.name || consulta.medico.usuario?.nome || consulta.medico.usuario?.name,
-                especialidade: consulta.medico.especialidade || consulta.medico.specialty || "Especialidade não informada"
+                id: consulta.medico.id || consulta.medico.user?.id || null,
+                nome: nome || "Médico não informado",
+                especialidade: esp,
               }
             } else {
-              console.log('[DEBUG] Consultas - Médico como string/ID:', consulta.medico)
               consultaNormalizada.medico = {
                 id: consulta.medico,
-                nome: "Médico não identificado",
-                especialidade: "Especialidade não informada"
+                nome: consulta.medico_nome || consulta.doctor_name || "Médico não informado",
+                especialidade: consulta.especialidade || consulta.specialty || "Especialidade não informada",
               }
             }
           } else if (consulta.medico_nome || consulta.doctor_name) {
-            console.log('[DEBUG] Consultas - Médico por nome direto:', consulta.medico_nome || consulta.doctor_name)
             consultaNormalizada.medico = {
               id: consulta.medico_id || null,
               nome: consulta.medico_nome || consulta.doctor_name,
-              especialidade: consulta.especialidade || consulta.specialty || "Especialidade não informada"
+              especialidade: consulta.especialidade || consulta.specialty || "Especialidade não informada",
+            }
+          } else if (consulta.medico_id) {
+            consultaNormalizada.medico = {
+              id: consulta.medico_id,
+              nome: "Médico não informado",
+              especialidade: consulta.especialidade || consulta.specialty || "Especialidade não informada",
             }
           }
 
-          console.log('[DEBUG] Consultas - Consulta normalizada:', consultaNormalizada)
           return consultaNormalizada
         })
 
-        console.log('[DEBUG] Consultas - Todas as consultas normalizadas:', consultasNormalizadas)
+        // Fallback: buscar dados do médico por ID quando nome/especialidade não vierem da API
+        try {
+          const idsParaBuscar = Array.from(new Set(
+            consultasNormalizadas
+              .filter((c) => !c.medico?.nome || c.medico.nome === "Médico não informado")
+              .map((c) => c.medico?.id)
+              .filter(Boolean)
+          ))
+
+          if (idsParaBuscar.length) {
+            const resultados = await Promise.all(
+              idsParaBuscar.map((id) => pacienteService.getMedicoById(id).catch(() => null))
+            )
+            const mapaMedicos = {}
+            resultados.forEach((doc, i) => {
+              const id = idsParaBuscar[i]
+              if (doc) {
+                mapaMedicos[id] = {
+                  id: doc.id || id,
+                  nome: getDoctorName(doc) || doc.nome || "Médico",
+                  especialidade: getDoctorSpecialty(doc) || doc.especialidade || "Especialidade não informada",
+                }
+              }
+            })
+
+            consultasNormalizadas = consultasNormalizadas.map((c) => {
+              const mid = c.medico?.id
+              if (mid && mapaMedicos[mid]) {
+                return { ...c, medico: mapaMedicos[mid] }
+              }
+              return c
+            })
+          }
+        } catch (_) {}
         setConsultas(consultasNormalizadas)
       } catch (err) {
         if (!mounted) return
@@ -205,7 +290,7 @@ export default function Consultas() {
                 >
                   <a href="/paciente/consultas/nova" className="inline-flex items-center gap-2">
                     <CalendarPlus className="h-4 w-4" />
-                    Agendar Consulta
+                    Entrar em contato
                   </a>
                 </Button>
               </div>
@@ -351,12 +436,12 @@ export default function Consultas() {
                       Você não possui consultas agendadas no momento.
                     </p>
                     <Button 
-                      className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg"
+                      className="btn-medical-primary shadow-lg"
                       asChild
                     >
                       <a href="/paciente/consultas/nova" className="inline-flex items-center gap-2">
                         <CalendarPlus className="h-4 w-4" />
-                        Agendar Nova Consulta
+                        Entrar em contato
                       </a>
                     </Button>
                   </div>
@@ -407,20 +492,12 @@ export default function Consultas() {
                           </div>
                           <div className="flex gap-3">
                             <Button 
-                              variant="outline" 
                               size="sm" 
-                              onClick={() => abrirDetalhes(c)}
-                              className="border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                            >
-                              Ver Detalhes
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg"
+                              className="btn-medical-primary shadow-lg"
                               asChild
                             >
                               <a href={`/paciente/consultas/nova${c.medico?.id ? `?medico=${c.medico.id}` : ""}`}>
-                                Reagendar
+                                Contato p/ agendar
                               </a>
                             </Button>
                           </div>
