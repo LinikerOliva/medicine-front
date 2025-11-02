@@ -232,8 +232,7 @@ export default function ReceitasPaciente() {
 
   useEffect(() => {
     let mounted = true
-    
-    const load = async () => {
+    async function load() {
       setLoading(true)
       setErro("")
       
@@ -295,9 +294,7 @@ export default function ReceitasPaciente() {
         }
       }
     }
-    
     load()
-    
     return () => {
       mounted = false
     }
@@ -451,122 +448,61 @@ export default function ReceitasPaciente() {
   // Fallback: gerar um PDF simples no cliente quando não houver arquivo assinado
   async function handleDownloadGerado(r) {
     try {
-      // Importar o serviço de templates PDF
-      const { pdfTemplateService } = await import('@/services/pdfTemplateService');
-      
-      // Preparar dados da receita
-      const receitaData = {
-        medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
-        medicamentos: r?.medicamentos || r?.itens || r?.descricao || '',
-        posologia: r?.posologia || r?.orientacoes || '',
-        observacoes: r?.observacoes || '',
-        validade_receita: r?.validade_receita || '',
-        data_prescricao: r?.created_at || r?.data_emissao || new Date().toISOString(),
-        itens: Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length ? 
-          r.itens_estruturados : [{
-            medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
-            posologia: r?.posologia || r?.orientacoes || '',
-            observacoes: r?.observacoes || ''
-          }]
-      };
-      
-      // Preparar dados do médico
-      const medicoData = {
-        nome: r?.medico_nome || r?.medico || 'Médico',
-        crm: r?.medico_crm || '',
-        especialidade: r?.especialidade || '',
-        endereco_consultorio: r?.endereco_consultorio || '',
-        telefone_consultorio: r?.telefone_consultorio || '',
-        email: r?.email_medico || ''
-      };
-      
-      // Preparar dados do paciente
-      const pacienteData = {
-        nome: r?.paciente_nome || r?.paciente || 'Paciente',
-        idade: r?.idade || '',
-        rg: r?.rg || '',
-        cpf: r?.cpf || r?.rg || '',
-        data_nascimento: r?.data_nascimento || '',
-        endereco: r?.endereco_paciente || '',
-        telefone: r?.telefone_paciente || ''
-      };
-      
-      // Usar ID do médico da receita ou fallback
-      const medicoId = r?.medico_id || 'default';
-      
-      // Gerar PDF usando template personalizado
-      const pdfBlob = await pdfTemplateService.generatePDF(
-        receitaData,
-        medicoData,
-        pacienteData,
-        medicoId
-      );
-      
-      // Fazer download do PDF
-      const filename = `Receita_${pacienteData.nome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-      pdfTemplateService.savePDF(pdfBlob, filename);
-      
-    } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
-      
-      // Fallback para o método original em caso de erro
-      try {
-        const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
 
-        const pdfDoc = await PDFDocument.create()
-        const page = pdfDoc.addPage([595.28, 841.89]) // A4
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+      const pdfDoc = await PDFDocument.create()
+      const page = pdfDoc.addPage([595.28, 841.89]) // A4
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
 
-        const draw = (text, x, y, size = 12, color = rgb(0, 0, 0)) => {
-          page.drawText(String(text || ""), { x, y, size, font, color })
-        }
-
-        let y = 800
-        draw("Receita Médica", 50, y, 16)
-        y -= 30
-
-        const fmt = (label, val) => `${label}: ${val ?? ""}`
-        draw(fmt("Emitida em", r?.created_at || r?.data_emissao || ""), 50, y); y -= 18
-        draw(fmt("Médico", r?.medico_nome || r?.medico || r?.medico_id || ""), 50, y); y -= 18
-        draw(fmt("Paciente", r?.paciente_nome || r?.paciente || r?.paciente_id || ""), 50, y); y -= 24
-
-        draw("Medicamentos", 50, y, 14); y -= 18
-        draw(String(r?.medicamentos || r?.itens || r?.descricao || ""), 50, y); y -= 36
-
-        draw("Posologia", 50, y, 14); y -= 18
-        draw(String(r?.posologia || r?.orientacoes || ""), 50, y); y -= 36
-
-        if (r?.observacoes) {
-          draw("Observações", 50, y, 14); y -= 18
-          draw(String(r?.observacoes), 50, y); y -= 36
-        }
-
-        if (Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length) {
-          draw("Itens estruturados", 50, y, 14); y -= 18
-          r.itens_estruturados.forEach((it) => {
-            const line = Object.values(it || {}).filter(Boolean).join(" · ")
-            draw(`• ${line}`, 60, y)
-            y -= 16
-          })
-          y -= 10
-        }
-
-        const pdfBytes = await pdfDoc.save()
-        const blob = new Blob([pdfBytes], { type: "application/pdf" })
-        const filename = `Receita_${r?.id || "documento"}.pdf`
-
-        const link = document.createElement("a")
-        const objUrl = URL.createObjectURL(blob)
-        link.href = objUrl
-        link.download = filename
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        setTimeout(() => URL.revokeObjectURL(objUrl), 2000)
-      } catch (e) {
-        console.error("[Receitas] Falha ao gerar PDF local:", e)
-        toast({ title: "Falha ao gerar PDF", description: "Tente novamente.", variant: "destructive" })
+      const draw = (text, x, y, size = 12, color = rgb(0, 0, 0)) => {
+        page.drawText(String(text || ""), { x, y, size, font, color })
       }
+
+      let y = 800
+      draw("Receita Médica", 50, y, 16)
+      y -= 30
+
+      const fmt = (label, val) => `${label}: ${val ?? ""}`
+      draw(fmt("Emitida em", r?.created_at || r?.data_emissao || ""), 50, y); y -= 18
+      draw(fmt("Médico", r?.medico_nome || r?.medico || r?.medico_id || ""), 50, y); y -= 18
+      draw(fmt("Paciente", r?.paciente_nome || r?.paciente || r?.paciente_id || ""), 50, y); y -= 24
+
+      draw("Medicamentos", 50, y, 14); y -= 18
+      draw(String(r?.medicamentos || r?.itens || r?.descricao || ""), 50, y); y -= 36
+
+      draw("Posologia", 50, y, 14); y -= 18
+      draw(String(r?.posologia || r?.orientacoes || ""), 50, y); y -= 36
+
+      if (r?.observacoes) {
+        draw("Observações", 50, y, 14); y -= 18
+        draw(String(r?.observacoes), 50, y); y -= 36
+      }
+
+      if (Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length) {
+        draw("Itens estruturados", 50, y, 14); y -= 18
+        r.itens_estruturados.forEach((it) => {
+          const line = Object.values(it || {}).filter(Boolean).join(" · ")
+          draw(`• ${line}`, 60, y)
+          y -= 16
+        })
+        y -= 10
+      }
+
+      const pdfBytes = await pdfDoc.save()
+      const blob = new Blob([pdfBytes], { type: "application/pdf" })
+      const filename = `Receita_${r?.id || "documento"}.pdf`
+
+      const link = document.createElement("a")
+      const objUrl = URL.createObjectURL(blob)
+      link.href = objUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(objUrl), 2000)
+    } catch (e) {
+      console.error("[Receitas] Falha ao gerar PDF local:", e)
+      toast({ title: "Falha ao gerar PDF", description: "Tente novamente.", variant: "destructive" })
     }
   }
 

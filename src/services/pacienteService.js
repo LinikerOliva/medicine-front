@@ -285,7 +285,27 @@ export const pacienteService = {
     try {
       const res = await api.get(endpoint, { params: queryParams })
       const data = res?.data
-      const list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+      let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+
+      // Carregar itens para cada receita
+      const receitaItensEndpoint = String(import.meta.env.VITE_RECEITA_ITENS_ENDPOINT || "").trim()
+      if (receitaItensEndpoint && list.length > 0) {
+        const itensEndpoint = receitaItensEndpoint.endsWith("/") ? receitaItensEndpoint : `${receitaItensEndpoint}/`
+        
+        for (let receita of list) {
+          try {
+            const itensRes = await api.get(itensEndpoint, { 
+              params: { receita: receita.id } 
+            })
+            const itensData = itensRes?.data
+            const itensList = Array.isArray(itensData) ? itensData : (Array.isArray(itensData?.results) ? itensData.results : [])
+            receita.itens = itensList
+          } catch (err) {
+            console.warn(`Erro ao carregar itens da receita ${receita.id}:`, err)
+            receita.itens = []
+          }
+        }
+      }
 
       // Mesclar com receitas mock salvas localmente (quando em DEV)
       let local = []

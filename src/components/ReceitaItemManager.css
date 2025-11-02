@@ -1,0 +1,71 @@
+.receita-item-manager {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.receita-items-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.receita-item-card {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: box-shadow 0.2s;
+}
+
+.receita-item-card:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.item-number {
+  background: #007bff;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.legacy-fields {
+  border-top: 1px solid #dee2e6;
+  padding-top: 20px;
+  background: #fff;
+  border-radius: 6px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.empty-state {
+  background: white;
+  border: 2px dashed #dee2e6;
+  border-radius: 6px;
+  margin: 20px 0;
+}
+
+.form-label {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 5px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .receita-item-manager {
+    padding: 15px;
+  }
+  
+  .receita-item-card {
+    padding: 12px;
+  }
+  
+  .legacy-fields {
+    padding: 15px;
+  }
+}

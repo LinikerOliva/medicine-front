@@ -468,7 +468,7 @@ export default function Consultas() {
                                   <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                                     <Clock className="h-4 w-4" />
                                     <span className="font-medium">
-                                      {c.data ? new Date(c.data).toLocaleDateString() : "Data não informada"} às {c.data ? new Date(c.data).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "--:--"}
+                                      {c.data ? formatDateBR(c.data) : "Data não informada"} às {c.data ? formatTimeBR(c.data) : "--:--"}
                                     </span>
                                   </div>
                                 </div>
@@ -676,3 +676,4 @@ export default function Consultas() {
     </div>
   )
 }
+import { formatDateBR, formatTimeBR } from "../../../utils/dateUtils"

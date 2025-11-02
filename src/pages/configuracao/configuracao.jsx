@@ -20,7 +20,8 @@ import api from "@/services/api"
 import { adminService } from "@/services/adminService"
 import { medicoService } from "@/services/medicoService"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Info } from "lucide-react"
+import { Info, FileText } from "lucide-react"
+import PdfTemplateConfig from "@/components/pdf-template-config"
 
 export default function Configuracao() {
   const { activeRole } = useUser()
@@ -530,7 +531,7 @@ export default function Configuracao() {
         )}
 
         <Tabs defaultValue="perfil" className="space-y-6">
-          <TabsList className={`grid w-full ${isMedico ? "grid-cols-5" : "grid-cols-3"}`}>
+          <TabsList className={`grid w-full ${isMedico ? "grid-cols-6" : "grid-cols-3"}`}>
             <TabsTrigger value="perfil" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
@@ -552,6 +553,10 @@ export default function Configuracao() {
                 <TabsTrigger value="dados_medico" className="flex items-center gap-2">
                   <Stethoscope className="h-4 w-4" />
                   Dados do Médico
+                </TabsTrigger>
+                <TabsTrigger value="templates_pdf" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Templates PDF
                 </TabsTrigger>
               </>
             )}
@@ -978,6 +983,16 @@ export default function Configuracao() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+          )}
+
+          {/* NOVO: Templates de PDF (somente na área do médico) */}
+          {isMedico && (
+            <TabsContent value="templates_pdf">
+              <PdfTemplateConfig 
+                medicoId={profile?.id} 
+                medicoInfo={medicoInfo}
+              />
             </TabsContent>
           )}
 

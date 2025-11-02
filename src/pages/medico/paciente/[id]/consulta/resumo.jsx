@@ -10,6 +10,7 @@ import { FileText, ListChecks, ClipboardList, FileSignature } from "lucide-react
 import { useToast } from "@/hooks/use-toast"
 import { medicoService } from "@/services/medicoService"
 import { DatePicker } from "@/components/ui/date-picker"
+import ReceitaItemManager from "@/components/ReceitaItemManager"
 
 export default function ResumoConsultaMedico() {
   const { id } = useParams()
@@ -31,9 +32,33 @@ export default function ResumoConsultaMedico() {
     validade: initial.validade || "",
   })
 
+  const [receitaItems, setReceitaItems] = useState([])
+  const [useStructuredItems, setUseStructuredItems] = useState(false)
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((f) => ({ ...f, [name]: value }))
+  }
+
+  const handleReceitaItemsChange = (items) => {
+    setReceitaItems(items)
+    
+    // Atualizar campos legacy para compatibilidade
+    const medicamentos = items.map(item => item.medicamento_nome).filter(Boolean).join('\n')
+    const posologia = items.map(item => {
+      const parts = []
+      if (item.dose) parts.push(item.dose)
+      if (item.frequencia) parts.push(item.frequencia)
+      if (item.duracao) parts.push(item.duracao)
+      if (item.observacoes) parts.push(`(${item.observacoes})`)
+      return parts.join(' - ')
+    }).filter(Boolean).join('\n')
+    
+    setForm(f => ({
+      ...f,
+      medicamentos,
+      posologia
+    }))
   }
 
   const handleConfirmar = async () => {
@@ -57,6 +82,7 @@ export default function ResumoConsultaMedico() {
             medicamentos: form.medicamentos,
             posologia: form.posologia,
             validade: form.validade,
+            receitaItems: useStructuredItems ? receitaItems : undefined,
           },
           consultaId,
         },
@@ -100,17 +126,41 @@ export default function ResumoConsultaMedico() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Prescrição</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              Prescrição
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="useStructured"
+                  checked={useStructuredItems}
+                  onChange={(e) => setUseStructuredItems(e.target.checked)}
+                  className="rounded"
+                />
+                <label htmlFor="useStructured" className="text-sm font-normal">
+                  Usar itens estruturados
+                </label>
+              </div>
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Medicamentos</Label>
-              <Textarea name="medicamentos" rows={4} value={form.medicamentos} onChange={handleChange} />
-            </div>
-            <div className="space-y-2">
-              <Label>Posologia</Label>
-              <Textarea name="posologia" rows={3} value={form.posologia} onChange={handleChange} />
-            </div>
+            {useStructuredItems ? (
+              <ReceitaItemManager
+                items={receitaItems}
+                onChange={handleReceitaItemsChange}
+                showLegacyFields={true}
+              />
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Medicamentos</Label>
+                  <Textarea name="medicamentos" rows={4} value={form.medicamentos} onChange={handleChange} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Posologia</Label>
+                  <Textarea name="posologia" rows={3} value={form.posologia} onChange={handleChange} />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label>Validade da Receita</Label>
               <DatePicker name="validade" value={form.validade} onChange={(val) => handleChange({ target: { name: "validade", value: val } })} className="border rounded h-10 px-3 bg-background" minDate={new Date()} />

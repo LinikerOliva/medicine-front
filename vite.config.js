@@ -10,6 +10,10 @@ export default defineConfig(({ mode }) => {
   const enableMockReceita = String(env.VITE_MOCK_RECEITA ?? 'true').toLowerCase() !== 'false';
   // Alterado: por padrão NÃO mockar certificado/assinatura. Só ativa se VITE_MOCK_MEDICO_CERTIFICADO=true
   const enableMockMedicoCert = String(env.VITE_MOCK_MEDICO_CERTIFICADO ?? 'false').toLowerCase() === 'true';
+  const enableMockNotifications = String(env.VITE_MOCK_NOTIFICATIONS ?? 'true').toLowerCase() !== 'false';
+  
+  // Definindo porta específica
+  const serverPort = 5174;
 
   // Plugin para mockar endpoints de geração de receita em desenvolvimento
   const mockReceitaPlugin = () => ({
@@ -314,6 +318,98 @@ export default defineConfig(({ mode }) => {
     },
   });
 
+  // Plugin para mockar endpoints de Notificações em desenvolvimento
+  const mockNotificationsPlugin = () => ({
+    name: 'mock-notifications',
+    apply: 'serve',
+    configureServer(server) {
+      const json = (res, status, obj) => {
+        res.statusCode = status;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(obj));
+      };
+
+      const readJsonBody = async (req) => {
+        return new Promise((resolve) => {
+          let body = '';
+          req.on('data', chunk => body += chunk.toString());
+          req.on('end', () => {
+            try {
+              resolve(JSON.parse(body));
+            } catch {
+              resolve({});
+            }
+          });
+          req.on('error', () => resolve({}));
+        });
+      };
+
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const method = (req.method || 'GET').toUpperCase();
+          const url = req.url || '/';
+          const pathname = url.split('?')[0];
+          const base = apiBasePath.replace(/\/?$/, '/');
+
+          // Mock endpoints de notificações
+          const notificationEndpoints = [
+            `${base}notificacoes/`,
+            `${base}notifications/`,
+            `${base}notificacoes/enviar/`,
+            `${base}notifications/enviar/`,
+            `${base}notificacoes/enviar-email/`,
+            `${base}notifications/enviar-email/`,
+            `${base}notificacoes/enviar-sms/`,
+            `${base}notifications/enviar-sms/`,
+            `${base}sms/enviar/`,
+            `${base}comunicacao/sms/`,
+            `${base}receitas/sms/`
+          ];
+
+          const isNotificationEndpoint = notificationEndpoints.some(endpoint => 
+            pathname === endpoint || pathname.startsWith(endpoint)
+          );
+
+          if (isNotificationEndpoint) {
+            if (method === 'POST') {
+              const body = await readJsonBody(req);
+              
+              // Simular sucesso para todos os tipos de notificação
+              const mockResponse = {
+                success: true,
+                id: `mock-${Date.now()}`,
+                message: 'Notificação enviada com sucesso (MOCK)',
+                timestamp: new Date().toISOString(),
+                ...body
+              };
+
+              return json(res, 200, mockResponse);
+            }
+
+            if (method === 'GET') {
+              // Mock para listar notificações
+              const mockNotifications = {
+                results: [],
+                count: 0,
+                next: null,
+                previous: null
+              };
+              return json(res, 200, mockNotifications);
+            }
+
+            // Outros métodos
+            return json(res, 200, { success: true, message: 'Mock endpoint' });
+          }
+
+          return next();
+        } catch (error) {
+          console.error('[mock-notifications] erro:', error);
+          return next();
+        }
+      });
+    },
+  });
+
   // Plugin para mockar endpoints de Certificado Digital do Médico em desenvolvimento
   const mockMedicoCertificadoPlugin = () => ({
     name: 'mock-medico-certificado',
@@ -497,6 +593,7 @@ export default defineConfig(({ mode }) => {
       react(),
       ...(enableMockReceita ? [mockReceitaPlugin()] : []),
       ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
+      mockNotificationsPlugin(), // Sempre ativo em desenvolvimento
     ],
     resolve: {
       alias: {

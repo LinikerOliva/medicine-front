@@ -434,6 +434,13 @@ export const medicoService = {
 
   // NOVO: criar receita no backend (persistência em banco)
   async criarReceita(payload = {}) {
+    // Permite desabilitar completamente a criação de receita para evitar 404 em backends sem esse recurso
+    const CREATE_DISABLED = String(import.meta.env.VITE_RECEITAS_CREATE_DISABLED || "").toLowerCase() === "true"
+    if (CREATE_DISABLED) {
+      try { console.debug("[medicoService.criarReceita] criação desabilitada por VITE_RECEITAS_CREATE_DISABLED=true") } catch {}
+      return { ok: false, disabled: true }
+    }
+
     const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
     const basePacientes = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
     const baseConsultas = (import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/")
@@ -497,7 +504,7 @@ export const medicoService = {
     const altBases = Array.from(new Set([
       singularBase,
       "/receita/",
-      "/meu_app_receita/",
+      // Removido "/meu_app_receita/" para evitar 404 em backends padrão
     ].filter(Boolean)))
     for (const b of altBases) {
       const bb = b.replace(/\/?$/, "/")
@@ -534,7 +541,7 @@ export const medicoService = {
           if (VERBOSE) {
             try { console.warn("[medicoService.criarReceita] falhou:", lastTried, "status=", st, "detail=", e?.response?.data || e?.message) } catch {}
           }
-          // Fallback: em caso de validação 400/422, tentar um payload minimal e nomes alternativos
+          // Fallback: em caso de validação 400/422, tentar um payload minimal; se falhar, CONTINUAR para outros endpoints
           if (st && [400, 422].includes(st)) {
             const key = `${m}:${url}`
             if (!retriedMinimal.has(key)) {
@@ -569,7 +576,9 @@ export const medicoService = {
                   const bodyStr = body && typeof body === "object" ? ` | body=${JSON.stringify(body)}` : (typeof body === "string" ? ` | body=${body}` : "")
                   e2.message = `Falha ao criar receita (minimal, última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`
                 } catch {}
-                throw e2
+                // Não abortar: seguir tentando próximos candidatos
+                lastErr = e2
+                continue
               }
             }
             // Se já tentou minimal neste endpoint, ainda assim enriquecer a mensagem antes de propagar
@@ -579,11 +588,13 @@ export const medicoService = {
               const bodyStr = body && typeof body === "object" ? ` | body=${JSON.stringify(body)}` : (typeof body === "string" ? ` | body=${body}` : "")
               e.message = `Falha ao criar receita (última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`
             } catch {}
+            // Continuar para próximos candidatos
+            continue
           }
           if (st === 404) { lastErr = e; break }
           if (st === 405) { lastErr = e; continue }
           if (st === 401) throw e
-          if (st && [400, 422].includes(st)) throw e
+          if (st && [400, 422].includes(st)) { lastErr = e; continue }
           lastErr = e; break
         }
       }
@@ -596,6 +607,176 @@ export const medicoService = {
       throw new Error(`Falha ao criar receita (última tentativa: ${lastTried || ""}) ⇒ [${st || ""}] ${detail}${bodyStr}`)
     }
     throw new Error("Falha ao criar receita: nenhum endpoint compatível encontrado.")
+  },
+
+  // NOVO: salvar itens da receita (meu_app_receitaitem)
+  async salvarItensReceita(receitaId, itens = []) {
+    if (!receitaId) throw new Error("receitaId é obrigatório para salvar itens.")
+    if (!Array.isArray(itens) || itens.length === 0) return { count: 0, results: [] }
+
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+    const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const envItems = (import.meta.env.VITE_RECEITA_ITENS_ENDPOINT || "").trim()
+
+    // Normaliza itens
+    const normalizedItems = itens.map((item) => {
+      const mId = item.medicamento_id || item.medicamento?.id || item.medicamento
+      const obj = {
+        receita: receitaId,
+        receita_id: receitaId,
+        medicamento_id: mId,
+        medicamento: mId,
+        // Texto/descrição do medicamento
+        nome: item.nome || item.medicamento_nome || item.descricao || item.texto || item.medicamento || item.medicamentos,
+        medicamento_nome: item.medicamento_nome || item.nome || item.descricao || item.texto,
+        descricao: item.descricao || item.texto || item.nome || item.medicamento,
+        // Posologia/instruções
+        posologia: item.posologia || item.instrucoes || item.indicacoes,
+        dose: item.dose || item.dosagem,
+        frequencia: item.frequencia || item.freq || item.intervalo,
+        duracao: item.duracao || item.dias || item.periodo,
+        observacoes: item.observacoes || item.obs || item.nota,
+      }
+      return obj
+    })
+
+    // Candidatos de endpoint (bulk primeiro)
+    const candidates = []
+    if (envItems) candidates.push(envItems)
+    candidates.push(`${baseReceitas}${receitaId}/itens/`)
+    candidates.push(`${baseReceitas}${receitaId}/items/`)
+    candidates.push(`${baseReceitas}${receitaId}/receitaitens/`)
+    candidates.push(`/api/receitaitem/`)
+    candidates.push(`/receitaitem/`)
+    candidates.push(`/api/receitas/itens/`)
+    candidates.push(`/receitas/itens/`)
+    candidates.push(`/meu_app_receitaitem/`)
+
+    let lastErr = null
+    // 1) Tenta enviar em lote
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      try {
+        if (VERBOSE) { try { console.debug("[salvarItensReceita] POST bulk ->", url) } catch {} }
+        const payloadBulk = { itens: normalizedItems, receita: receitaId, receita_id: receitaId }
+        const { data } = await api.post(url, payloadBulk)
+        return data || { count: normalizedItems.length, results: normalizedItems }
+      } catch (e) {
+        const st = e?.response?.status
+        if (st === 401) throw e
+        // Se 404/405/400, vamos tentar item a item em endpoints de item
+        lastErr = e
+        continue
+      }
+    }
+
+    // 2) Fallback: enviar item por item
+    const singleCandidates = [
+      envItems ? envItems.replace(/\/?$/, "/") : null,
+      "/api/receitaitem/",
+      "/receitaitem/",
+      "/api/receitas/itens/",
+      "/receitas/itens/",
+      "/meu_app_receitaitem/",
+    ].filter(Boolean)
+
+    const results = []
+    for (const item of normalizedItems) {
+      let saved = null
+      let lastErrSingle = null
+      for (const raw of singleCandidates) {
+        const url = raw.endsWith("/") ? raw : `${raw}/`
+        try {
+          if (VERBOSE) { try { console.debug("[salvarItensReceita] POST single ->", url, item) } catch {} }
+          const { data } = await api.post(url, item)
+          saved = data || item
+          break
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401) throw e
+          lastErrSingle = e
+          continue
+        }
+      }
+      if (!saved) {
+        if (lastErrSingle) lastErr = lastErrSingle
+        // mantém item original para não perder informação
+        results.push(item)
+      } else {
+        results.push(saved)
+      }
+    }
+
+    if (lastErr && results.length === 0) throw lastErr
+    return { count: results.length, results }
+  },
+
+  // NOVO: anexar/armazenar arquivo assinado na receita
+  async salvarArquivoAssinado(receitaId, blobOrFile, filename = "receita_assinada.pdf") {
+    if (!receitaId) throw new Error("receitaId é obrigatório para salvar arquivo assinado.")
+    if (!blobOrFile) throw new Error("Arquivo assinado (Blob/File) é obrigatório.")
+
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+    const baseReceitasRaw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const baseReceitas = baseReceitasRaw.endsWith("/") ? baseReceitasRaw : `${baseReceitasRaw}/`
+    const envUpload = (import.meta.env.VITE_RECEITA_UPLOAD_ARQUIVO_ENDPOINT || "").trim()
+
+    const file = blobOrFile instanceof File ? blobOrFile : new File([blobOrFile], filename, { type: "application/pdf" })
+    const fd = new FormData()
+    fd.append("arquivo_assinado", file, filename)
+    fd.append("pdf_assinado", file, filename)
+    fd.append("documento_assinado", file, filename)
+    fd.append("file", file, filename)
+    fd.append("pdf", file, filename)
+    fd.append("documento", file, filename)
+    fd.append("receita", receitaId)
+    fd.append("receita_id", receitaId)
+    fd.append("id", receitaId)
+
+    const candidates = []
+    if (envUpload) candidates.push(envUpload)
+    candidates.push(`${baseReceitas}${receitaId}/arquivo-assinado/`)
+    candidates.push(`${baseReceitas}${receitaId}/arquivo/`)
+    candidates.push(`${baseReceitas}${receitaId}/upload/`)
+    candidates.push(`${baseReceitas}${receitaId}/anexos/`)
+    // fallback: PATCH direto na receita
+    candidates.push(`${baseReceitas}${receitaId}/`)
+    candidates.push(`/api/receitas/${receitaId}/`)
+
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      const methods = ["post", "put", "patch"]
+      for (const m of methods) {
+        try {
+          if (VERBOSE) { try { console.debug(`[salvarArquivoAssinado] ${m.toUpperCase()} ->`, url) } catch {} }
+          const { data } = await api[m](url, fd)
+          return data || { ok: true }
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401) throw e
+          if (st === 404) { lastErr = e; break }
+          if (st === 405) { lastErr = e; continue }
+          if (st && [400,422].includes(st)) { lastErr = e; continue }
+          lastErr = e
+          break
+        }
+      }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Falha ao salvar arquivo assinado: nenhum endpoint compatível.")
+  },
+
+  // NOVO: util para calcular SHA-256 do PDF assinado
+  async computeSHA256Hex(blobOrFile) {
+    const blob = blobOrFile instanceof Blob ? blobOrFile : new Blob([blobOrFile])
+    const ab = await blob.arrayBuffer()
+    const digest = await crypto.subtle.digest("SHA-256", ab)
+    const bytes = new Uint8Array(digest)
+    const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
+    return hex
   },
 
   // NOVO: gerar documento de receita (PDF/DOCX) com múltiplos fallbacks de endpoint
@@ -619,6 +800,12 @@ export const medicoService = {
     if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
     if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
     if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
+    
+    // Normalizar nomes de campos para compatibilidade com backend
+    if (p0.nome_paciente && !normalized.paciente_nome) normalized.paciente_nome = p0.nome_paciente
+    if (p0.medico && !normalized.medico_nome) normalized.medico_nome = p0.medico
+    if (p0.crm && !normalized.medico_crm) normalized.medico_crm = p0.crm
+    
     normalized.formato = formato
 
     // Resolve automaticamente o ID do médico quando ausente
@@ -634,32 +821,39 @@ export const medicoService = {
     const envGen = (import.meta.env.VITE_GERAR_RECEITA_ENDPOINT || "").trim()
     if (envGen) candidates.push(envGen)
 
-    // Endpoints comuns
+    // Priorizar endpoints que sabemos que existem no backend
+    candidates.push(`${baseReceitas}pdf/`)           // /api/receitas/pdf/
+    candidates.push(`${baseReceitas}gerar/`)         // /api/receitas/gerar/
+    candidates.push(`${baseReceitas}documento/`)     // /api/receitas/documento/
+    candidates.push(`/api/gerar-receita/`)           // endpoint direto
+    
+    // Endpoints comuns (fallback)
     const pushCommon = (b) => {
       const bb = b.replace(/\/?$/, "/")
-      candidates.push(`${bb}gerar/`)
       candidates.push(`${bb}generate/`)
-      candidates.push(`${bb}documento/`)
-      candidates.push(`${bb}pdf/`)
       candidates.push(`${bb}preview/`)
     }
     pushCommon(baseReceitas)
-    // singular e alternativos
+    
+    // singular e alternativos (apenas se necessário)
     const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
-    ;[singularBase, "/receita/", "/meu_app_receita/"].forEach((b) => b && pushCommon(b))
+    if (singularBase !== baseReceitas) {
+      candidates.push(`${singularBase}pdf/`)
+      candidates.push(`${singularBase}gerar/`)
+    }
 
-    // Variações por recurso associado
-    if (consultaId) candidates.push(`${baseConsultas}${consultaId}/gerar_receita/`)
+    // Remover tentativas desnecessárias que geram 404s
+    // if (consultaId) candidates.push(`${baseConsultas}${consultaId}/gerar_receita/`)
 
-    // Endpoints no contexto do médico
-    try {
-      const mid = await this._resolveMedicoId().catch(() => null)
-      if (mid) {
-        candidates.push(`${medBase}${mid}/gerar_receita/`)
-        candidates.push(`${medBase}${mid}/receitas/gerar/`)
-      }
-      candidates.push(`${medBase}me/gerar_receita/`)
-    } catch {}
+    // Endpoints no contexto do médico (comentado para reduzir 404s)
+    // try {
+    //   const mid = await this._resolveMedicoId().catch(() => null)
+    //   if (mid) {
+    //     candidates.push(`${medBase}${mid}/gerar_receita/`)
+    //     candidates.push(`${medBase}${mid}/receitas/gerar/`)
+    //   }
+    //   candidates.push(`${medBase}me/gerar_receita/`)
+    // } catch {}
 
     if (VERBOSE) { try { console.debug("[medicoService.gerarDocumentoReceita] candidatos:", candidates) } catch {} }
 
@@ -735,7 +929,7 @@ export const medicoService = {
       }
 
       let y = 800
-      draw("Receita Médica (pré-assinatura, não assinada)", 50, y, 16); y -= 30
+      draw("Receita Médica", 50, y, 16); y -= 30
 
       // Cabeçalho paciente
       draw(`Paciente: ${normalized.nome_paciente || normalized.paciente_nome || normalized.paciente_id || ""}` , 50, y); y -= 18
@@ -1572,6 +1766,7 @@ export const medicoService = {
       )
       const receitaId = opts.receitaId || null
       const verifyUrl = opts.verifyUrl || this.buildVerifyUrl(receitaId)
+      const certInfo = opts.certInfo || null
 
       const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
       const QRCode = await import("qrcode")
@@ -1582,28 +1777,112 @@ export const medicoService = {
       const pages = pdfDoc.getPages()
       const page = pages[pages.length - 1]
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
 
       // Gera QR em dataURL e incorpora como PNG
       let qrPng
       try {
-        const qrDataUrl = await QRCode.default.toDataURL(String(verifyUrl || ""), { errorCorrectionLevel: "H", margin: 1, width: 256 })
+        const qrDataUrl = await QRCode.default.toDataURL(String(verifyUrl || ""), { 
+          errorCorrectionLevel: "H", 
+          margin: 1, 
+          width: 256,
+          color: { dark: '#000000', light: '#FFFFFF' }
+        })
         const base64 = (qrDataUrl || "").split(",")[1] || ""
         const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
         qrPng = await pdfDoc.embedPng(raw)
       } catch (_) {}
 
-      const { width } = page.getSize()
-      const box = { x: 40, y: 60, w: width - 80, h: 120 }
-      page.drawRectangle({ x: box.x, y: box.y, width: box.w, height: box.h, color: rgb(0.97, 0.97, 0.97) })
-      page.drawText("Assinado de forma digital por:", { x: box.x + 110, y: box.y + 90, size: 11, font, color: rgb(0, 0, 0) })
-      page.drawText(signerName, { x: box.x + 110, y: box.y + 74, size: 12, font, color: rgb(0, 0, 0) })
-      page.drawText(`Dados: ${dateStr}`, { x: box.x + 110, y: box.y + 56, size: 10, font, color: rgb(0, 0, 0) })
-      // linha e legenda
-      page.drawText("Carimbo e Assinatura do Médico", { x: box.x + 110, y: box.y + 30, size: 9, font, color: rgb(0.3, 0.3, 0.3) })
+      const { width, height } = page.getSize()
+      
+      // Área da assinatura (posicionada na elipse rabiscada - lado esquerdo inferior)
+      const signatureArea = { x: 80, y: 80, w: 200, h: 80 }
+      
+      // Área do QR code (posicionada no quadrado - lado direito inferior)  
+      const qrArea = { x: width - 150, y: 80, w: 80, h: 80 }
+      
+      // Fundo da área de assinatura
+      page.drawRectangle({ 
+        x: signatureArea.x, 
+        y: signatureArea.y, 
+        width: signatureArea.w, 
+        height: signatureArea.h, 
+        color: rgb(0.98, 0.98, 1),
+        borderColor: rgb(0.2, 0.2, 0.8),
+        borderWidth: 1
+      })
+      
+      // Cabeçalho da assinatura
+      page.drawText("ASSINATURA DIGITAL", { 
+        x: signatureArea.x + 10, 
+        y: signatureArea.y + signatureArea.h - 15, 
+        size: 10, 
+        font: boldFont, 
+        color: rgb(0.2, 0.2, 0.8) 
+      })
+      
+      // Nome do signatário (usar commonName do certificado se disponível)
+      const displayName = certInfo?.subject?.commonName || signerName
+      page.drawText(`${displayName}`, { 
+        x: signatureArea.x + 10, 
+        y: signatureArea.y + signatureArea.h - 30, 
+        size: 9, 
+        font, 
+        color: rgb(0, 0, 0) 
+      })
+      
+      // Informações do certificado se disponíveis
+      let yOffset = signatureArea.h - 45
+      if (certInfo?.subject) {
+        if (certInfo.subject.organizationName) {
+          page.drawText(`${certInfo.subject.organizationName}`, { 
+            x: signatureArea.x + 10, 
+            y: signatureArea.y + yOffset, 
+            size: 7, 
+            font, 
+            color: rgb(0.3, 0.3, 0.3) 
+          })
+          yOffset -= 10
+        }
+        
+        if (certInfo.subject.emailAddress) {
+          page.drawText(`${certInfo.subject.emailAddress}`, { 
+            x: signatureArea.x + 10, 
+            y: signatureArea.y + yOffset, 
+            size: 7, 
+            font, 
+            color: rgb(0.3, 0.3, 0.3) 
+          })
+          yOffset -= 10
+        }
+      }
+      
+      // Data da assinatura
+      page.drawText(`${dateStr}`, { 
+        x: signatureArea.x + 10, 
+        y: signatureArea.y + yOffset, 
+        size: 8, 
+        font, 
+        color: rgb(0, 0, 0) 
+      })
+      
+      // Texto de verificação próximo ao QR code
+      page.drawText("Escaneie para verificar", { 
+        x: qrArea.x, 
+        y: qrArea.y - 15, 
+        size: 8, 
+        font, 
+        color: rgb(0.5, 0.5, 0.5) 
+      })
 
+      // QR Code posicionado no quadrado (lado direito)
       if (qrPng) {
-        const qrSize = 90
-        page.drawImage(qrPng, { x: box.x + 10, y: box.y + 20, width: qrSize, height: qrSize })
+        page.drawImage(qrPng, { 
+          x: qrArea.x, 
+          y: qrArea.y, 
+          width: qrArea.w, 
+          height: qrArea.h 
+        })
       }
 
       const out = await pdfDoc.save()
@@ -1921,9 +2200,9 @@ export const medicoService = {
       body.hash_pre = payload.hash_pre
       body.pre_hash = payload.pre_hash || payload.hash_pre
     }
-    if (payload.hash_signed) {
-      body.hash_signed = payload.hash_signed
-      body.signed_hash = payload.signed_hash || payload.hash_signed
+    if (payload.hash_documento) {
+      body.hash_documento = payload.hash_documento
+      body.signed_hash = payload.signed_hash || payload.hash_documento
     }
     // Outros metadados
     if (payload.motivo) body.motivo = payload.motivo
@@ -1942,6 +2221,9 @@ export const medicoService = {
     candidates.push(`${baseReceitas}${id}/editar/`)
     candidates.push(`/api/receitas/${id}/`)
     candidates.push(`/receitas/${id}/`)
+    // Alternativo: modelo/tabela explicitamente nomeado
+    candidates.push(`/api/meu_app_receita/${id}/`)
+    candidates.push(`/meu_app_receita/${id}/`)
 
     let lastErr = null
     for (const raw of candidates) {
@@ -2019,5 +2301,115 @@ export const medicoService = {
 
     if (lastErr) throw lastErr
     throw new Error("Falha ao registrar auditoria de assinatura: nenhum endpoint compatível.")
+  },
+
+  // NOVO: Finalizar assinatura externa (A3/Token)
+  async finalizarAssinaturaExterna({ receitaId, pdfFile, assinatura, certificado }) {
+    const formData = new FormData()
+    formData.append("file", pdfFile) // O PDF original
+    formData.append("assinatura_externa", assinatura) // A assinatura (Base64)
+    formData.append("certificado_externo", certificado) // O certificado (Base64)
+    formData.append("receita_id", receitaId)
+    
+    // Este é o endpoint do Django que vai MONTAR o PDF
+    const res = await api.post(`/api/assinatura/finalizar-externa/`, formData, {
+      responseType: "blob"
+    })
+    
+    // Lógica para extrair nome do arquivo e retornar o blob
+    const cd = res.headers?.["content-disposition"] || ""
+    let filename = "receita_assinada.pdf"
+    if (cd) {
+      const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+      try { 
+        filename = decodeURIComponent(match?.[1] || match?.[2] || filename) 
+      } catch {}
+    }
+    const blob = new Blob([res.data], { type: "application/pdf" })
+    return { filename, blob }
+  },
+
+  // Wrapper para compatibilidade: assinarDocumento -> signDocumento
+  async assinarDocumento(params = {}) {
+    const { pdfFile, certificado, senha, motivo, receita_id, modo_assinatura, ...rest } = params
+    
+    // Criar FormData ou usar arquivo diretamente
+    let fileOrForm = pdfFile
+    if (certificado && senha) {
+      const formData = new FormData()
+      formData.append("file", pdfFile)
+      formData.append("pfx", certificado)
+      formData.append("senha", senha)
+      if (motivo) formData.append("motivo", motivo)
+      if (receita_id) formData.append("receita_id", receita_id)
+      fileOrForm = formData
+    }
+    
+    // Metadados para signDocumento
+    const meta = {
+      motivo: motivo || "Receita Médica",
+      receitaId: receita_id,
+      pfxFile: certificado,
+      pfxPassword: senha,
+      useToken: modo_assinatura === "token",
+      ...rest
+    }
+    
+    return await this.signDocumento(fileOrForm, meta)
+  },
+
+  // NOVO: fluxo completo para criar receita, salvar itens, assinar e persistir metadados
+  async assinarReceitaEPersistir({ dadosReceita = {}, itens = [], pdfFile, motivo = "Receita Médica", certificado, senha, modo_assinatura = "pfx" } = {}) {
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+
+    // 1) Criar receita
+    const criada = await this.criarReceita(dadosReceita)
+    const receitaId = criada?.id || criada?.pk || criada?.uuid || criada?.receita?.id
+    if (!receitaId) throw new Error("Não foi possível obter ID da receita após criação.")
+    if (VERBOSE) { try { console.debug("[assinarReceitaEPersistir] receita criada:", receitaId, criada) } catch {} }
+
+    // 2) Persistir itens
+    try { await this.salvarItensReceita(receitaId, itens) } catch (_) {}
+
+    // 3) Gerar PDF caso não tenha sido fornecido
+    let sourceFile = pdfFile
+    if (!sourceFile) {
+      const { blob, filename } = await this.gerarDocumentoReceita({ ...dadosReceita, receita_id: receitaId, formato: "pdf" })
+      sourceFile = new File([blob], filename || "receita.pdf", { type: "application/pdf" })
+    }
+
+    // 4) Assinar PDF
+    const formData = new FormData()
+    formData.append("file", sourceFile)
+    formData.append("pdf", sourceFile)
+    formData.append("documento", sourceFile)
+    formData.append("receita_id", receitaId)
+    if (certificado) formData.append("pfx", certificado)
+    if (senha) formData.append("senha", senha)
+    const signed = await this.signDocumento(formData, { receitaId, motivo, useToken: modo_assinatura === "token", pfxFile: certificado, pfxPassword: senha })
+
+    const signedBlob = signed?.blob
+    const signedName = signed?.filename || "receita_assinada.pdf"
+    if (!signedBlob) throw new Error("Falha ao assinar a receita: blob vazio.")
+
+    // 5) Calcular hash e persistir arquivo assinado
+    const hashHex = await this.computeSHA256Hex(signedBlob)
+    await this.salvarArquivoAssinado(receitaId, signedBlob, signedName)
+
+    // 6) Atualizar metadados de assinatura na receita
+    let medicoId = null
+    try { medicoId = await this._resolveMedicoId() } catch {}
+    const nowIso = new Date().toISOString()
+    await this.atualizarReceita(receitaId, {
+      assinada: true,
+      assinada_em: nowIso,
+      assinada_por_id: medicoId,
+      algoritmo_assinatura: "RSA-SHA256-PADES",
+      hash_documento: hashHex,
+      carimbo_tempo: nowIso,
+      observacoes: (dadosReceita?.observacoes || "")
+    })
+
+    return { receitaId, filename: signedName, blob: signedBlob }
   },
 };

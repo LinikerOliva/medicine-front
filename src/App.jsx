@@ -78,6 +78,11 @@ import PacientesSecretaria from "./pages/secretaria/pacientes"
 import MedicosSecretaria from "./pages/secretaria/medicos"
 import AgendaSecretaria from "./pages/secretaria/agenda"
 import ReceberReceita from "./pages/receber/receita"
+
+// Verificação de receitas
+import VerificarReceita from "./pages/verificar/[id]"
+import TestSignature from "./components/TestSignature"
+
 function App() {
   return (
     <AuthProvider>
@@ -92,6 +97,8 @@ function App() {
             <Route path="/esqueci-senha" element={<ForgotPasswordForm />} />
             <Route path="/redefinir-senha/:uid/:token" element={<ResetPasswordForm />} />
             <Route path="/receber/receita" element={<ReceberReceita />} />
+            <Route path="/verificar/:id" element={<VerificarReceita />} />
+            <Route path="/test-signature" element={<TestSignature />} />
 
             {/* Paciente */}
             <Route

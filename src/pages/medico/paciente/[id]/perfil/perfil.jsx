@@ -8,6 +8,7 @@ import { Calendar, FileText, ClipboardList, User } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { useEffect, useState } from "react"
 import api from "@/services/api"
+import { formatDateBR } from "@/utils/dateUtils"
 
 export default function PacientePerfil() {
   const { id } = useParams() // Obtém o parâmetro "id" da URL
@@ -66,7 +67,7 @@ export default function PacientePerfil() {
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium">Data de Nascimento</p>
-              <p className="text-muted-foreground">{(patient?.data_nascimento || patient?.user?.data_nascimento) ? new Date(patient?.data_nascimento || patient?.user?.data_nascimento).toLocaleDateString("pt-BR") : "—"}</p>
+              <p className="text-muted-foreground">{formatDateBR(patient?.data_nascimento || patient?.user?.data_nascimento)}</p>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium">CPF</p>

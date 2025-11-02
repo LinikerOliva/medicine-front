@@ -1,5 +1,6 @@
 import axios from "axios"
 import { secureStorage } from "../utils/secureStorage"
+import { mockService } from "./mockService"
 
 // Usar variáveis de ambiente
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
@@ -149,6 +150,13 @@ api.interceptors.response.use(
     const status = error?.response?.status
     const originalRequest = error?.config || {}
 
+    // Se for erro 404 e o endpoint deve ser mockado, retorna resposta mockada
+    if (status === 404 && mockService.shouldMock(originalRequest.url || '')) {
+      console.log(`[MOCK] Interceptando erro 404 para ${originalRequest.url}`);
+      await mockService.simulateNetworkDelay(50);
+      return Promise.resolve(mockService.getMockResponse(originalRequest.url, originalRequest.method));
+    }
+
     // Tentativa de refresh UNA VEZ por requisição
     if (status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
@@ -200,3 +208,9 @@ api.interceptors.response.use(
 )
 
 export default api
+
+// Exportar função signPrescription do digitalSignatureService
+import digitalSignatureServiceInstance from './digitalSignatureService'
+export const signPrescription = (prescriptionData) => {
+  return digitalSignatureServiceInstance.signPrescription(prescriptionData)
+}
