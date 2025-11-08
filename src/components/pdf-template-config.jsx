@@ -34,6 +34,7 @@ import {
   mergeTemplateConfig,
   generateTemplatePreview
 } from '@/utils/pdfTemplateUtils'
+import { medicoService } from '@/services/medicoService'
 
 export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
   const { toast } = useToast()
@@ -51,10 +52,25 @@ export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
     
     const loadSavedConfig = async () => {
       try {
-        const savedConfig = loadTemplateConfig(medicoId)
-        const savedLogo = loadDoctorLogo(medicoId)
+        // Tentar carregar do backend primeiro
+        let savedConfig = null
+        let savedLogo = null
         
-        setConfig(savedConfig)
+        try {
+          // Aqui você pode implementar uma função para carregar do backend
+          // Por enquanto, vamos usar apenas o localStorage
+          savedConfig = loadTemplateConfig(medicoId)
+          savedLogo = loadDoctorLogo(medicoId)
+        } catch (backendError) {
+          console.warn('Erro ao carregar do backend, usando localStorage:', backendError)
+          // Fallback para localStorage
+          savedConfig = loadTemplateConfig(medicoId)
+          savedLogo = loadDoctorLogo(medicoId)
+        }
+        
+        if (savedConfig) {
+          setConfig(savedConfig)
+        }
         if (savedLogo) {
           setLogoPreview(savedLogo.data)
         }
@@ -83,6 +99,86 @@ export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
       current[keys[keys.length - 1]] = value
       return newConfig
     })
+  }
+
+  // Thumbnail visual por tipo de template
+  const TemplateThumbnail = ({ template }) => {
+    const type = template.type || TEMPLATE_TYPES.CLASSIC
+    const accent = template?.branding?.primaryColor || template?.content?.colors?.accent || '#3b82f6'
+    const headerBg = template?.header?.backgroundColor || '#ffffff'
+    const showLogo = template?.header?.showLogo !== false
+    const border = template?.header?.borderBottom !== false
+
+    if (template?.preview) {
+      return (
+        <div className="aspect-[3/4] rounded-lg border overflow-hidden bg-white">
+          <img src={template.preview} alt={`Prévia ${template.name}`} className="w-full h-full object-cover"/>
+        </div>
+      )
+    }
+
+    const base = (
+      <div className="aspect-[3/4] rounded-lg border bg-white overflow-hidden">
+        {/* Header */}
+        <div className="h-10 flex items-center justify-between px-3" style={{ backgroundColor: headerBg }}>
+          <div className="flex items-center gap-2">
+            {showLogo && <div className="w-6 h-6 rounded bg-gray-300" />}
+            <div className="h-3 w-16 bg-gray-400/70 rounded" />
+          </div>
+          <div className="h-3 w-10 bg-gray-300 rounded" />
+        </div>
+        {border && <div className="h-[1px] w-full" style={{ backgroundColor: '#e5e7eb' }} />}
+
+        {/* Body */}
+        <div className="p-3 space-y-2">
+          <div className="h-3 w-28 bg-gray-300 rounded" />
+          <div className="h-2 w-40 bg-gray-200 rounded" />
+          <div className="h-2 w-36 bg-gray-200 rounded" />
+          <div className="h-2 w-44 bg-gray-200 rounded" />
+          <div className="h-2 w-24 bg-gray-200 rounded" />
+        </div>
+
+        {/* Footer */}
+        <div className="mt-auto p-3">
+          <div className="h-2 w-32 rounded" style={{ backgroundColor: accent }} />
+        </div>
+      </div>
+    )
+
+    if (type === TEMPLATE_TYPES.MODERN) {
+      return (
+        <div className="aspect-[3/4] rounded-lg border overflow-hidden">
+          <div className="h-12 flex items-center justify-center" style={{ backgroundColor: headerBg }}>
+            {showLogo && <div className="w-7 h-7 rounded-full" style={{ backgroundColor: accent }} />}
+          </div>
+          <div className="p-3 space-y-2">
+            <div className="h-3 w-28 bg-gray-300 rounded" />
+            <div className="h-2 w-40 bg-gray-200 rounded" />
+            <div className="h-2 w-36 bg-gray-200 rounded" />
+            <div className="h-2 w-44 bg-gray-200 rounded" />
+          </div>
+          <div className="mt-auto p-3">
+            <div className="h-1 w-full" style={{ backgroundColor: accent }} />
+          </div>
+        </div>
+      )
+    }
+
+    if (type === TEMPLATE_TYPES.MINIMAL) {
+      return (
+        <div className="aspect-[3/4] rounded-lg border overflow-hidden">
+          <div className="p-3 space-y-2">
+            <div className="h-3 w-24 bg-gray-300 rounded" />
+            <div className="h-2 w-40 bg-gray-200 rounded" />
+            <div className="h-2 w-36 bg-gray-200 rounded" />
+            <div className="h-2 w-44 bg-gray-200 rounded" />
+            <div className="h-2 w-28 bg-gray-200 rounded" />
+          </div>
+        </div>
+      )
+    }
+
+    return base
   }
 
   // Selecionar template pré-definido
@@ -177,21 +273,50 @@ export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
         return
       }
 
-      // Salvar logo se houver
+      // Preparar dados para salvar
+      let logoData = null
       if (logoFile) {
-        await saveDoctorLogo(medicoId, logoFile)
+        // Converter logo para base64
+        const reader = new FileReader()
+        logoData = await new Promise((resolve) => {
+          reader.onload = (e) => resolve(e.target.result)
+          reader.readAsDataURL(logoFile)
+        })
         updateConfig('header.showLogo', true)
+      } else if (logoPreview) {
+        logoData = logoPreview
       }
 
-      // Salvar configuração
-      const success = saveTemplateConfig(medicoId, config)
+      // Salvar no backend usando medicoService (resolve o médico internamente)
+      const success = await medicoService.salvarTemplateConfig(config, logoData)
+      
       if (success) {
+        // Também salvar localmente como fallback
+        saveTemplateConfig(medicoId, config)
+        if (logoData) {
+          saveDoctorLogo(medicoId, { data: logoData, type: logoFile?.type || 'image/png' })
+        }
+        
         toast({
           title: "Configuração salva",
-          description: "Suas configurações de template foram salvas com sucesso."
+          description: "Suas configurações de template foram salvas com sucesso no servidor."
         })
       } else {
-        throw new Error("Falha ao salvar configuração")
+        // Fallback para localStorage
+        const localSuccess = saveTemplateConfig(medicoId, config)
+        if (logoData) {
+          saveDoctorLogo(medicoId, { data: logoData, type: logoFile?.type || 'image/png' })
+        }
+        
+        if (localSuccess) {
+          toast({
+            title: "Configuração salva localmente",
+            description: "Suas configurações foram salvas localmente (servidor indisponível).",
+            variant: "default"
+          })
+        } else {
+          throw new Error("Falha ao salvar configuração")
+        }
       }
     } catch (error) {
       console.error('Erro ao salvar:', error)
@@ -288,8 +413,8 @@ export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
                     onClick={() => selectPredefinedTemplate(key)}
                   >
                     <CardContent className="p-4">
-                      <div className="aspect-[3/4] bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
-                        <FileText className="h-8 w-8 text-gray-400" />
+                      <div className="mb-3">
+                        <TemplateThumbnail template={template} />
                       </div>
                       <h3 className="font-semibold">{template.name}</h3>
                       <p className="text-sm text-muted-foreground">{template.description}</p>
@@ -481,6 +606,55 @@ export default function PdfTemplateConfig({ medicoId, medicoInfo = {} }) {
                         onChange={(e) => updateConfig('layout.margins.right', parseInt(e.target.value) || 0)}
                       />
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tipografia */}
+              <Separator />
+              <div className="space-y-4">
+                <h3 className="font-semibold">Tipografia</h3>
+                <p className="text-sm text-muted-foreground">Ajuste o tamanho das letras usadas em títulos, subtítulos e textos.</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label>Título</Label>
+                    <Input
+                      type="number"
+                      min={10}
+                      max={32}
+                      value={config.content.fontSize.title}
+                      onChange={(e) => updateConfig('content.fontSize.title', parseInt(e.target.value) || 10)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subtítulo</Label>
+                    <Input
+                      type="number"
+                      min={9}
+                      max={28}
+                      value={config.content.fontSize.subtitle}
+                      onChange={(e) => updateConfig('content.fontSize.subtitle', parseInt(e.target.value) || 9)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Corpo</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={24}
+                      value={config.content.fontSize.body}
+                      onChange={(e) => updateConfig('content.fontSize.body', parseInt(e.target.value) || 8)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pequeno</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={20}
+                      value={config.content.fontSize.small}
+                      onChange={(e) => updateConfig('content.fontSize.small', parseInt(e.target.value) || 8)}
+                    />
                   </div>
                 </div>
               </div>

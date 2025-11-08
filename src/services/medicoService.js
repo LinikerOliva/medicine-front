@@ -459,12 +459,48 @@ export const medicoService = {
     if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
     if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
 
-    // Resolve automaticamente o ID do médico quando ausente
+    // Resolve automaticamente o ID do médico quando ausente e enriquece com dados completos
     try {
       const midResolved = normalized.medico_id || normalized.medico || await this._resolveMedicoId().catch(() => null)
       if (midResolved) {
         if (!normalized.medico_id) normalized.medico_id = midResolved
         if (!normalized.medico) normalized.medico = midResolved
+        
+        // Buscar dados completos do médico para incluir na receita
+        try {
+          const perfilMedico = await this.getPerfil()
+          if (perfilMedico) {
+            // Informações do médico emissor/assinante/criador
+            normalized.medico_emissor = midResolved
+            normalized.medico_assinante = midResolved
+            normalized.medico_criador = midResolved
+            
+            // Dados completos do médico
+            normalized.medico_nome = perfilMedico.nome || perfilMedico.first_name
+            normalized.medico_crm = perfilMedico.crm
+            normalized.medico_especialidade = perfilMedico.especialidade
+            normalized.medico_telefone = perfilMedico.telefone
+            normalized.medico_email = perfilMedico.email
+            normalized.medico_endereco = perfilMedico.endereco
+            
+            // Configuração de template personalizado do médico
+            try {
+              const templateConfig = localStorage.getItem(`template_config_${midResolved}`)
+              if (templateConfig) {
+                normalized.template_config = JSON.parse(templateConfig)
+              }
+              
+              const doctorLogo = localStorage.getItem(`doctor_logo_${midResolved}`)
+              if (doctorLogo) {
+                normalized.doctor_logo = doctorLogo
+              }
+            } catch (e) {
+              if (VERBOSE) { try { console.warn("[medicoService.criarReceita] erro ao carregar template personalizado:", e) } catch {} }
+            }
+          }
+        } catch (e) {
+          if (VERBOSE) { try { console.warn("[medicoService.criarReceita] erro ao buscar dados do médico:", e) } catch {} }
+        }
       }
     } catch {}
 
@@ -618,6 +654,25 @@ export const medicoService = {
     const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
     const envItems = (import.meta.env.VITE_RECEITA_ITENS_ENDPOINT || "").trim()
 
+    // Buscar dados do médico para incluir nos itens
+    let medicoData = {}
+    try {
+      const midResolved = await this._resolveMedicoId().catch(() => null)
+      if (midResolved) {
+        const perfilMedico = await this.getPerfil()
+        if (perfilMedico) {
+          medicoData = {
+            medico_id: midResolved,
+            medico_nome: perfilMedico.nome || perfilMedico.first_name,
+            medico_crm: perfilMedico.crm,
+            medico_especialidade: perfilMedico.especialidade,
+          }
+        }
+      }
+    } catch (e) {
+      if (VERBOSE) { try { console.warn("[salvarItensReceita] erro ao buscar dados do médico:", e) } catch {} }
+    }
+
     // Normaliza itens
     const normalizedItems = itens.map((item) => {
       const mId = item.medicamento_id || item.medicamento?.id || item.medicamento
@@ -636,6 +691,8 @@ export const medicoService = {
         frequencia: item.frequencia || item.freq || item.intervalo,
         duracao: item.duracao || item.dias || item.periodo,
         observacoes: item.observacoes || item.obs || item.nota,
+        // Incluir dados do médico nos itens
+        ...medicoData,
       }
       return obj
     })
@@ -2411,5 +2468,63 @@ export const medicoService = {
     })
 
     return { receitaId, filename: signedName, blob: signedBlob }
+  },
+
+  // NOVO: salvar configuração de template personalizado no backend
+  async salvarTemplateConfig(templateConfig, doctorLogo = null) {
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+    
+    try {
+      const midResolved = await this._resolveMedicoId().catch(() => null)
+      if (!midResolved) {
+        throw new Error("Não foi possível resolver o ID do médico")
+      }
+
+      const payload = {
+        medico_id: midResolved,
+        template_config: templateConfig,
+        doctor_logo: doctorLogo,
+      }
+
+      // Candidatos de endpoint para salvar template
+      const candidates = [
+        "/api/medicos/template/",
+        "/medicos/template/",
+        "/api/template-config/",
+        "/template-config/",
+        `/api/medicos/${midResolved}/template/`,
+        `/medicos/${midResolved}/template/`,
+      ]
+
+      let lastErr = null
+      for (const url of candidates) {
+        try {
+          if (VERBOSE) { try { console.debug("[salvarTemplateConfig] tentando:", url) } catch {} }
+          const { data } = await api.post(url, payload)
+          if (VERBOSE) { try { console.debug("[salvarTemplateConfig] sucesso:", url, data) } catch {} }
+          return data
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401) throw e
+          if (VERBOSE) { try { console.warn("[salvarTemplateConfig] falhou:", url, st) } catch {} }
+          lastErr = e
+          continue
+        }
+      }
+
+      // Se falhou em todos os endpoints, ainda salvar no localStorage como fallback
+      if (templateConfig) {
+        localStorage.setItem(`template_config_${midResolved}`, JSON.stringify(templateConfig))
+      }
+      if (doctorLogo) {
+        localStorage.setItem(`doctor_logo_${midResolved}`, doctorLogo)
+      }
+
+      if (VERBOSE) { try { console.warn("[salvarTemplateConfig] salvou apenas no localStorage como fallback") } catch {} }
+      return { saved_locally: true, medico_id: midResolved }
+    } catch (e) {
+      if (VERBOSE) { try { console.error("[salvarTemplateConfig] erro:", e) } catch {} }
+      throw e
+    }
   },
 };

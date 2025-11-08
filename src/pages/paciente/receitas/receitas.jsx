@@ -448,13 +448,13 @@ export default function ReceitasPaciente() {
     return receitaDate >= thirtyDaysAgo
   }).length
 
-  // Fallback: gerar um PDF simples no cliente quando não houver arquivo assinado
+  // Gerar PDF usando template personalizado (consistente com preview)
   async function handleDownloadGerado(r) {
     try {
       // Importar o serviço de templates PDF
       const { pdfTemplateService } = await import('@/services/pdfTemplateService');
       
-      // Preparar dados da receita
+      // Preparar dados da receita com estrutura completa
       const receitaData = {
         medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
         medicamentos: r?.medicamentos || r?.itens || r?.descricao || '',
@@ -462,6 +462,7 @@ export default function ReceitasPaciente() {
         observacoes: r?.observacoes || '',
         validade_receita: r?.validade_receita || '',
         data_prescricao: r?.created_at || r?.data_emissao || new Date().toISOString(),
+        data_emissao: r?.created_at || r?.data_emissao || new Date().toISOString(),
         itens: Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length ? 
           r.itens_estruturados : [{
             medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
@@ -470,17 +471,22 @@ export default function ReceitasPaciente() {
           }]
       };
       
-      // Preparar dados do médico
+      // Preparar dados completos do médico
       const medicoData = {
         nome: r?.medico_nome || r?.medico || 'Médico',
-        crm: r?.medico_crm || '',
-        especialidade: r?.especialidade || '',
-        endereco_consultorio: r?.endereco_consultorio || '',
-        telefone_consultorio: r?.telefone_consultorio || '',
-        email: r?.email_medico || ''
+        crm: r?.medico_crm || r?.crm || '',
+        especialidade: r?.especialidade || r?.medico_especialidade || '',
+        endereco_consultorio: r?.endereco_consultorio || r?.medico_endereco || '',
+        telefone_consultorio: r?.telefone_consultorio || r?.medico_telefone || '',
+        email: r?.email_medico || r?.medico_email || '',
+        // Informações adicionais para identificação completa
+        medico_id: r?.medico_id || '',
+        emissor: r?.medico_nome || r?.medico || 'Médico',
+        assinante: r?.medico_nome || r?.medico || 'Médico',
+        criador: r?.medico_nome || r?.medico || 'Médico'
       };
       
-      // Preparar dados do paciente
+      // Preparar dados completos do paciente
       const pacienteData = {
         nome: r?.paciente_nome || r?.paciente || 'Paciente',
         idade: r?.idade || '',
@@ -488,13 +494,15 @@ export default function ReceitasPaciente() {
         cpf: r?.cpf || r?.rg || '',
         data_nascimento: r?.data_nascimento || '',
         endereco: r?.endereco_paciente || '',
-        telefone: r?.telefone_paciente || ''
+        telefone: r?.telefone_paciente || '',
+        // Informações adicionais
+        paciente_id: r?.paciente_id || ''
       };
       
       // Usar ID do médico da receita ou fallback
       const medicoId = r?.medico_id || 'default';
       
-      // Gerar PDF usando template personalizado
+      // Gerar PDF usando template personalizado (mesmo método do preview)
       const pdfBlob = await pdfTemplateService.generatePDF(
         receitaData,
         medicoData,
@@ -502,14 +510,14 @@ export default function ReceitasPaciente() {
         medicoId
       );
       
-      // Fazer download do PDF
+      // Fazer download do PDF com nome padronizado
       const filename = `Receita_${pacienteData.nome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdfTemplateService.savePDF(pdfBlob, filename);
       
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
+      console.error('Erro ao gerar PDF com template personalizado:', error);
       
-      // Fallback para o método original em caso de erro
+      // Fallback para o método original apenas em caso de erro crítico
       try {
         const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib")
 

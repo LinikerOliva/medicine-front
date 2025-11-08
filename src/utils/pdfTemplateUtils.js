@@ -78,7 +78,7 @@ export const PREDEFINED_TEMPLATES = {
     ...DEFAULT_TEMPLATE_CONFIG,
     name: 'Clássico',
     description: 'Layout tradicional com cabeçalho formal',
-    preview: '/templates/classic-preview.png'
+    preview: '/templates/classic-preview.svg'
   },
   [TEMPLATE_TYPES.MODERN]: {
     ...DEFAULT_TEMPLATE_CONFIG,
@@ -102,7 +102,7 @@ export const PREDEFINED_TEMPLATES = {
       ...DEFAULT_TEMPLATE_CONFIG.branding,
       primaryColor: '#0ea5e9'
     },
-    preview: '/templates/modern-preview.png'
+    preview: '/templates/modern-preview.svg'
   },
   [TEMPLATE_TYPES.MINIMAL]: {
     ...DEFAULT_TEMPLATE_CONFIG,
@@ -127,7 +127,7 @@ export const PREDEFINED_TEMPLATES = {
       ...DEFAULT_TEMPLATE_CONFIG.footer,
       borderTop: false
     },
-    preview: '/templates/minimal-preview.png'
+    preview: '/templates/minimal-preview.svg'
   }
 }
 
@@ -136,8 +136,11 @@ export const PREDEFINED_TEMPLATES = {
  */
 export const saveTemplateConfig = (medicoId, config) => {
   try {
-    const key = `pdf_template_config_${medicoId}`
-    localStorage.setItem(key, JSON.stringify(config))
+    const keyA = `pdf_template_config_${medicoId}`
+    const keyB = `template_config_${medicoId}` // compatibilidade com versões anteriores/serviço do médico
+    const json = JSON.stringify(config)
+    localStorage.setItem(keyA, json)
+    localStorage.setItem(keyB, json)
     return true
   } catch (error) {
     console.error('Erro ao salvar configuração de template:', error)
@@ -150,10 +153,16 @@ export const saveTemplateConfig = (medicoId, config) => {
  */
 export const loadTemplateConfig = (medicoId) => {
   try {
-    const key = `pdf_template_config_${medicoId}`
-    const saved = localStorage.getItem(key)
-    if (saved) {
-      return { ...DEFAULT_TEMPLATE_CONFIG, ...JSON.parse(saved) }
+    const keyA = `pdf_template_config_${medicoId}`
+    const keyB = `template_config_${medicoId}`
+    const savedA = localStorage.getItem(keyA)
+    const savedB = localStorage.getItem(keyB)
+    const base = DEFAULT_TEMPLATE_CONFIG
+    if (savedA) {
+      try { return { ...base, ...JSON.parse(savedA) } } catch {}
+    }
+    if (savedB) {
+      try { return { ...base, ...JSON.parse(savedB) } } catch {}
     }
     return DEFAULT_TEMPLATE_CONFIG
   } catch (error) {
@@ -167,30 +176,71 @@ export const loadTemplateConfig = (medicoId) => {
  */
 export const saveDoctorLogo = (medicoId, logoFile) => {
   return new Promise((resolve, reject) => {
-    if (!logoFile) {
-      resolve(null)
-      return
-    }
+    try {
+      if (!logoFile) {
+        resolve(null)
+        return
+      }
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const key = `doctor_logo_${medicoId}`
+      const key = `doctor_logo_${medicoId}`
+
+      // Caso 1: já recebemos um objeto com base64 em logoFile.data
+      if (typeof logoFile === 'object' && logoFile?.data && typeof logoFile.data === 'string') {
         const logoData = {
-          data: e.target.result,
-          name: logoFile.name,
-          type: logoFile.type,
-          size: logoFile.size,
-          lastModified: logoFile.lastModified
+          data: logoFile.data,
+          name: logoFile.name || 'logo.png',
+          type: logoFile.type || 'image/png',
+          size: logoFile.size || undefined,
+          lastModified: logoFile.lastModified || Date.now()
         }
         localStorage.setItem(key, JSON.stringify(logoData))
         resolve(logoData)
-      } catch (error) {
-        reject(error)
+        return
       }
+
+      // Caso 2: recebemos diretamente uma string base64 (data URL)
+      if (typeof logoFile === 'string' && logoFile.startsWith('data:')) {
+        const mime = logoFile.slice(5, logoFile.indexOf(';')) || 'image/png'
+        const logoData = {
+          data: logoFile,
+          name: 'logo.png',
+          type: mime,
+          size: undefined,
+          lastModified: Date.now()
+        }
+        localStorage.setItem(key, JSON.stringify(logoData))
+        resolve(logoData)
+        return
+      }
+
+      // Caso 3: File/Blob padrão
+      if (logoFile instanceof File || logoFile instanceof Blob) {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          try {
+            const logoData = {
+              data: e.target.result,
+              name: logoFile.name || 'logo.png',
+              type: logoFile.type || 'image/png',
+              size: logoFile.size,
+              lastModified: logoFile.lastModified || Date.now()
+            }
+            localStorage.setItem(key, JSON.stringify(logoData))
+            resolve(logoData)
+          } catch (error) {
+            reject(error)
+          }
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(logoFile)
+        return
+      }
+
+      // Tipo não suportado
+      reject(new Error('Formato de logo inválido'))
+    } catch (err) {
+      reject(err)
     }
-    reader.onerror = reject
-    reader.readAsDataURL(logoFile)
   })
 }
 
@@ -202,7 +252,19 @@ export const loadDoctorLogo = (medicoId) => {
     const key = `doctor_logo_${medicoId}`
     const saved = localStorage.getItem(key)
     if (saved) {
-      return JSON.parse(saved)
+      // Pode ser um objeto JSON ou uma string base64 simples (fallback de medicoService)
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === 'object' && typeof parsed.data === 'string') {
+          return parsed
+        }
+      } catch {
+        // Se não for JSON, verificar se é um data URL
+        if (typeof saved === 'string' && saved.startsWith('data:')) {
+          const mime = saved.slice(5, saved.indexOf(';')) || 'image/png'
+          return { data: saved, type: mime, name: 'logo.png' }
+        }
+      }
     }
     return null
   } catch (error) {

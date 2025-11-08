@@ -21,15 +21,23 @@ export class PdfTemplateService {
    * @returns {Object} Configuração do template
    */
   loadMedicoTemplate(medicoId) {
-    if (!medicoId) return this.defaultConfig
-    
-    try {
-      const savedConfig = loadTemplateConfig(medicoId)
-      return savedConfig || this.defaultConfig
-    } catch (error) {
-      console.warn('Erro ao carregar template do médico:', error)
-      return this.defaultConfig
+    // Tenta múltiplos candidatos de ID para evitar desencontro entre usuário e médico
+    const idCandidates = [
+      medicoId,
+      typeof window !== 'undefined' ? localStorage.getItem('medico_id') : null,
+      'default'
+    ].filter(Boolean)
+
+    for (const id of idCandidates) {
+      try {
+        const savedConfig = loadTemplateConfig(id)
+        if (savedConfig) return savedConfig
+      } catch (error) {
+        console.warn('Erro ao carregar template do médico:', error)
+        // Continua tentando próximos candidatos
+      }
     }
+    return this.defaultConfig
   }
 
   /**
@@ -38,14 +46,20 @@ export class PdfTemplateService {
    * @returns {Object|null} Dados do logo
    */
   loadMedicoLogo(medicoId) {
-    if (!medicoId) return null
-    
-    try {
-      return loadDoctorLogo(medicoId)
-    } catch (error) {
-      console.warn('Erro ao carregar logo do médico:', error)
-      return null
+    const idCandidates = [
+      medicoId,
+      typeof window !== 'undefined' ? localStorage.getItem('medico_id') : null,
+    ].filter(Boolean)
+
+    for (const id of idCandidates) {
+      try {
+        const logo = loadDoctorLogo(id)
+        if (logo) return logo
+      } catch (error) {
+        console.warn('Erro ao carregar logo do médico:', error)
+      }
     }
+    return null
   }
 
   /**

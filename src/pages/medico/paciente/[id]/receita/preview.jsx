@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DatePicker } from "@/components/ui/date-picker"
+import { loadTemplateConfig, loadDoctorLogo, DEFAULT_TEMPLATE_CONFIG } from "@/utils/pdfTemplateUtils"
 
 export default function PreviewReceitaMedico() {
   // Estado para controlar assinatura obrigatória e blobs
@@ -126,6 +127,69 @@ export default function PreviewReceitaMedico() {
   const [signDialogOpen, setSignDialogOpen] = useState(false)
   const [signMethod, setSignMethod] = useState("token") // "pfx" ou "token"
   const [tokenPin, setTokenPin] = useState("")
+
+  // Configuração de template e logo (sincronização com Configurações)
+  const [templateConfig, setTemplateConfig] = useState(DEFAULT_TEMPLATE_CONFIG)
+  const [doctorLogo, setDoctorLogo] = useState(null)
+
+  // Carrega config e logo do médico e escuta alterações no localStorage
+  useEffect(() => {
+    let mounted = true
+    const loadCfg = async () => {
+      let mid = form.medico_id || null
+      try {
+        if (!mid) mid = await medicoService._resolveMedicoId().catch(() => null)
+      } catch {}
+      mid = mid || (typeof window !== 'undefined' ? localStorage.getItem('medico_id') : null) || 'default'
+      const cfg = loadTemplateConfig(mid)
+      const logo = loadDoctorLogo(mid)
+      if (mounted) {
+        setTemplateConfig(cfg || DEFAULT_TEMPLATE_CONFIG)
+        setDoctorLogo(logo || null)
+      }
+    }
+    loadCfg()
+
+    const onStorage = (e) => {
+      const k = e?.key || ''
+      if (k.startsWith('pdf_template_config_') || k.startsWith('template_config_') || k.startsWith('doctor_logo_')) {
+        loadCfg()
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadCfg()
+      }
+    }
+    window.addEventListener('focus', loadCfg)
+    window.addEventListener('storage', onStorage)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { 
+      mounted = false
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', loadCfg)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.medico_id])
+
+  const templateStyles = useMemo(() => {
+    const c = templateConfig?.content || {}
+    const h = templateConfig?.header || {}
+    return {
+      accentBorderColor: c?.colors?.accent || templateConfig?.branding?.primaryColor || '#3b82f6',
+      titleSize: `${c?.fontSize?.title ?? 16}pt`,
+      smallSize: `${c?.fontSize?.small ?? 10}pt`,
+      primaryColor: c?.colors?.primary || '#1f2937',
+      secondaryColor: c?.colors?.secondary || '#6b7280',
+      showLogo: h?.showLogo !== false,
+      headerBgColor: h?.backgroundColor || '#ffffff',
+      headerBorderBottom: h?.borderBottom !== false,
+      headerBorderColor: h?.borderColor || '#e5e7eb',
+      logoPosition: h?.logoPosition || 'left',
+      doctorInfoPosition: h?.doctorInfoPosition || 'right',
+    }
+  }, [templateConfig])
   
   // NOVO: certificado efêmero para assinatura (usando contexto)
   const { user, ephemeralCertFile, setEphemeralCertFile, ephemeralCertPassword, setEphemeralCertPassword, clearEphemeralCert } = useUser()
@@ -559,8 +623,16 @@ export default function PreviewReceitaMedico() {
         telefone: form.telefone_paciente || ''
       };
       
-      // Obter ID do médico (pode vir de diferentes fontes)
-      const medicoId = form.medico_id || user?.id || localStorage.getItem('medico_id') || 'default';
+      // Obter ID do médico com resolução robusta (evita usar user.id por engano)
+      let medicoId = form.medico_id || null
+      try {
+        if (!medicoId) {
+          const resolved = await medicoService._resolveMedicoId().catch(() => null)
+          medicoId = resolved || localStorage.getItem('medico_id') || 'default'
+        }
+      } catch {
+        medicoId = medicoId || localStorage.getItem('medico_id') || 'default'
+      }
       
       // Gerar PDF usando template personalizado
       const pdfBlob = await pdfTemplateService.generatePDF(
@@ -1618,16 +1690,77 @@ ${form.telefone_consultorio || ''}`
           <CardContent>
             <div id="receita-preview" className="mx-auto bg-white shadow-md border rounded-md p-6 max-w-[800px] aspect-[1/1.414] overflow-auto">
               {/* Cabeçalho */}
-              <div className="text-center border-b pb-3">
-                <div className="font-bold text-lg">Consultório Médico</div>
-                <div className="font-semibold">{form.medico}</div>
-                {form.crm && <div>CRM: {form.crm}</div>}
-                <div className="text-sm text-muted-foreground">{form.endereco_consultorio}</div>
-                <div className="text-sm text-muted-foreground">Telefone: {form.telefone_consultorio}</div>
-                {form.email_medico ? (
-                  <div className="text-sm text-muted-foreground">E-mail: {form.email_medico}</div>
-                ) : null}
-              </div>
+              {templateStyles.logoPosition === 'center' ? (
+                <div 
+                  className={`${templateStyles.headerBorderBottom ? 'border-b' : ''} pb-3 flex flex-col items-center`}
+                  style={{ backgroundColor: templateStyles.headerBgColor, borderBottomColor: templateStyles.headerBorderColor }}
+                >
+                  {templateStyles.showLogo && doctorLogo?.data ? (
+                    <img src={doctorLogo.data} alt="Logo" className="max-h-20 max-w-[150px] object-contain" />
+                  ) : null}
+                  <div className="mt-2 text-center w-full">
+                    <div className="font-bold" style={{ fontSize: templateStyles.titleSize, color: templateStyles.primaryColor }}>
+                      {templateConfig?.branding?.clinicName || form.medico || 'Consultório Médico'}
+                    </div>
+                    {templateConfig?.header?.showDoctorInfo && (
+                      <>
+                        <div className="font-semibold" style={{ color: templateStyles.primaryColor }}>{form.medico}</div>
+                        {form.crm && (
+                          <div style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>CRM: {form.crm}</div>
+                        )}
+                      </>
+                    )}
+                    <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                      {templateConfig?.branding?.clinicAddress || form.endereco_consultorio}
+                    </div>
+                    <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                      Telefone: {templateConfig?.branding?.clinicPhone || form.telefone_consultorio}
+                    </div>
+                    {(templateConfig?.branding?.clinicEmail || form.email_medico) ? (
+                      <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                        E-mail: {templateConfig?.branding?.clinicEmail || form.email_medico}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  className={`flex items-center justify-between ${templateStyles.headerBorderBottom ? 'border-b' : ''} pb-3`}
+                  style={{ backgroundColor: templateStyles.headerBgColor, borderBottomColor: templateStyles.headerBorderColor }}
+                >
+                  {/* Logo à esquerda ou direita conforme configuração */}
+                  {templateStyles.logoPosition === 'left' && templateStyles.showLogo && doctorLogo?.data ? (
+                    <img src={doctorLogo.data} alt="Logo" className="max-h-20 max-w-[150px] object-contain" />
+                  ) : null}
+                  <div className={`${templateStyles.doctorInfoPosition === 'center' ? 'text-center' : templateStyles.doctorInfoPosition === 'left' ? 'text-left' : 'text-right'} flex-1 ml-4`}>
+                    <div className="font-bold" style={{ fontSize: templateStyles.titleSize, color: templateStyles.primaryColor }}>
+                      {templateConfig?.branding?.clinicName || form.medico || 'Consultório Médico'}
+                    </div>
+                    {templateConfig?.header?.showDoctorInfo && (
+                      <>
+                        <div className="font-semibold" style={{ color: templateStyles.primaryColor }}>{form.medico}</div>
+                        {form.crm && (
+                          <div style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>CRM: {form.crm}</div>
+                        )}
+                      </>
+                    )}
+                    <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                      {templateConfig?.branding?.clinicAddress || form.endereco_consultorio}
+                    </div>
+                    <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                      Telefone: {templateConfig?.branding?.clinicPhone || form.telefone_consultorio}
+                    </div>
+                    {(templateConfig?.branding?.clinicEmail || form.email_medico) ? (
+                      <div className="text-sm" style={{ fontSize: templateStyles.smallSize, color: templateStyles.secondaryColor }}>
+                        E-mail: {templateConfig?.branding?.clinicEmail || form.email_medico}
+                      </div>
+                    ) : null}
+                  </div>
+                  {templateStyles.logoPosition === 'right' && templateStyles.showLogo && doctorLogo?.data ? (
+                    <img src={doctorLogo.data} alt="Logo" className="max-h-20 max-w-[150px] object-contain" />
+                  ) : null}
+                </div>
+              )}
 
               {/* Corpo */}
               <div className="text-center my-4">
