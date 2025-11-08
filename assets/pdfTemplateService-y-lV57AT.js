@@ -1,4 +1,4 @@
-import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{constructor(){this.defaultConfig=m}loadMedicoTemplate(t){if(!t)return this.defaultConfig;try{return u(t)||this.defaultConfig}catch(o){return console.warn("Erro ao carregar template do médico:",o),this.defaultConfig}}loadMedicoLogo(t){if(!t)return null;try{return h(t)}catch(o){return console.warn("Erro ao carregar logo do médico:",o),null}}generateReceitaHTML(t,o,e,i){const n=this.loadMedicoTemplate(i),s=this.loadMedicoLogo(i),r=this.generateStyles(n),l=this.generateHeader(n,o,s),c=this.generateContent(t,e,n),a=this.generateFooter(n,o);return`
+import{D as m,l as u,a as $,E as v,h}from"./index-BhAdXL4T.js";class b{constructor(){this.defaultConfig=m}loadMedicoTemplate(t){const i=[t,typeof window<"u"?localStorage.getItem("medico_id"):null,"default"].filter(Boolean);for(const e of i)try{const o=u(e);if(o)return o}catch(o){console.warn("Erro ao carregar template do médico:",o)}return this.defaultConfig}loadMedicoLogo(t){const i=[t,typeof window<"u"?localStorage.getItem("medico_id"):null].filter(Boolean);for(const e of i)try{const o=$(e);if(o)return o}catch(o){console.warn("Erro ao carregar logo do médico:",o)}return null}generateReceitaHTML(t,i,e,o){const n=this.loadMedicoTemplate(o),a=this.loadMedicoLogo(o),r=this.generateStyles(n),l=this.generateHeader(n,i,a),d=this.generateContent(t,e,n),s=this.generateFooter(n,i);return`
       <!DOCTYPE html>
       <html>
         <head>
@@ -9,12 +9,12 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
         <body>
           <div class="receita-container">
             ${l}
-            ${c}
-            ${a}
+            ${d}
+            ${s}
           </div>
         </body>
       </html>
-    `}generateStyles(t){const{layout:o,content:e,branding:i}=t;return`
+    `}generateStyles(t){const{layout:i,content:e,branding:o}=t;return`
       * {
         margin: 0;
         padding: 0;
@@ -31,10 +31,10 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
       
       .receita-container {
         width: 100%;
-        max-width: ${o.pageSize==="A4"?"210mm":"8.5in"};
+        max-width: ${i.pageSize==="A4"?"210mm":"8.5in"};
         margin: 0 auto;
-        padding: ${o.margins.top}px ${o.margins.right}px ${o.margins.bottom}px ${o.margins.left}px;
-        min-height: ${o.pageSize==="A4"?"297mm":"11in"};
+        padding: ${i.margins.top}px ${i.margins.right}px ${i.margins.bottom}px ${i.margins.left}px;
+        min-height: ${i.pageSize==="A4"?"297mm":"11in"};
         position: relative;
       }
       
@@ -183,9 +183,9 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
       
       .footer {
         position: absolute;
-        bottom: ${o.margins.bottom}px;
-        left: ${o.margins.left}px;
-        right: ${o.margins.right}px;
+        bottom: ${i.margins.bottom}px;
+        left: ${i.margins.left}px;
+        right: ${i.margins.right}px;
         text-align: center;
         padding-top: 20px;
         border-top: 1px solid #e0e0e0;
@@ -225,9 +225,9 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
           print-color-adjust: exact;
         }
       }
-    `}generateHeader(t,o,e){const{header:i,branding:n}=t;if(!i.showLogo&&!i.showDoctorInfo)return"";let s="";i.showLogo&&(e!=null&&e.data)&&(s=`<img src="${e.data}" alt="Logo" class="header-logo" />`);let r="";return i.showDoctorInfo&&(r=`
+    `}generateHeader(t,i,e){const{header:o,branding:n}=t;if(!o.showLogo&&!o.showDoctorInfo)return"";let a="";o.showLogo&&(e!=null&&e.data)&&(a=`<img src="${e.data}" alt="Logo" class="header-logo" />`);let r="";return o.showDoctorInfo&&(r=`
         <div class="header-info">
-          <div class="clinic-name">${n.clinicName||(o==null?void 0:o.nome)||"Clínica Médica"}</div>
+          <div class="clinic-name">${n.clinicName||(i==null?void 0:i.nome)||"Clínica Médica"}</div>
           <div class="clinic-details">
             ${n.clinicAddress?`<div>${n.clinicAddress}</div>`:""}
             ${n.clinicPhone?`<div>Tel: ${n.clinicPhone}</div>`:""}
@@ -236,26 +236,26 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
         </div>
       `),`
       <div class="header">
-        ${s}
+        ${a}
         ${r}
       </div>
-    `}generateContent(t,o,e){const i=this.generateDoctorInfo(t.medico,e),n=this.generatePatientInfo(o,e),s=this.generateMedications(t.itens||[],e),r=this.generateObservations(t.observacoes,e);return`
-      ${i}
+    `}generateContent(t,i,e){const o=this.generateDoctorInfo(t.medico,e),n=this.generatePatientInfo(i,e),a=this.generateMedications(t.itens||[],e),r=this.generateObservations(t.observacoes,e);return`
+      ${o}
       ${n}
       <div class="prescription-title">Receita Médica</div>
-      ${s}
+      ${a}
       ${r}
-    `}generateDoctorInfo(t,o){var e,i;return t?`
+    `}generateDoctorInfo(t,i){var e,o;return t?`
       <div class="doctor-info">
-        <div class="doctor-name">Dr(a). ${t.nome||((e=t.user)==null?void 0:e.first_name)+" "+((i=t.user)==null?void 0:i.last_name)}</div>
+        <div class="doctor-name">Dr(a). ${t.nome||((e=t.user)==null?void 0:e.first_name)+" "+((o=t.user)==null?void 0:o.last_name)}</div>
         <div class="doctor-details">
           ${t.crm?`CRM: ${t.crm}`:""}
           ${t.especialidade?` | ${t.especialidade}`:""}
         </div>
       </div>
-    `:""}generatePatientInfo(t,o){var i,n;if(!t)return"";const e=this.calculateAge(t.data_nascimento);return`
+    `:""}generatePatientInfo(t,i){var o,n;if(!t)return"";const e=this.calculateAge(t.data_nascimento);return`
       <div class="patient-info">
-        <div class="patient-name">Paciente: ${t.nome||((i=t.user)==null?void 0:i.first_name)+" "+((n=t.user)==null?void 0:n.last_name)}</div>
+        <div class="patient-name">Paciente: ${t.nome||((o=t.user)==null?void 0:o.first_name)+" "+((n=t.user)==null?void 0:n.last_name)}</div>
         <div class="patient-details">
           ${e?`<div>Idade: ${e} anos</div>`:""}
           ${t.cpf?`<div>CPF: ${t.cpf}</div>`:""}
@@ -263,30 +263,30 @@ import{D as m,l as u,a as h,E as v,h as $}from"./index-BKG-q-SI.js";class b{cons
           ${t.endereco?`<div>Endereço: ${t.endereco}</div>`:""}
         </div>
       </div>
-    `}generateMedications(t,o){return!t||t.length===0?'<div class="medications"><p>Nenhum medicamento prescrito.</p></div>':`<div class="medications">${t.map((i,n)=>`
+    `}generateMedications(t,i){return!t||t.length===0?'<div class="medications"><p>Nenhum medicamento prescrito.</p></div>':`<div class="medications">${t.map((o,n)=>`
       <div class="medication-item">
-        <div class="medication-name">${n+1}. ${i.medicamento||i.nome}</div>
-        ${i.dosagem?`<div class="medication-details">Dosagem: ${i.dosagem}</div>`:""}
-        ${i.frequencia?`<div class="medication-details">Frequência: ${i.frequencia}</div>`:""}
-        ${i.duracao?`<div class="medication-details">Duração: ${i.duracao}</div>`:""}
-        ${i.instrucoes?`<div class="medication-instructions">${i.instrucoes}</div>`:""}
+        <div class="medication-name">${n+1}. ${o.medicamento||o.nome}</div>
+        ${o.dosagem?`<div class="medication-details">Dosagem: ${o.dosagem}</div>`:""}
+        ${o.frequencia?`<div class="medication-details">Frequência: ${o.frequencia}</div>`:""}
+        ${o.duracao?`<div class="medication-details">Duração: ${o.duracao}</div>`:""}
+        ${o.instrucoes?`<div class="medication-instructions">${o.instrucoes}</div>`:""}
       </div>
-    `).join("")}</div>`}generateObservations(t,o){return t?`
+    `).join("")}</div>`}generateObservations(t,i){return t?`
       <div class="observations">
         <div class="observations-title">Observações:</div>
         <div class="observations-text">${t}</div>
       </div>
-    `:""}generateFooter(t,o){var s,r;const{footer:e}=t;if(!e.showSignature&&!e.showDate)return"";let i="";e.showSignature&&(i=`
+    `:""}generateFooter(t,i){var a,r;const{footer:e}=t;if(!e.showSignature&&!e.showDate)return"";let o="";e.showSignature&&(o=`
         <div class="signature-area">
           <div class="signature-line"></div>
           <div class="signature-text">
-            Dr(a). ${(o==null?void 0:o.nome)||((s=o==null?void 0:o.user)==null?void 0:s.first_name)+" "+((r=o==null?void 0:o.user)==null?void 0:r.last_name)}
-            ${o!=null&&o.crm?`<br>CRM: ${o.crm}`:""}
+            Dr(a). ${(i==null?void 0:i.nome)||((a=i==null?void 0:i.user)==null?void 0:a.first_name)+" "+((r=i==null?void 0:i.user)==null?void 0:r.last_name)}
+            ${i!=null&&i.crm?`<br>CRM: ${i.crm}`:""}
           </div>
         </div>
       `);let n="";return e.showDate&&(n=`<div class="date-location">Data: ${new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"})}</div>`),`
       <div class="footer">
-        ${i}
+        ${o}
         ${n}
       </div>
-    `}calculateAge(t){if(!t)return null;const o=new Date(t),e=new Date;let i=e.getFullYear()-o.getFullYear();const n=e.getMonth()-o.getMonth();return(n<0||n===0&&e.getDate()<o.getDate())&&i--,i}async generatePDF(t,o,e,i){try{const n=this.loadMedicoTemplate(i),s=this.generateReceitaHTML(t,o,e,i),r=document.createElement("div");r.innerHTML=s,r.style.position="absolute",r.style.left="-9999px",r.style.top="-9999px",document.body.appendChild(r);const l=n.layout.orientation==="landscape"?"l":"p",c=n.layout.pageSize.toLowerCase(),a=new v({orientation:l,unit:"mm",format:c}),d=await $(r.querySelector(".receita-container"),{scale:2,useCORS:!0,allowTaint:!0,backgroundColor:"#ffffff"}),p=d.toDataURL("image/png"),g=a.internal.pageSize.getWidth(),f=d.height*g/d.width;return a.addImage(p,"PNG",0,0,g,f),document.body.removeChild(r),a.output("blob")}catch(n){throw console.error("Erro ao gerar PDF:",n),new Error("Falha na geração do PDF: "+n.message)}}savePDF(t,o="receita-medica.pdf"){const e=URL.createObjectURL(t),i=document.createElement("a");i.href=e,i.download=o,document.body.appendChild(i),i.click(),document.body.removeChild(i),URL.revokeObjectURL(e)}previewPDF(t){const o=URL.createObjectURL(t);window.open(o,"_blank")}}const w=new b;export{b as PdfTemplateService,w as default,w as pdfTemplateService};
+    `}calculateAge(t){if(!t)return null;const i=new Date(t),e=new Date;let o=e.getFullYear()-i.getFullYear();const n=e.getMonth()-i.getMonth();return(n<0||n===0&&e.getDate()<i.getDate())&&o--,o}async generatePDF(t,i,e,o){try{const n=this.loadMedicoTemplate(o),a=this.generateReceitaHTML(t,i,e,o),r=document.createElement("div");r.innerHTML=a,r.style.position="absolute",r.style.left="-9999px",r.style.top="-9999px",document.body.appendChild(r);const l=n.layout.orientation==="landscape"?"l":"p",d=n.layout.pageSize.toLowerCase(),s=new v({orientation:l,unit:"mm",format:d}),c=await h(r.querySelector(".receita-container"),{scale:2,useCORS:!0,allowTaint:!0,backgroundColor:"#ffffff"}),f=c.toDataURL("image/png"),g=s.internal.pageSize.getWidth(),p=c.height*g/c.width;return s.addImage(f,"PNG",0,0,g,p),document.body.removeChild(r),s.output("blob")}catch(n){throw console.error("Erro ao gerar PDF:",n),new Error("Falha na geração do PDF: "+n.message)}}savePDF(t,i="receita-medica.pdf"){const e=URL.createObjectURL(t),o=document.createElement("a");o.href=e,o.download=i,document.body.appendChild(o),o.click(),document.body.removeChild(o),URL.revokeObjectURL(e)}previewPDF(t){const i=URL.createObjectURL(t);window.open(i,"_blank")}}const w=new b;export{b as PdfTemplateService,w as default,w as pdfTemplateService};
