@@ -575,6 +575,24 @@ export default function PreviewReceitaMedico() {
     try {
       // Importar o serviço de templates PDF
       const { pdfTemplateService } = await import('@/services/pdfTemplateService');
+      // Garantir preenchimento de dados do médico/paciente antes da captura
+      try {
+        const perfil = await medicoService.getPerfil().catch(() => null)
+        const userMed = perfil?.user || {}
+        const medicoNome = (form.medico || `${userMed.first_name || ''} ${userMed.last_name || ''}`.trim()).trim()
+        const crmVal = form.crm || perfil?.crm || perfil?.medico?.crm || ''
+        const enderecoVal = form.endereco_consultorio || perfil?.endereco_consultorio || perfil?.endereco || ''
+        const telefoneVal = form.telefone_consultorio || perfil?.telefone_consultorio || perfil?.telefone || ''
+        setForm((f) => ({
+          ...f,
+          medico: medicoNome || f.medico,
+          crm: crmVal || f.crm,
+          endereco_consultorio: enderecoVal || f.endereco_consultorio,
+          telefone_consultorio: telefoneVal || f.telefone_consultorio,
+          nome_paciente: f.nome_paciente || fromConsulta?.paciente?.nome || f.nome_paciente,
+        }))
+        await new Promise((res) => requestAnimationFrame(() => res()))
+      } catch {}
       
       // Preparar dados da receita
       const receitaData = {
@@ -634,13 +652,12 @@ export default function PreviewReceitaMedico() {
         medicoId = medicoId || localStorage.getItem('medico_id') || 'default'
       }
       
-      // Gerar PDF usando template personalizado
-      const pdfBlob = await pdfTemplateService.generatePDF(
-        receitaData,
-        medicoData,
-        pacienteData,
-        medicoId
-      );
+      // Gerar PDF diretamente do elemento de preview para garantir layout idêntico
+      const pdfBlob = await pdfTemplateService.generatePDFFromElement('#receita-preview', {
+        pageSize: 'a4',
+        orientation: 'portrait',
+        scale: 2,
+      })
       
       // Usar o PDF gerado a partir do preview
       const generated = { 
@@ -894,132 +911,68 @@ export default function PreviewReceitaMedico() {
       
       // Fluxo de assinatura via TOKEN (agente local)
       if (signMethod === 'token') {
-      // SOLUÇÃO ALTERNATIVA: Usar mock diretamente para contornar problemas de conexão
-      const mockSignResponse = {
-        status: 'ok',
-        assinatura: 'MOCK_SIGNATURE_BASE64_' + Date.now(),
-        certificado: 'MOCK_CERTIFICATE_BASE64_' + Date.now(),
-        certDetails: {
-          subjectName: 'Dr. ' + form.medico,
-          cpf: '123.456.789-00',
-          crm: form.crm
-        }
-      };
-      
-      // Usar o mock diretamente em vez de tentar conectar ao serviço
-      const signResponse = mockSignResponse;
-
-      // Simular assinatura bem-sucedida
-      if (signResponse.status === 'ok') {
-        // Atualizar estados
-        setIsSigned(true);
-        setSignedBlob(pdfBlob);
-        setSignedFilename(`receita_assinada_${Date.now()}.pdf`);
-        setSignDate(new Date().toISOString());
-        setCertInfo({
-          subject: signResponse.certDetails.subjectName,
-          crm: signResponse.certDetails.crm,
-          algorithm: "SHA256-RSA"
-        });
-        
-        // Fechar modal
-        setSignDialogOpen(false);
-        
-        // Notificar usuário
-        toast({ 
-          title: "Assinatura concluída", 
-          description: "Receita assinada com sucesso!", 
-        });
-        
-        // Salvar no backend se necessário
-        if (lastReceitaId) {
-          try {
-            await medicoService.atualizarReceita(lastReceitaId, { 
-              assinada: true, 
-              hash_alg: "SHA-256", 
-              hash_pre: hashHex, 
-              hash_documento: hashHex 
-            });
-          } catch (error) {
-            console.error("Erro ao atualizar status da receita:", error);
-          }
-        }
-        
-        setSubmitLoading(false);
-        return;
-      }
-
-        // 3. VALIDAR O MÉDICO (O PONTO-CHAVE)
-        // Compara o CRM do token com o CRM do usuário logado no sistema
-        const crmDoToken = signResponse.certDetails?.crm // Ex: "123456/SP"
-        const crmDoUsuarioLogado = user?.medico_data?.crm || user?.crm // Ex: "123456/SP"
-
-        if (!crmDoToken) {
-          throw new Error("Agente local não retornou os detalhes do CRM do certificado.")
+        const agent = await getLocalAgent()
+        const detection = await agent.detectTokens()
+        const tokens = Array.isArray(detection?.tokens) ? detection.tokens : []
+        if (!tokens.length) {
+          toast({ title: "Agente local indisponível", description: "Conecte o token/smartcard e inicie o agente local em http://localhost:8172.", variant: "destructive" })
+          throw new Error("Agente local não disponível")
         }
 
-        if (!crmDoUsuarioLogado) {
-          throw new Error("Não foi possível obter o CRM do usuário logado.")
+        const signResponse = await agent.signHash({ document_hash: hashHex, format: "PAdES", pin: tokenPin || undefined })
+        if (signResponse?.status !== 'ok' || !signResponse?.assinatura || !signResponse?.certificado) {
+          const msg = signResponse?.message || "Falha ao assinar via agente local"
+          throw new Error(msg)
+        }
+        // Bloquear qualquer assinatura simulada
+        const isMock = String(signResponse.assinatura).includes('MOCK_') || String(signResponse.certificado).includes('MOCK_')
+        if (isMock) {
+          toast({ title: "Assinatura inválida (mock)", description: "Inicie o agente local real ou use certificado PFX.", variant: "destructive" })
+          throw new Error("Assinatura mock não aceita")
         }
 
-        // Limpar CRMs para comparação (remover "/SP", etc.)
-        const crmTokenLimpo = crmDoToken.replace(/[^0-9]/g, '')
-        const crmUsuarioLimpo = crmDoUsuarioLogado.replace(/[^0-9]/g, '')
+        const rid = await ensureReceitaRecord()
+        const pdfFile = new File([pdfBlob], lastGeneratedFilename || "receita.pdf", { type: "application/pdf" })
 
-        if (crmTokenLimpo !== crmUsuarioLimpo) {
-          toast({
-            title: "Assinatura Rejeitada",
-            description: `O certificado no token (${crmDoToken}) não pertence ao usuário logado (${crmDoUsuarioLogado}).`,
-            variant: "destructive",
+        // Finalizar assinatura no backend para obter PDF PADES
+        let finalized
+        try {
+          finalized = await (await getLocalAgent()).finalizeWithBackend({
+            receitaId: rid,
+            pdfFile,
+            assinatura: signResponse.assinatura,
+            certificado: signResponse.certificado,
+            cert_subject: signResponse?.certDetails?.subjectName || undefined,
+            hash_pre: hashHex,
           })
-          throw new Error("Conflito de certificados.")
+        } catch (e) {
+          // Fallback para método dedicado do serviço médico
+          finalized = await medicoService.finalizarAssinaturaExterna({
+            receitaId: rid,
+            pdfFile,
+            assinatura: signResponse.assinatura,
+            certificado: signResponse.certificado,
+          })
         }
-        
-        toast({ title: "Token Validado", description: "O certificado pertence a você. Enviando ao servidor..." })
 
-        // 4. Enviar [PDF + Assinatura + Certificado] para o Backend
-        const { filename, blob: finalSignedBlob } = await medicoService.finalizarAssinaturaExterna({
-          receitaId: await ensureReceitaRecord(),
-          pdfFile: new File([pdfBlob], lastGeneratedFilename || "receita.pdf", { type: "application/pdf" }),
-          assinatura: signResponse.assinatura,
-          certificado: signResponse.certificado,
-        })
+        const finalSignedBlob = finalized?.blob
+        const finalName = finalized?.filename || (lastGeneratedFilename || "receita_assinada.pdf")
+        if (!(finalSignedBlob instanceof Blob)) throw new Error("Finalização da assinatura falhou")
 
-        // 5. Sucesso - Atualizar estados
+        // Atualizações locais
         setIsSigned(true)
         setSignedBlob(finalSignedBlob)
-        setSignedFilename(filename || (lastGeneratedFilename || "receita_assinada.pdf"))
+        setSignedFilename(finalName)
         setSignDate(new Date().toISOString())
+        try { setCertInfo(signResponse.certDetails || { algorithm: "SHA256-RSA" }) } catch {}
 
-        // Tentar obter informações do certificado
+        // Persistir estado e auditoria
         try {
-          setCertInfo(signResponse.certDetails || null)
-        } catch (error) {
-          console.warn("Erro ao definir informações do certificado:", error)
-        }
-
-        // Atualizar registro e auditoria com hashes
-        try {
-          const rid = await ensureReceitaRecord()
           const preHash = await sha256Hex(pdfBlob)
           const signedHash = await sha256Hex(finalSignedBlob)
           if (rid) {
-            await medicoService.atualizarReceita(rid, { 
-              assinada: true, 
-              hash_alg: "SHA-256", 
-              hash_pre: preHash, 
-              hash_documento: signedHash, 
-              motivo: "Receita Médica" 
-            })
-            await medicoService.registrarAuditoriaAssinatura({ 
-              receita_id: rid, 
-              valido: true, 
-              hash_alg: "SHA-256", 
-              hash_pre: preHash, 
-              hash_documento: signedHash, 
-              motivo: "Receita Médica", 
-              arquivo: filename 
-            })
+            await medicoService.atualizarReceita(rid, { assinada: true, hash_alg: "SHA-256", hash_pre: preHash, hash_documento: signedHash })
+            await medicoService.registrarAuditoriaAssinatura({ receita_id: rid, valido: true, hash_alg: "SHA-256", hash_pre: preHash, hash_documento: signedHash, motivo: "Receita Médica", arquivo: finalName })
           }
         } catch (error) {
           console.error("Erro ao atualizar registro:", error)
@@ -1027,8 +980,7 @@ export default function PreviewReceitaMedico() {
 
         clearEphemeralCert()
         toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
-        setSignDialogOpen(false);
-
+        setSignDialogOpen(false)
       } else if (signMethod === 'pfx') {
         // --- FLUXO SIMULADO (A1/PFX) ---
         // Validação de PFX: arquivo e senha obrigatórios

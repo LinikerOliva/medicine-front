@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { adminService } from "@/services/adminService"
+import { Pencil, Trash2, UserPlus } from "lucide-react"
 
 export default function UsuariosAdmin() {
   const [loading, setLoading] = useState(false)
@@ -42,6 +43,7 @@ export default function UsuariosAdmin() {
   // NOVO: seleção e edição
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [deleting, setDeleting] = useState(false)
+  const [deletingOne, setDeletingOne] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState("")
@@ -105,6 +107,34 @@ export default function UsuariosAdmin() {
       window.alert("Falha ao excluir usuários selecionados.")
     } finally {
       setDeleting(false)
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteOne = async (id) => {
+    if (!id) {
+      window.alert("ID inválido para exclusão.")
+      return
+    }
+    if (!window.confirm("Confirma excluir este usuário?")) return
+    try {
+      setDeletingOne(id)
+      await adminService.removerUsuariosEmMassa([id])
+      // refetch lista
+      setLoading(true)
+      setError("")
+      const params = { search: search || undefined, page, limit: pageSize }
+      const data = await adminService.getUsuarios(params)
+      const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      const total = typeof data?.count === "number" ? data.count : list.length
+      setUsers(list)
+      setCount(total)
+      // remover da seleção se presente
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next })
+    } catch (e) {
+      window.alert("Falha ao excluir o usuário.")
+    } finally {
+      setDeletingOne(null)
       setLoading(false)
     }
   }
@@ -227,7 +257,7 @@ export default function UsuariosAdmin() {
         <div className="ml-auto flex gap-2">
           {/* Novo usuário */}
           <button
-            className="px-3 py-2 border rounded-md text-sm bg-primary text-primary-foreground disabled:opacity-50"
+            className="px-3 py-2 border rounded-md text-sm bg-primary text-primary-foreground disabled:opacity-50 inline-flex items-center gap-2"
             onClick={() => {
               setCreateError("")
               setCreateUser({ first_name: "", last_name: "", email: "", password: "", role: "" })
@@ -235,14 +265,16 @@ export default function UsuariosAdmin() {
             }}
             disabled={loading}
           >
+            <UserPlus className="w-4 h-4" />
             Novo usuário
           </button>
           <button
-            className="px-3 py-2 border rounded-md text-sm bg-red-600 text-white disabled:opacity-50"
+            className="px-3 py-2 border rounded-md text-sm bg-red-600 text-white disabled:opacity-50 inline-flex items-center gap-2"
             onClick={handleBulkDelete}
             disabled={deleting || selectedIds.size === 0 || loading}
             title={selectedIds.size === 0 ? "Selecione usuários" : "Excluir selecionados"}
           >
+            <Trash2 className="w-4 h-4" />
             {deleting ? "Excluindo..." : `Excluir selecionados (${selectedIds.size})`}
           </button>
         </div>
@@ -322,14 +354,26 @@ export default function UsuariosAdmin() {
                   </td>
                   {/* NOVO: ação editar */}
                   <td className="p-3">
-                    <button
-                      className="px-3 py-1 border rounded-md text-xs"
-                      onClick={() => openEdit(u)}
-                      disabled={!u?.id}
-                      title={!u?.id ? "ID indisponível" : "Editar usuário"}
-                    >
-                      Editar
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        className="px-3 py-1 border rounded-md text-xs inline-flex items-center gap-1.5"
+                        onClick={() => openEdit(u)}
+                        disabled={!u?.id}
+                        title={!u?.id ? "ID indisponível" : "Editar usuário"}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Editar
+                      </button>
+                      <button
+                        className="px-3 py-1 border rounded-md text-xs bg-red-600 text-white disabled:opacity-50 inline-flex items-center gap-1.5"
+                        onClick={() => handleDeleteOne(u?.id)}
+                        disabled={!u?.id || deletingOne === u?.id}
+                        title={!u?.id ? "ID indisponível" : "Excluir usuário"}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        {deletingOne === u?.id ? "Excluindo..." : "Excluir"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

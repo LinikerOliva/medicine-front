@@ -307,18 +307,8 @@ export const pacienteService = {
         }
       }
 
-      // Mesclar com receitas mock salvas localmente (quando em DEV)
-      let local = []
-      try {
-        const arr = JSON.parse(localStorage.getItem("mock_receitas") || "[]")
-        if (Array.isArray(arr)) {
-          const pid = queryParams["paciente"] || pacienteId
-          local = pid ? arr.filter((x) => String(x.paciente_id || x.consulta?.paciente_id || "") === String(pid)) : arr
-        }
-      } catch (_) {}
-
       const byId = new Map()
-      ;[...list, ...local].forEach((r) => {
+      ;[...list].forEach((r) => {
         if (!r) return
         const k = r.id ?? `${r.created_at}-${r.medicamentos}`
         if (!byId.has(k)) byId.set(k, r)

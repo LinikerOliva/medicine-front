@@ -51,7 +51,8 @@ class NotificationService {
     arquivo, 
     nomeArquivo,
     assunto,
-    mensagem 
+    mensagem,
+    linkDownload 
   }) {
     try {
       const formData = new FormData()
@@ -71,6 +72,11 @@ class NotificationService {
       if (arquivo) {
         const fileName = nomeArquivo || `receita_${receitaId}.pdf`
         formData.append('arquivo', arquivo, fileName)
+      }
+
+      // Link de download (fallback quando não há arquivo)
+      if (linkDownload) {
+        formData.append('link_download', linkDownload)
       }
 
       const response = await api.post(`${this.baseUrl}enviar-email/`, formData, {
@@ -236,8 +242,9 @@ class NotificationService {
     if (canais.includes('email') && dadosPaciente.email) {
       try {
         const assunto = configuracoes.assuntoEmail || 'Nova receita médica'
-        const mensagem = configuracoes.mensagemEmail || 
-          `Olá ${dadosPaciente.nome || ''},\n\nVocê tem uma nova receita médica em anexo.\n\nAtenciosamente,\nEquipe Médica`
+        const mensagemDefaultComAnexo = `Olá ${dadosPaciente.nome || ''},\n\nVocê tem uma nova receita médica em anexo.\n\nAtenciosamente,\nEquipe Médica`
+        const mensagemDefaultComLink = `Olá ${dadosPaciente.nome || ''},\n\nSua receita médica está disponível neste link: ${configuracoes.linkDownload}.\n\nAtenciosamente,\nEquipe Médica`
+        const mensagem = configuracoes.mensagemEmail || (arquivo ? mensagemDefaultComAnexo : mensagemDefaultComLink)
         
         resultados.email = await this.enviarReceitaPorEmail({
           pacienteId,
@@ -246,7 +253,8 @@ class NotificationService {
           arquivo,
           nomeArquivo,
           assunto,
-          mensagem
+          mensagem,
+          linkDownload: configuracoes.linkDownload
         })
       } catch (error) {
         resultados.erros.push({ canal: 'email', erro: error.message })

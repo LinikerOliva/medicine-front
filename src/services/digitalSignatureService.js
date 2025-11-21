@@ -344,7 +344,7 @@ class DigitalSignatureService {
     if (!form.nome_paciente?.trim()) {
       errors.push('Nome do paciente é obrigatório')
     }
-    if (!form.rg?.trim()) {
+    if (!form.cpf?.trim()) {
       errors.push('CPF do paciente é obrigatório')
     }
 

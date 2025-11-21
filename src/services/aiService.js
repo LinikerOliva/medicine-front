@@ -19,21 +19,76 @@ export const aiService = {
     const prescricao = readSection(["Prescrição", "Prescricao", "Receita", "Rx"]) || ""
     let medicamentos = ""
     let posologia = ""
+    const collectMedsFromFreeText = () => {
+      const candidates = []
+      const allLines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+      const pushIfLooksLikeMed = (l) => {
+        if (/\b(comprimid|c[aá]psul|gota|spray|ml|mg|g|mcg)\b/i.test(l)) candidates.push(l)
+        else if (/\b(vou\s+(te\s+)?(receitar|prescrever|indicar|recomendar))\b/i.test(l)) candidates.push(l)
+        else if (/\b(associar|usar|tomar)\b.*\b(metoclopramida|ondansetrona|domperidona)\b/i.test(l)) candidates.push(l)
+      }
+      allLines.forEach(pushIfLooksLikeMed)
+      if (!candidates.length) {
+        const inlineMatches = (text.match(/(?:vou\s+(?:te\s+)?(?:receitar|prescrever|indicar|recomendar)\s+)([^\.;\n]+)/ig) || [])
+        candidates.push(...inlineMatches.map((m) => m.trim()))
+        const assocMatches = (text.match(/(?:pode\s+associar|associar|usar|tomar)[^\n\.;]*(metoclopramida|ondansetrona|domperidona)[^\n\.;]*/ig) || [])
+        candidates.push(...assocMatches.map((m) => m.trim()))
+      }
+      const normFreq = (s) => {
+        const m1 = s.match(/(\d{1,2}\s*\/\s*\d{1,2})\s*h/i)
+        if (m1) return `de ${m1[1].replace(/\s+/g,'').toUpperCase()}H`
+        const m2 = s.match(/a\s*cada\s*(\d{1,2})\s*h/i)
+        if (m2) return `de ${m2[1]}/${m2[1]}H`.toUpperCase()
+        const m2b = s.match(/(\d{1,2})\s*(?:ou|\/)\s*(\d{1,2})\s*horas/i)
+        if (m2b) { const n = parseInt(m2b[1],10); return `de ${n}/${n}H`.toUpperCase() }
+        const m3 = s.match(/(\d)\s*x\s*ao\s*dia/i)
+        if (m3) { const f = parseInt(m3[1],10); if (f>0){ const h = Math.round(24/f); return `de ${h}/${h}H`.toUpperCase() } }
+        return null
+      }
+      const maxMatch = (text.match(/n[aã]o\s*pass(e|ar)\s*de\s*(\d+)\s*(comprimidos?|capsulas?)/i) || [])
+      const joined = candidates.join("\n").trim()
+      const posoLines = candidates.map((l) => {
+        const nameMatch = l.match(/^([A-Za-zÀ-ÿ0-9 .+\-]+?)(?:\s+\d+\s?(mg|ml|g|mcg)|\s*[–-])/)
+        const name = nameMatch ? nameMatch[1].trim() : l.split(/\s+/).slice(0,3).join(' ')
+        const freq = normFreq(l) || normFreq(text) || ''
+        const limit = maxMatch.length ? `Máx ${maxMatch[2] || maxMatch[1]} ${maxMatch[3] || 'comprimidos'}/24H` : ''
+        const parts = [freq, limit].filter(Boolean)
+        return parts.length ? `${name} ${parts.join('; ')}` : ''
+      }).filter(Boolean)
+      // Extrair nomes limpos conhecidos
+      const nameSet = new Set()
+      const KNOWN = [/\bbuscopan\s+composto\b/i, /\bmetoclopramida\b/i, /\bondansetrona\b/i, /\bdomperidona\b/i, /\bdipirona\b/i]
+      KNOWN.forEach((rx) => { const m = text.match(rx); if (m) nameSet.add(m[0].replace(/\s+/g,' ').trim()) })
+      candidates.forEach((l) => {
+        const m = l.match(/^([A-Za-zÀ-ÿ0-9 .+\-]+?)(?:\s+\d+\s?(mg|ml|g|mcg)|\s*[–-])/)
+        if (m) nameSet.add(m[1].replace(/\s+/g,' ').trim())
+      })
+      const medsNames = Array.from(nameSet)
+      return { meds: medsNames.join("\n") || joined, poso: posoLines.join("\n") }
+    }
     if (prescricao) {
       const lines = prescricao.split(/\n+/).map((l) => l.trim()).filter(Boolean)
-      if (lines.length === 1) {
-        medicamentos = lines[0]
-        posologia = "Conforme descrito na prescrição."
-      } else if (lines.length > 1) {
-        medicamentos = lines[0]
-        posologia = lines.slice(1).join(" ")
-      }
+      medicamentos = lines.join("\n")
+      const posoParts = lines
+        .map((l) => {
+          const dashIdx = l.indexOf("–")
+          if (dashIdx >= 0) return l.slice(dashIdx + 1).trim()
+          const m = l.match(/(?:\d+\s?(mg|ml|g|mcg)[^,;]*)[,;]?(.*)$/i)
+          return m ? (m[2] || "").trim() : ""
+        })
+        .filter(Boolean)
+      if (posoParts.length) posologia = posoParts.join("\n")
+    }
+    if (!medicamentos) {
+      const { meds, poso } = collectMedsFromFreeText()
+      medicamentos = meds || medicamentos
+      posologia = posologia || poso
     }
     if (!medicamentos && conduta) {
-      const medLine = (conduta.match(/.+?(\d+\s?(mg|ml|g|mcg)|comprimid|c[aá]psul|gotas).*/i) || [""])[0]
+      const medLine = (conduta.match(/.+?(\d+\s?(mg|ml|g|mcg)|comprimid|c[aá]psul|gotas|spray).*/i) || [""])[0]
       if (medLine) {
         medicamentos = medLine.trim()
-        posologia = "Conforme conduta descrita."
+        posologia = posologia || "Conforme conduta descrita."
       }
     }
 
@@ -183,8 +238,7 @@ export const aiService = {
       try {
         const jsonStr = textOut.match(/\{[\s\S]*\}/)?.[0] || textOut
         const parsed = JSON.parse(jsonStr)
-        // Garantir chaves esperadas
-        return {
+        const base = {
           queixa: parsed.queixa || "",
           historia_doenca_atual: parsed.historia_doenca_atual || parsed.historia || "",
           diagnostico_principal: parsed.diagnostico_principal || parsed.diagnostico || "",
@@ -197,8 +251,13 @@ export const aiService = {
           temperatura: parsed.temperatura || "",
           saturacao: parsed.saturacao || "",
         }
+        if (!base.medicamentos || !base.posologia) {
+          const heur = this._summarizeLocal(transcricao, contexto)
+          base.medicamentos = base.medicamentos || heur.medicamentos || ""
+          base.posologia = base.posologia || heur.posologia || ""
+        }
+        return base
       } catch (_) {
-        // Se falhou parsing, usa fallback local
         return this._summarizeLocal(transcricao, contexto)
       }
     } catch (_) {

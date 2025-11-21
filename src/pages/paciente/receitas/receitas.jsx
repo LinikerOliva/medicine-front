@@ -35,6 +35,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import api from "@/services/api"
+import ReceitaPreviewLayout from "@/components/ReceitaPreviewLayout"
+import { loadTemplateConfig, loadDoctorLogo } from "@/utils/pdfTemplateUtils"
+import { createRoot } from "react-dom/client"
 
 export default function ReceitasPaciente() {
   const { toast } = useToast()
@@ -451,69 +454,100 @@ export default function ReceitasPaciente() {
   // Gerar PDF usando template personalizado (consistente com preview)
   async function handleDownloadGerado(r) {
     try {
-      // Importar o serviço de templates PDF
-      const { pdfTemplateService } = await import('@/services/pdfTemplateService');
-      
-      // Preparar dados da receita com estrutura completa
-      const receitaData = {
-        medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
-        medicamentos: r?.medicamentos || r?.itens || r?.descricao || '',
-        posologia: r?.posologia || r?.orientacoes || '',
-        observacoes: r?.observacoes || '',
-        validade_receita: r?.validade_receita || '',
-        data_prescricao: r?.created_at || r?.data_emissao || new Date().toISOString(),
-        data_emissao: r?.created_at || r?.data_emissao || new Date().toISOString(),
-        itens: Array.isArray(r?.itens_estruturados) && r.itens_estruturados.length ? 
-          r.itens_estruturados : [{
-            medicamento: r?.medicamentos || r?.itens || r?.descricao || '',
-            posologia: r?.posologia || r?.orientacoes || '',
-            observacoes: r?.observacoes || ''
-          }]
-      };
-      
-      // Preparar dados completos do médico
-      const medicoData = {
-        nome: r?.medico_nome || r?.medico || 'Médico',
-        crm: r?.medico_crm || r?.crm || '',
-        especialidade: r?.especialidade || r?.medico_especialidade || '',
-        endereco_consultorio: r?.endereco_consultorio || r?.medico_endereco || '',
-        telefone_consultorio: r?.telefone_consultorio || r?.medico_telefone || '',
-        email: r?.email_medico || r?.medico_email || '',
-        // Informações adicionais para identificação completa
-        medico_id: r?.medico_id || '',
-        emissor: r?.medico_nome || r?.medico || 'Médico',
-        assinante: r?.medico_nome || r?.medico || 'Médico',
-        criador: r?.medico_nome || r?.medico || 'Médico'
-      };
-      
-      // Preparar dados completos do paciente
-      const pacienteData = {
-        nome: r?.paciente_nome || r?.paciente || 'Paciente',
-        idade: r?.idade || '',
-        rg: r?.rg || '',
-        cpf: r?.cpf || r?.rg || '',
-        data_nascimento: r?.data_nascimento || '',
-        endereco: r?.endereco_paciente || '',
-        telefone: r?.telefone_paciente || '',
-        // Informações adicionais
-        paciente_id: r?.paciente_id || ''
-      };
-      
-      // Usar ID do médico da receita ou fallback
-      const medicoId = r?.medico_id || 'default';
-      
-      // Gerar PDF usando template personalizado (mesmo método do preview)
-      const pdfBlob = await pdfTemplateService.generatePDF(
-        receitaData,
-        medicoData,
-        pacienteData,
-        medicoId
-      );
-      
-      // Fazer download do PDF com nome padronizado
-      const filename = `Receita_${pacienteData.nome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
-      pdfTemplateService.savePDF(pdfBlob, filename);
-      
+      // Importar o serviço (lazy) para evitar bundle pesado inicial
+      const { pdfTemplateService } = await import("@/services/pdfTemplateService")
+
+      // ID do médico para carregar template e logo
+      const medicoId = r?.medico?.id || r?.medico_id || "default"
+      const templateConfig = loadTemplateConfig(medicoId)
+      const doctorLogo = loadDoctorLogo(medicoId)
+
+      // Normalizar dados para o layout compartilhado
+      const doctorName = (r?.medico && (r.medico.nome || r.medico.user?.first_name && `${r.medico.user.first_name} ${r.medico.user.last_name}`)) || r?.medico_nome || r?.medico || "Médico"
+      const crm = r?.medico?.crm || r?.medico_crm || r?.crm || ""
+      const especialidade = r?.medico?.especialidade || r?.especialidade || r?.medico_especialidade || ""
+      const enderecoConsultorio = r?.medico?.endereco_consultorio || r?.medico_endereco || ""
+      const telefoneConsultorio = r?.medico?.telefone_consultorio || r?.medico?.telefone || r?.medico_telefone || ""
+      const emailMedico = r?.medico?.email || r?.email_medico || ""
+
+      const pacienteNome = r?.paciente?.nome || r?.paciente_nome || r?.paciente || "Paciente"
+      const cpf = r?.paciente?.cpf || r?.cpf || ""
+      const dataNascimento = r?.paciente?.data_nascimento || r?.data_nascimento || ""
+      const idade = r?.idade || ""
+
+      const dataEmissao = (() => {
+        const d = r?.created_at || r?.data_emissao || new Date().toISOString()
+        try { return new Date(d).toLocaleDateString() } catch { return String(d) }
+      })()
+      const validadeReceita = r?.validade || r?.validade_receita || ""
+      const isSigned = Boolean(r?.arquivo_assinado)
+
+      // Itens estruturados
+      const structured = Array.isArray(r?.itens) && r.itens.length ? r.itens : (Array.isArray(r?.itens_estruturados) ? r.itens_estruturados : [])
+      const receitaItems = (structured || []).map((it) => ({
+        descricao: it?.descricao || it?.medicamento || it?.nome || "",
+        dosagem: it?.dosagem || it?.dose || "",
+        frequencia: it?.frequencia || "",
+        duracao: it?.duracao || "",
+        observacoes: it?.observacoes || "",
+        medicamento: typeof it?.medicamento === 'object' ? it.medicamento : undefined,
+      }))
+      const hasStructuredItems = receitaItems.length > 0
+
+      // Fallback para campos legados (não estruturados)
+      const medicamento = r?.medicamentos || r?.itens || r?.descricao || ""
+      const posologia = r?.posologia || r?.orientacoes || ""
+      const observacoes = r?.observacoes || ""
+
+      // Renderizar o layout em um container temporário fora da tela
+      const container = document.createElement("div")
+      container.style.position = "absolute"
+      container.style.left = "-9999px"
+      container.style.top = "-9999px"
+      document.body.appendChild(container)
+
+      const root = createRoot(container)
+      root.render(
+        <ReceitaPreviewLayout
+          id="receita-preview-paciente"
+          templateConfig={templateConfig}
+          doctorLogo={doctorLogo}
+          medico={doctorName}
+          crm={crm}
+          especialidade={especialidade}
+          endereco_consultorio={enderecoConsultorio}
+          telefone_consultorio={telefoneConsultorio}
+          email_medico={emailMedico}
+          nome_paciente={pacienteNome}
+          idade={idade}
+          cpf={cpf}
+          data_nascimento={dataNascimento}
+          data_emissao={dataEmissao}
+          validade_receita={validadeReceita}
+          isSigned={isSigned}
+          hasStructuredItems={hasStructuredItems}
+          receitaItems={receitaItems}
+          medicamento={medicamento}
+          posologia={posologia}
+          observacoes={observacoes}
+        />
+      )
+
+      // Aguarda o próximo tick para garantir montagem
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      // Gera PDF diretamente do DOM para garantir identidade visual
+      const pdfBlob = await pdfTemplateService.generatePDFFromElement(container, { pageSize: "a4", orientation: "portrait", scale: 2 })
+
+      // Limpar container React
+      try { root.unmount() } catch {}
+      document.body.removeChild(container)
+
+      // Baixar com nome padronizado
+      const filename = `Receita_${pacienteNome.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
+      pdfTemplateService.savePDF(pdfBlob, filename)
+      return
+
     } catch (error) {
       console.error('Erro ao gerar PDF com template personalizado:', error);
       

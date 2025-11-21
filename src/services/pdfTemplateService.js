@@ -41,6 +41,46 @@ export class PdfTemplateService {
   }
 
   /**
+   * Gera PDF diretamente a partir de um elemento DOM (ex.: container do preview)
+   * @param {HTMLElement|string} elementOrSelector - Elemento DOM ou seletor CSS
+   * @param {Object} options - Opções de renderização
+   * @param {('a4'|'letter')} [options.pageSize='a4'] - Tamanho da página
+   * @param {('portrait'|'landscape')} [options.orientation='portrait'] - Orientação
+   * @param {number} [options.scale=2] - Fator de escala para html2canvas
+   * @returns {Promise<Blob>} PDF gerado como Blob
+   */
+  async generatePDFFromElement(elementOrSelector, options = {}) {
+    const pageSize = (options.pageSize || 'a4').toLowerCase()
+    const orientation = (options.orientation || 'portrait').toLowerCase() === 'landscape' ? 'l' : 'p'
+    const scale = Number(options.scale || 2)
+
+    // Resolver elemento
+    let el = elementOrSelector
+    if (typeof elementOrSelector === 'string') {
+      el = document.querySelector(elementOrSelector)
+    }
+    if (!el) throw new Error('Elemento do preview não encontrado para gerar PDF.')
+
+    // Garantir fundo branco
+    const canvas = await html2canvas(el, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      windowWidth: el.scrollWidth || el.clientWidth,
+      windowHeight: el.scrollHeight || el.clientHeight,
+    })
+
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: pageSize })
+    const imgData = canvas.toDataURL('image/png')
+    const imgWidth = pdf.internal.pageSize.getWidth()
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+    return pdf.output('blob')
+  }
+
+  /**
    * Carrega o logo do médico
    * @param {string} medicoId - ID do médico
    * @returns {Object|null} Dados do logo

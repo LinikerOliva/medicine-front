@@ -1,5 +1,7 @@
 import api from "./api"
 import { authService } from "./authService"
+import pdfTemplateService from "./pdfTemplateService"
+import medicamentoService from "./medicamentoService"
 
 export const medicoService = {
   async getPerfil() {
@@ -459,48 +461,12 @@ export const medicoService = {
     if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
     if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
 
-    // Resolve automaticamente o ID do médico quando ausente e enriquece com dados completos
+    // Resolve automaticamente o ID do médico quando ausente
     try {
       const midResolved = normalized.medico_id || normalized.medico || await this._resolveMedicoId().catch(() => null)
       if (midResolved) {
         if (!normalized.medico_id) normalized.medico_id = midResolved
         if (!normalized.medico) normalized.medico = midResolved
-        
-        // Buscar dados completos do médico para incluir na receita
-        try {
-          const perfilMedico = await this.getPerfil()
-          if (perfilMedico) {
-            // Informações do médico emissor/assinante/criador
-            normalized.medico_emissor = midResolved
-            normalized.medico_assinante = midResolved
-            normalized.medico_criador = midResolved
-            
-            // Dados completos do médico
-            normalized.medico_nome = perfilMedico.nome || perfilMedico.first_name
-            normalized.medico_crm = perfilMedico.crm
-            normalized.medico_especialidade = perfilMedico.especialidade
-            normalized.medico_telefone = perfilMedico.telefone
-            normalized.medico_email = perfilMedico.email
-            normalized.medico_endereco = perfilMedico.endereco
-            
-            // Configuração de template personalizado do médico
-            try {
-              const templateConfig = localStorage.getItem(`template_config_${midResolved}`)
-              if (templateConfig) {
-                normalized.template_config = JSON.parse(templateConfig)
-              }
-              
-              const doctorLogo = localStorage.getItem(`doctor_logo_${midResolved}`)
-              if (doctorLogo) {
-                normalized.doctor_logo = doctorLogo
-              }
-            } catch (e) {
-              if (VERBOSE) { try { console.warn("[medicoService.criarReceita] erro ao carregar template personalizado:", e) } catch {} }
-            }
-          }
-        } catch (e) {
-          if (VERBOSE) { try { console.warn("[medicoService.criarReceita] erro ao buscar dados do médico:", e) } catch {} }
-        }
       }
     } catch {}
 
@@ -534,6 +500,11 @@ export const medicoService = {
     candidates.push(baseReceitas)
     candidates.push(`${baseReceitas}criar/`)
     candidates.push(`${baseReceitas}create/`)
+    // Endpoints de geração/preview que existem no backend e podem persistir metadados
+    candidates.push(`${baseReceitas}gerar/`)
+    candidates.push(`${baseReceitas}preview/`)
+    candidates.push(`${baseReceitas}gerar-documento/`)
+    candidates.push(`${baseReceitas}pdf/`)
 
     // Variações singulares e nomes alternativos comuns em backends
     const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
@@ -569,9 +540,18 @@ export const medicoService = {
         lastTried = `${m.toUpperCase()} ${url}`
         try {
           if (VERBOSE) { try { console.debug("[medicoService.criarReceita] tentando:", lastTried) } catch {} }
-          const { data } = await api[m](url, normalized)
-          if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso:", lastTried, "→", data) } catch {} }
-          return data
+          // Para endpoints de geração que retornam blob/arquivo
+          const isGen = /\/(gerar|preview|pdf)\/?$/.test(url)
+          if (isGen) {
+            const res = await api[m](url, normalized, { responseType: 'json' })
+            const data = res?.data
+            if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso (gen):", lastTried, "→", data) } catch {} }
+            return data
+          } else {
+            const { data } = await api[m](url, normalized)
+            if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso:", lastTried, "→", data) } catch {} }
+            return data
+          }
         } catch (e) {
           const st = e?.response?.status
           if (VERBOSE) {
@@ -600,7 +580,8 @@ export const medicoService = {
               }
               try {
                 if (VERBOSE) { try { console.debug("[medicoService.criarReceita] retry minimal:", m.toUpperCase(), url, minimal) } catch {} }
-                const { data } = await api[m](url, minimal)
+                const res = await api[m](url, minimal)
+                const data = res?.data
                 if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso (minimal):", m.toUpperCase(), url, data) } catch {} }
                 return data
               } catch (e2) {
@@ -654,25 +635,6 @@ export const medicoService = {
     const baseReceitas = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
     const envItems = (import.meta.env.VITE_RECEITA_ITENS_ENDPOINT || "").trim()
 
-    // Buscar dados do médico para incluir nos itens
-    let medicoData = {}
-    try {
-      const midResolved = await this._resolveMedicoId().catch(() => null)
-      if (midResolved) {
-        const perfilMedico = await this.getPerfil()
-        if (perfilMedico) {
-          medicoData = {
-            medico_id: midResolved,
-            medico_nome: perfilMedico.nome || perfilMedico.first_name,
-            medico_crm: perfilMedico.crm,
-            medico_especialidade: perfilMedico.especialidade,
-          }
-        }
-      }
-    } catch (e) {
-      if (VERBOSE) { try { console.warn("[salvarItensReceita] erro ao buscar dados do médico:", e) } catch {} }
-    }
-
     // Normaliza itens
     const normalizedItems = itens.map((item) => {
       const mId = item.medicamento_id || item.medicamento?.id || item.medicamento
@@ -691,11 +653,38 @@ export const medicoService = {
         frequencia: item.frequencia || item.freq || item.intervalo,
         duracao: item.duracao || item.dias || item.periodo,
         observacoes: item.observacoes || item.obs || item.nota,
-        // Incluir dados do médico nos itens
-        ...medicoData,
       }
       return obj
     })
+
+    // Resolver medicamento_id quando vier apenas nome/descrição (compat com serializer do backend)
+    for (let i = 0; i < normalizedItems.length; i++) {
+      const item = normalizedItems[i]
+      if (!item.medicamento_id) {
+        const nomeRaw = item.nome || item.medicamento_nome || item.descricao
+        const nome = (nomeRaw || "").toString().trim()
+        if (!nome) continue
+        let medId = null
+        // 1) Buscar por nome
+        try {
+          const list = await medicamentoService.search(nome).catch(() => [])
+          const arr = Array.isArray(list) ? list : (Array.isArray(list?.results) ? list.results : [])
+          const match = arr.find((m) => String(m?.nome || "").toLowerCase() === nome.toLowerCase()) || arr[0]
+          if (match && match.id) medId = match.id
+        } catch (_) {}
+        // 2) Criar se não encontrado
+        if (!medId) {
+          try {
+            const created = await medicamentoService.create({ nome, ativo: true })
+            medId = created?.id || null
+          } catch (_) {}
+        }
+        if (medId) {
+          item.medicamento_id = medId
+          item.medicamento = medId
+        }
+      }
+    }
 
     // Candidatos de endpoint (bulk primeiro)
     const candidates = []
@@ -834,6 +823,51 @@ export const medicoService = {
     const bytes = new Uint8Array(digest)
     const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")
     return hex
+  },
+
+  // Geração de documento de receita 100% no cliente (sem backend/WeasyPrint)
+  async gerarDocumentoReceitaLocal(payload = {}) {
+    const p0 = { ...payload }
+    const nomePaciente = p0.nome_paciente || p0.paciente_nome || ""
+    const filename = p0.filename || `Receita_${nomePaciente || "Medica"}.pdf`
+    try {
+      const selector = p0.previewSelector || p0.elementSelector || "#receita-preview"
+      const blob = await pdfTemplateService.generatePDFFromElement(selector, {
+        pageSize: "a4",
+        orientation: "portrait",
+        scale: Number(p0.scale || 2)
+      })
+      return { filename, blob }
+    } catch (_) {
+      const receitaData = {
+        medicamento: p0.medicamento || p0.medicamentos,
+        medicamentos: p0.medicamentos || p0.medicamento,
+        posologia: p0.posologia || p0.orientacoes,
+        observacoes: p0.observacoes,
+        validade_receita: p0.validade_receita || p0.validade,
+        data_prescricao: p0.data_prescricao || p0.data_emissao || new Date().toISOString(),
+        itens: p0.itens || []
+      }
+      const medicoData = {
+        nome: p0.medico_nome || p0.medico,
+        crm: p0.medico_crm || p0.crm,
+        especialidade: p0.especialidade || "",
+        endereco_consultorio: p0.endereco_consultorio || "",
+        telefone_consultorio: p0.telefone_consultorio || "",
+        email: p0.email_medico || ""
+      }
+      const pacienteData = {
+        nome: nomePaciente || p0.paciente,
+        idade: p0.idade,
+        cpf: p0.cpf,
+        data_nascimento: p0.data_nascimento,
+        endereco: p0.endereco_paciente || "",
+        telefone: p0.telefone_paciente || ""
+      }
+      const medicoId = p0.medico_id || p0.medico || await this._resolveMedicoId().catch(() => "default")
+      const blob = await pdfTemplateService.generatePDF(receitaData, medicoData, pacienteData, medicoId)
+      return { filename, blob }
+    }
   },
 
   // NOVO: gerar documento de receita (PDF/DOCX) com múltiplos fallbacks de endpoint
@@ -2386,6 +2420,106 @@ export const medicoService = {
     return { filename, blob }
   },
 
+  // NOVO: salvar configuração de template de PDF do médico (backend + fallback)
+  async salvarTemplateConfig(config = {}, logoData = null) {
+    try {
+      // Resolver ID do médico
+      let medicoId = null
+      try { medicoId = await this._resolveMedicoId() } catch {}
+
+      // Preparar FormData quando houver logo
+      const fd = new FormData()
+      fd.append('config', JSON.stringify(config))
+      if (medicoId) {
+        fd.append('medico', medicoId)
+        fd.append('medico_id', medicoId)
+      }
+      if (logoData) {
+        if (typeof logoData === 'string' && logoData.startsWith('data:')) {
+          // base64: enviar como texto e como arquivo sintético
+          fd.append('logo_base64', logoData)
+          try {
+            const comma = logoData.indexOf(',')
+            const mime = logoData.substring(5, logoData.indexOf(';')) || 'image/png'
+            const b64 = comma >= 0 ? logoData.substring(comma + 1) : ''
+            const binary = atob(b64)
+            const bytes = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+            const blob = new Blob([bytes], { type: mime })
+            const file = new File([blob], 'logo.png', { type: mime })
+            fd.append('logo', file)
+            fd.append('arquivo', file)
+            fd.append('imagem', file)
+          } catch {}
+        } else if (logoData && logoData.name) {
+          fd.append('logo', logoData)
+          fd.append('arquivo', logoData)
+          fd.append('imagem', logoData)
+        }
+      }
+
+      const jsonPayload = {
+        config,
+        medico: medicoId || undefined,
+        medico_id: medicoId || undefined,
+        logo_base64: typeof logoData === 'string' ? logoData : undefined,
+      }
+
+      // Candidatos de endpoints
+      const candidates = []
+      const envEp = (import.meta.env.VITE_MEDICO_TEMPLATE_CONFIG_ENDPOINT || '').trim()
+      if (envEp) candidates.push(envEp)
+      const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || '/medicos/'
+      const medBase = medBaseRaw.endsWith('/') ? medBaseRaw : `${medBaseRaw}/`
+      if (medicoId) {
+        candidates.push(`${medBase}${medicoId}/template/`)
+        candidates.push(`${medBase}${medicoId}/pdf-template/`)
+        candidates.push(`${medBase}${medicoId}/pdf_template/`)
+      }
+      candidates.push(`${medBase}me/template/`)
+      candidates.push(`${medBase}me/pdf-template/`)
+      candidates.push('/pdf-template-config/')
+      candidates.push('/templates/pdf-config/')
+      candidates.push('/templates/pdf/medico/')
+
+      let lastErr = null
+      for (const raw of candidates) {
+        const url = raw.endsWith('/') ? raw : `${raw}/`
+        // 1) POST multipart
+        try {
+          const res = await api.post(url, fd)
+          if (res?.status && res.status >= 200 && res.status < 300) return true
+        } catch (e1) {
+          const st = e1?.response?.status
+          if (st === 401) throw e1
+          lastErr = e1
+        }
+        // 2) PATCH multipart
+        try {
+          const res = await api.patch(url, fd)
+          if (res?.status && res.status >= 200 && res.status < 300) return true
+        } catch (e2) {
+          const st = e2?.response?.status
+          if (st === 401) throw e2
+          lastErr = e2
+        }
+        // 3) POST JSON
+        try {
+          const res = await api.post(url, jsonPayload)
+          if (res?.status && res.status >= 200 && res.status < 300) return true
+        } catch (e3) {
+          const st = e3?.response?.status
+          if (st === 401) throw e3
+          lastErr = e3
+        }
+      }
+      if (lastErr) return false
+      return false
+    } catch {
+      return false
+    }
+  },
+
   // Wrapper para compatibilidade: assinarDocumento -> signDocumento
   async assinarDocumento(params = {}) {
     const { pdfFile, certificado, senha, motivo, receita_id, modo_assinatura, ...rest } = params
@@ -2415,27 +2549,286 @@ export const medicoService = {
     return await this.signDocumento(fileOrForm, meta)
   },
 
+  // NOVO: assinar receita existente via endpoint dedicado e persistir metadados
+  async assinarReceita({ receitaId, pdfFile, dadosReceita = {}, certificado, senha, modo_assinatura = "pfx", motivo = "Receita Médica", location } = {}) {
+    if (!receitaId) throw new Error("receitaId é obrigatório para assinar a receita.")
+    if (!pdfFile) throw new Error("Arquivo PDF (pdfFile) é obrigatório para assinatura.")
+
+    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
+
+    // Garantir File
+    const file = pdfFile instanceof File ? pdfFile : new File([pdfFile], "receita.pdf", { type: "application/pdf" })
+
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("pdf", file)
+    formData.append("documento", file)
+    formData.append("receita", receitaId)
+    formData.append("receita_id", receitaId)
+    formData.append("id", receitaId)
+    formData.append("assinar", "true")
+    if (motivo) formData.append("motivo", motivo)
+    if (location) formData.append("local", location)
+
+    // Adicionar dados complementares da receita (opcional)
+    const dr = { ...dadosReceita }
+    const fmt = (dr.formato || "pdf").toLowerCase()
+    formData.append("formato", fmt)
+    ;["paciente_id","paciente","consulta_id","consulta","observacoes","validade_receita","validade"].forEach((k) => {
+      const v = dr[k]
+      if (v !== undefined && v !== null && String(v).length) formData.append(k, v)
+    })
+    if (Array.isArray(dr.itens)) {
+      try { formData.append("itens_json", JSON.stringify(dr.itens)) } catch {}
+      try { formData.append("itens", JSON.stringify(dr.itens)) } catch {}
+    }
+
+    // Seleção de modo de assinatura
+    const useToken = modo_assinatura === "token"
+    if (useToken) {
+      formData.append("use_token", "true")
+      formData.append("pkcs11", "true")
+      formData.append("hardware", "true")
+      if (dadosReceita?.pin) {
+        const pin = String(dadosReceita.pin)
+        formData.append("pin", pin)
+        formData.append("token_pin", pin)
+        formData.append("pin_code", pin)
+      }
+    } else {
+      if (!(certificado instanceof File)) throw new Error("Certificado (.pfx/.p12) é obrigatório no modo PFX.")
+      if (!senha || !String(senha).trim()) throw new Error("Senha do certificado PFX/P12 é obrigatória.")
+      formData.append("pfx", certificado)
+      formData.append("certificado", certificado)
+      formData.append("pkcs12", certificado)
+      formData.append("pfx_password", String(senha))
+      formData.append("senha", String(senha))
+      formData.append("password", String(senha))
+      formData.append("senha_certificado", String(senha))
+    }
+
+    // Tentar diretamente o endpoint dedicado primeiro
+    const candidates = []
+    const envAssinar = (import.meta.env.VITE_RECEITAS_ASSINAR_ENDPOINT || "").trim()
+    if (envAssinar) candidates.push(envAssinar)
+    candidates.push("/receitas/assinar/")
+    candidates.push("/api/receitas/assinar/")
+
+    let lastErr = null
+    for (const raw of candidates) {
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      try {
+        if (VERBOSE) { try { console.debug(`[assinarReceita] POST ->`, url, { receitaId }) } catch {} }
+        const res = await api.post(url, formData, { responseType: "blob" })
+        const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
+        let filename = "receita_assinada.pdf"
+        if (cd) {
+          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+          try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
+        }
+        const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
+
+        // Persistir arquivo e metadados
+        const hashHex = await this.computeSHA256Hex(blob)
+        await this.salvarArquivoAssinado(receitaId, blob, filename)
+        const nowIso = new Date().toISOString()
+        await this.atualizarReceita(receitaId, {
+          assinada: true,
+          assinada_em: nowIso,
+          carimbo_tempo: nowIso,
+          algoritmo_assinatura: "RSA-SHA256-PADES",
+          hash_documento: hashHex,
+          motivo
+        })
+
+        return { receitaId, filename, blob }
+      } catch (e) {
+        const st = e?.response?.status
+        if (st === 401) throw e
+        if (st === 404 || st === 405) { lastErr = e; continue }
+        // Alguns backends podem responder JSON com base64
+        try {
+          const resJson = await api.post(url, formData)
+          const payload = resJson?.data || {}
+          const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64 || null
+          if (b64) {
+            const byteChars = atob(String(b64))
+            const byteNumbers = new Array(byteChars.length)
+            for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
+            const byteArray = new Uint8Array(byteNumbers)
+            const blob = new Blob([byteArray], { type: "application/pdf" })
+            const filename = payload?.filename || payload?.nome_arquivo || "receita_assinada.pdf"
+            const hashHex = await this.computeSHA256Hex(blob)
+            await this.salvarArquivoAssinado(receitaId, blob, filename)
+            const nowIso = new Date().toISOString()
+            await this.atualizarReceita(receitaId, {
+              assinada: true,
+              assinada_em: nowIso,
+              carimbo_tempo: nowIso,
+              algoritmo_assinatura: "RSA-SHA256-PADES",
+              hash_documento: hashHex,
+              motivo
+            })
+            return { receitaId, filename, blob }
+          }
+          lastErr = e
+        } catch (e2) {
+          lastErr = e2
+        }
+      }
+    }
+
+    // Fallback: usar signDocumento (que já tenta /receitas/assinar/ entre outros)
+    const signed = await this.signDocumento(formData, { receitaId, motivo, useToken: useToken, pfxFile: certificado, pfxPassword: senha })
+    const signedBlob = signed?.blob
+    const signedName = signed?.filename || "receita_assinada.pdf"
+    if (!signedBlob) throw (lastErr || new Error("Falha ao assinar receita: nenhum endpoint compatível."))
+
+    const hashHex = await this.computeSHA256Hex(signedBlob)
+    await this.salvarArquivoAssinado(receitaId, signedBlob, signedName)
+    const nowIso = new Date().toISOString()
+    await this.atualizarReceita(receitaId, {
+      assinada: true,
+      assinada_em: nowIso,
+      carimbo_tempo: nowIso,
+      algoritmo_assinatura: "RSA-SHA256-PADES",
+      hash_documento: hashHex,
+      motivo
+    })
+
+    return { receitaId, filename: signedName, blob: signedBlob }
+  },
+
   // NOVO: fluxo completo para criar receita, salvar itens, assinar e persistir metadados
   async assinarReceitaEPersistir({ dadosReceita = {}, itens = [], pdfFile, motivo = "Receita Médica", certificado, senha, modo_assinatura = "pfx" } = {}) {
     const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
 
-    // 1) Criar receita
+    // Tentar endpoint unificado /receitas/assinar/ primeiro
+    const receitasBaseRaw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const receitasBase = receitasBaseRaw.endsWith("/") ? receitasBaseRaw : `${receitasBaseRaw}/`
+    const candidates = []
+    const envUnified = (import.meta.env.VITE_RECEITA_ASSINAR_PERSISTIR_ENDPOINT || "").trim()
+    if (envUnified) candidates.push(envUnified)
+    candidates.push(`${receitasBase}assinar/`)
+    candidates.push(`/receitas/assinar/`)
+    candidates.push(`/api/receitas/assinar/`)
+    candidates.push(`/assinar-receita/`)
+    candidates.push(`/documentos/assinar/`)
+
+    const file = pdfFile instanceof File ? pdfFile : (pdfFile ? new File([pdfFile], "receita.pdf", { type: "application/pdf" }) : null)
+    const formDataUnified = new FormData()
+    if (file) {
+      formDataUnified.append("file", file)
+      formDataUnified.append("pdf", file)
+      formDataUnified.append("documento", file)
+    }
+    formDataUnified.append("motivo", motivo || "Receita Médica")
+    formDataUnified.append("modo_assinatura", modo_assinatura)
+    if (certificado) formDataUnified.append("pfx", certificado)
+    if (senha) formDataUnified.append("senha", senha)
+    try { formDataUnified.append("dados_receita", JSON.stringify(dadosReceita || {})) } catch {}
+    try { formDataUnified.append("itens", JSON.stringify(itens || [])) } catch {}
+
+    // JSON fallback payload (base64)
+    const blobToBase64 = async (blob) => {
+      const arr = await blob.arrayBuffer()
+      const bytes = new Uint8Array(arr)
+      let binary = ""
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+      return btoa(binary)
+    }
+    const fileB64 = file ? await blobToBase64(file) : null
+    const pfxB64 = certificado ? await blobToBase64(certificado) : null
+    const jsonUnified = {
+      motivo: motivo || "Receita Médica",
+      modo_assinatura,
+      dados_receita: dadosReceita || {},
+      itens: itens || [],
+      pdf_base64: fileB64 || undefined,
+      pfx_base64: pfxB64 || undefined,
+      senha: senha || undefined,
+      formato: "pdf"
+    }
+
+    const base64ToBlob = (base64, mime = "application/pdf") => {
+      const byteChars = atob(base64)
+      const byteNums = new Array(byteChars.length)
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i)
+      const byteArray = new Uint8Array(byteNums)
+      return new Blob([byteArray], { type: mime })
+    }
+
+    let lastErr = null
+    for (const raw of candidates) {
+      if (!raw) continue
+      const url = raw.endsWith("/") ? raw : `${raw}/`
+      // 1) Tenta multipart esperando PDF diretamente
+      try {
+        if (VERBOSE) { try { console.debug(`[assinarReceitaEPersistir] POST multipart ->`, url) } catch {} }
+        const res = await api.post(url, formDataUnified, { responseType: "blob" })
+        const ct = res.headers?.["content-type"] || res.headers?.get?.("content-type") || ""
+        let filename = "receita_assinada.pdf"
+        const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition") || ""
+        if (cd) {
+          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+          try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch {}
+        }
+        let blob
+        let receitaIdFromServer = null
+        if (/application\/pdf/i.test(ct)) {
+          blob = new Blob([res.data], { type: ct })
+        } else {
+          const txt = await res.data.text()
+          const data = JSON.parse(txt)
+          const pdfB64 = data?.pdf_base64 || data?.file_base64 || data?.documento_base64 || data?.arquivo_base64
+          if (!pdfB64) throw new Error("Resposta sem PDF base64")
+          blob = base64ToBlob(pdfB64, "application/pdf")
+          filename = data?.filename || filename
+          receitaIdFromServer = data?.receita_id || data?.receita?.id || data?.id || null
+        }
+        const hashHex = await this.computeSHA256Hex(blob)
+        const nowIso = new Date().toISOString()
+        if (receitaIdFromServer) {
+          try { await this.atualizarReceita(receitaIdFromServer, { assinada: true, assinada_em: nowIso, algoritmo_assinatura: "RSA-SHA256-PADES", hash_documento: hashHex, carimbo_tempo: nowIso }) } catch {}
+        }
+        return { receitaId: receitaIdFromServer || null, filename, blob }
+      } catch (e1) {
+        const st1 = e1?.response?.status
+        if (st1 === 401) throw e1
+        lastErr = e1
+        // 2) Fallback JSON
+        try {
+          if (VERBOSE) { try { console.debug(`[assinarReceitaEPersistir] POST json ->`, url) } catch {} }
+          const { data } = await api.post(url, jsonUnified)
+          const pdfB64 = data?.pdf_base64 || data?.file_base64 || data?.documento_base64 || data?.arquivo_base64
+          if (!pdfB64) throw new Error("Resposta sem PDF base64")
+          const blob = base64ToBlob(pdfB64, "application/pdf")
+          const filename = data?.filename || "receita_assinada.pdf"
+          const ridSrv = data?.receita_id || data?.receita?.id || data?.id || null
+          const hashHex = await this.computeSHA256Hex(blob)
+          const nowIso = new Date().toISOString()
+          if (ridSrv) { try { await this.atualizarReceita(ridSrv, { assinada: true, assinada_em: nowIso, algoritmo_assinatura: "RSA-SHA256-PADES", hash_documento: hashHex, carimbo_tempo: nowIso }) } catch {} }
+          return { receitaId: ridSrv || null, filename, blob }
+        } catch (e2) {
+          lastErr = e2
+        }
+      }
+    }
+
+    // Fallback: fluxo local (criar -> itens -> gerar -> assinar -> persistir)
     const criada = await this.criarReceita(dadosReceita)
     const receitaId = criada?.id || criada?.pk || criada?.uuid || criada?.receita?.id
-    if (!receitaId) throw new Error("Não foi possível obter ID da receita após criação.")
+    if (!receitaId) throw (lastErr || new Error("Não foi possível obter ID da receita após criação."))
     if (VERBOSE) { try { console.debug("[assinarReceitaEPersistir] receita criada:", receitaId, criada) } catch {} }
 
-    // 2) Persistir itens
     try { await this.salvarItensReceita(receitaId, itens) } catch (_) {}
 
-    // 3) Gerar PDF caso não tenha sido fornecido
     let sourceFile = pdfFile
     if (!sourceFile) {
-      const { blob, filename } = await this.gerarDocumentoReceita({ ...dadosReceita, receita_id: receitaId, formato: "pdf" })
+      const { blob, filename } = await this.gerarDocumentoReceitaLocal({ ...dadosReceita, receita_id: receitaId, formato: "pdf" })
       sourceFile = new File([blob], filename || "receita.pdf", { type: "application/pdf" })
     }
 
-    // 4) Assinar PDF
     const formData = new FormData()
     formData.append("file", sourceFile)
     formData.append("pdf", sourceFile)
@@ -2447,13 +2840,11 @@ export const medicoService = {
 
     const signedBlob = signed?.blob
     const signedName = signed?.filename || "receita_assinada.pdf"
-    if (!signedBlob) throw new Error("Falha ao assinar a receita: blob vazio.")
+    if (!signedBlob) throw (lastErr || new Error("Falha ao assinar a receita: blob vazio."))
 
-    // 5) Calcular hash e persistir arquivo assinado
     const hashHex = await this.computeSHA256Hex(signedBlob)
     await this.salvarArquivoAssinado(receitaId, signedBlob, signedName)
 
-    // 6) Atualizar metadados de assinatura na receita
     let medicoId = null
     try { medicoId = await this._resolveMedicoId() } catch {}
     const nowIso = new Date().toISOString()
@@ -2468,63 +2859,5 @@ export const medicoService = {
     })
 
     return { receitaId, filename: signedName, blob: signedBlob }
-  },
-
-  // NOVO: salvar configuração de template personalizado no backend
-  async salvarTemplateConfig(templateConfig, doctorLogo = null) {
-    const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS || "").toLowerCase() === "true"
-    
-    try {
-      const midResolved = await this._resolveMedicoId().catch(() => null)
-      if (!midResolved) {
-        throw new Error("Não foi possível resolver o ID do médico")
-      }
-
-      const payload = {
-        medico_id: midResolved,
-        template_config: templateConfig,
-        doctor_logo: doctorLogo,
-      }
-
-      // Candidatos de endpoint para salvar template
-      const candidates = [
-        "/api/medicos/template/",
-        "/medicos/template/",
-        "/api/template-config/",
-        "/template-config/",
-        `/api/medicos/${midResolved}/template/`,
-        `/medicos/${midResolved}/template/`,
-      ]
-
-      let lastErr = null
-      for (const url of candidates) {
-        try {
-          if (VERBOSE) { try { console.debug("[salvarTemplateConfig] tentando:", url) } catch {} }
-          const { data } = await api.post(url, payload)
-          if (VERBOSE) { try { console.debug("[salvarTemplateConfig] sucesso:", url, data) } catch {} }
-          return data
-        } catch (e) {
-          const st = e?.response?.status
-          if (st === 401) throw e
-          if (VERBOSE) { try { console.warn("[salvarTemplateConfig] falhou:", url, st) } catch {} }
-          lastErr = e
-          continue
-        }
-      }
-
-      // Se falhou em todos os endpoints, ainda salvar no localStorage como fallback
-      if (templateConfig) {
-        localStorage.setItem(`template_config_${midResolved}`, JSON.stringify(templateConfig))
-      }
-      if (doctorLogo) {
-        localStorage.setItem(`doctor_logo_${midResolved}`, doctorLogo)
-      }
-
-      if (VERBOSE) { try { console.warn("[salvarTemplateConfig] salvou apenas no localStorage como fallback") } catch {} }
-      return { saved_locally: true, medico_id: midResolved }
-    } catch (e) {
-      if (VERBOSE) { try { console.error("[salvarTemplateConfig] erro:", e) } catch {} }
-      throw e
-    }
   },
 };

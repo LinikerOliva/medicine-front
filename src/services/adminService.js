@@ -436,7 +436,11 @@ export const adminService = {
     const normalized = sanitizeListParams(normalizeParams(params))
     const response = await api.get("/users/", { params: normalized })
     const data = response.data
-    const results = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+    const raw = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+    const results = raw.map((u) => ({
+      ...u,
+      id: u?.id ?? u?.pk ?? u?.uuid ?? u?.user_id ?? u?.usuario_id ?? null,
+    }))
     const count = typeof data?.count === "number" ? data.count : results.length
     return { results, count }
   },
@@ -584,6 +588,8 @@ export const adminService = {
       { suffix: "remover/", method: "post", bodyKey: "ids" },
       { suffix: "delete/", method: "post", bodyKey: "ids" },
       { suffix: "bulk_delete/", method: "post", bodyKey: "ids" },
+      { suffix: "bulk-delete/", method: "post", bodyKey: "ids" },
+      { suffix: "excluir/", method: "post", bodyKey: "ids" },
     ]
 
     for (const base of bases) {
@@ -615,19 +621,45 @@ export const adminService = {
         lastErr = err
       }
 
+      // Variante DELETE com querystring ?ids=1,2,3
+      try {
+        const qs = encodeURIComponent(idList.join(","))
+        const url = `${b}?ids=${qs}`
+        const resp = await api.delete(url)
+        return resp.data
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] DELETE bulk (query) falhou", b, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+      }
+
       // Fallback: deletar cada ID individualmente
       let anySuccess = false
       for (const id of idList) {
-        const url = `${b}${id}/`
-        try {
-          await api.delete(url)
+        const candidates = [
+          `${b}${id}/`,
+          `${b}delete/${id}/`,
+          `${b}remover/${id}/`,
+        ]
+        let deleted = false
+        for (const url of candidates) {
+          try {
+            await api.delete(url)
+            deleted = true
+            break
+          } catch (err) {
+            const st = err?.response?.status
+            if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] DELETE por id falhou", url, "status=", st)
+            if (st === 401) throw err
+            lastErr = err
+          }
+        }
+        if (!deleted) {
+          // PUT/PATCH com action=delete para backends sem DELETE
+          try { await api.patch(`${b}${id}/`, { action: "delete" }); anySuccess = true } catch {}
+        } else {
           anySuccess = true
-        } catch (err) {
-          const st = err?.response?.status
-          if (VERBOSE) console.warn("[adminService.removerUsuariosEmMassa] DELETE por id falhou", url, "status=", st)
-          if (st === 401) throw err
-          lastErr = err
-          // Continua tentando os demais IDs/endpoints
         }
       }
       if (anySuccess) {
