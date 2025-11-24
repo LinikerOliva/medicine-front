@@ -2,6 +2,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import fs from 'fs';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -372,9 +373,55 @@ export default defineConfig(({ mode }) => {
 
           if (isNotificationEndpoint) {
             if (method === 'POST') {
+              // Envio real de e-mail quando caminho terminar com enviar-email/
+              const endsWith = (p) => pathname.endsWith(p) || pathname.startsWith(p);
+              const isEmail = endsWith(`${base}notificacoes/enviar-email/`) || endsWith(`${base}notifications/enviar-email/`);
+              if (isEmail) {
+                try {
+                  const { default: Busboy } = await import('busboy');
+                  const fields = {};
+                  let fileBuf = null;
+                  let fileName = null;
+                  await new Promise((resolve, reject) => {
+                    try {
+                      const bb = new Busboy({ headers: req.headers });
+                      bb.on('field', (name, val) => { fields[name] = val });
+                      bb.on('file', (name, file, filename, encoding, mimetype) => {
+                        const chunks = [];
+                        file.on('data', (d) => chunks.push(d));
+                        file.on('end', () => { fileBuf = Buffer.concat(chunks); fileName = filename || 'receita.pdf'; });
+                      });
+                      bb.on('finish', resolve);
+                      bb.on('error', reject);
+                      req.pipe(bb);
+                    } catch (e) { reject(e) }
+                  });
+                  const smtpHost = env.VITE_SMTP_HOST || 'smtp.gmail.com';
+                  const smtpPort = Number(env.VITE_SMTP_PORT || 587);
+                  const smtpSecure = String(env.VITE_SMTP_SECURE || 'false').toLowerCase() === 'true';
+                  const smtpUser = env.VITE_SMTP_USER || env.EMAIL_HOST_USER || '';
+                  const smtpPass = env.VITE_SMTP_PASS || env.EMAIL_HOST_PASSWORD || '';
+                  const fromAddr = env.VITE_SMTP_FROM || env.DEFAULT_FROM_EMAIL || smtpUser || 'no-reply@localhost';
+                  const toAddr = fields.email || fields.to || '';
+                  if (!smtpUser || !smtpPass) {
+                    return json(res, 422, { ok: false, detail: 'SMTP não configurado (VITE_SMTP_USER/VITE_SMTP_PASS ou EMAIL_HOST_USER/EMAIL_HOST_PASSWORD)' });
+                  }
+                  if (!toAddr) {
+                    return json(res, 400, { ok: false, detail: 'Destino (email) é obrigatório' });
+                  }
+                  const { default: nodemailer } = await import('nodemailer');
+                  const transporter = nodemailer.createTransport({ host: smtpHost, port: smtpPort, secure: smtpSecure, auth: { user: smtpUser, pass: smtpPass } });
+                  const subject = fields.assunto || 'Nova receita médica';
+                  const textMsg = fields.mensagem || (fields.link_download ? `Sua receita está disponível: ${fields.link_download}` : 'Receita em anexo.');
+                  const attachments = fileBuf ? [{ filename: fileName || 'receita.pdf', content: fileBuf }] : [];
+                  await transporter.sendMail({ from: fromAddr, to: toAddr, subject, text: textMsg, attachments });
+                  return json(res, 200, { success: true, message: 'E-mail enviado', to: toAddr, subject, has_attachment: !!fileBuf });
+                } catch (e) {
+                  return json(res, 500, { ok: false, error: String(e?.message || e) });
+                }
+              }
+
               const body = await readJsonBody(req);
-              
-              // Simular sucesso para todos os tipos de notificação
               const mockResponse = {
                 success: true,
                 id: `mock-${Date.now()}`,
@@ -382,7 +429,6 @@ export default defineConfig(({ mode }) => {
                 timestamp: new Date().toISOString(),
                 ...body
               };
-
               return json(res, 200, mockResponse);
             }
 
@@ -588,11 +634,39 @@ export default defineConfig(({ mode }) => {
     },
   });
 
+  // Servir arquivos de /logo/ diretamente do diretório raiz "logo" (apenas DEV)
+  const serveLogoStaticPlugin = () => ({
+    name: 'serve-logo-static',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        try {
+          const method = (req.method || 'GET').toUpperCase()
+          if (method !== 'GET') return next()
+          const url = req.url || '/'
+          const pathname = url.split('?')[0]
+          if (!pathname.startsWith('/logo/')) return next()
+          const file = pathname.replace('/logo/', '')
+          const abs = path.resolve(process.cwd(), 'logo', file)
+          if (!fs.existsSync(abs)) return next()
+          const ext = path.extname(abs).toLowerCase()
+          const type = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'application/octet-stream'
+          const buf = fs.readFileSync(abs)
+          res.statusCode = 200
+          res.setHeader('Content-Type', type)
+          res.setHeader('Cache-Control', 'public, max-age=3600')
+          return res.end(buf)
+        } catch (_) { return next() }
+      })
+    }
+  })
+
   return {
     plugins: [
       react(),
       ...(enableMockReceita ? [mockReceitaPlugin()] : []),
       ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
+      serveLogoStaticPlugin(),
       mockNotificationsPlugin(), // Sempre ativo em desenvolvimento
     ],
     resolve: {

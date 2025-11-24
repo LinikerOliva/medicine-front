@@ -23,7 +23,7 @@ import {
 // Cada seção tem um label e um array de items { label, path, icon }
 export const sidebarConfig = {
   paciente: {
-    header: { title: "Portal Médico", subtitle: "Paciente", icon: User },
+    header: { title: "Trathea", subtitle: "Paciente", icon: User },
     sections: [
       {
         label: "Menu Principal",
@@ -40,7 +40,7 @@ export const sidebarConfig = {
     ],
   },
   medico: {
-    header: { title: "Portal Médico", subtitle: "Médico", icon: Stethoscope },
+    header: { title: "Trathea", subtitle: "Médico", icon: Stethoscope },
     sections: [
       {
         label: "Menu Principal",
@@ -54,7 +54,7 @@ export const sidebarConfig = {
     ],
   },
   clinica: {
-    header: { title: "Portal Médico", subtitle: "Clínica", icon: CalendarDays },
+    header: { title: "Trathea", subtitle: "Clínica", icon: CalendarDays },
     sections: [
       {
         label: "Menu Principal",
@@ -71,7 +71,7 @@ export const sidebarConfig = {
     ],
   },
   secretaria: {
-    header: { title: "Portal Médico", subtitle: "Secretaria", icon: Users },
+    header: { title: "Trathea", subtitle: "Secretaria", icon: Users },
     sections: [
       {
         label: "Menu Principal",
@@ -86,7 +86,7 @@ export const sidebarConfig = {
     ],
   },
   admin: {
-    header: { title: "Portal Médico", subtitle: "Admin", icon: Shield },
+    header: { title: "Trathea", subtitle: "Admin", icon: Shield },
     sections: [
       {
         label: "Painel",

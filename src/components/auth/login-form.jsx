@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, Navigate } from "react-router-dom"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
@@ -9,8 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { useAuth } from "../../contexts/auth-context"
 import { useToast } from "../../hooks/use-toast"
 import { useTheme } from "../theme-provider"
-import { Stethoscope, Mail, Lock, Eye, EyeOff } from "lucide-react"
-import { validateEmail, validateLoginPassword } from "../../utils/inputValidation"
+import { Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { validateEmail, validateLoginPassword, validateCPF } from "../../utils/inputValidation"
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
@@ -21,16 +21,28 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [validationErrors, setValidationErrors] = useState({})
 
-  const { login, loginWithGoogle } = useAuth()
+  const { login, loginWithGoogle, isAuthenticated, user, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const navigate = useNavigate()
+
+  const defaultPath = (() => {
+    const role = user?.role || user?.tipo
+    if (role === "admin") return "/admin/dashboard"
+    if (role === "medico") return "/medico/dashboard"
+    if (role === "clinica") return "/clinica/dashboard"
+    return "/paciente/perfil"
+  })()
+
+  if (authLoading) return null
+  if (isAuthenticated) return <Navigate to={defaultPath} replace />
 
   const validateForm = () => {
     const errors = {}
     
-    const emailValidation = validateEmail(formData.email)
-    if (!emailValidation.isValid) {
-      errors.email = emailValidation.error
+    const emailVal = validateEmail(formData.email)
+    const cpfVal = validateCPF(formData.email)
+    if (!emailVal.isValid && !cpfVal.isValid) {
+      errors.email = "Informe um e-mail válido ou CPF válido"
     }
 
     const passwordValidation = validateLoginPassword(formData.password)
@@ -58,7 +70,10 @@ export function LoginForm() {
     setLoading(true)
 
     try {
-      const data = await login(formData)
+      const emailVal = validateEmail(formData.email)
+      const cpfVal = validateCPF(formData.email)
+      const usuarioSan = emailVal.isValid ? emailVal.value : (cpfVal.isValid ? cpfVal.value : formData.email)
+      const data = await login({ email: usuarioSan, username: usuarioSan, password: formData.password })
 
       toast({
         title: "Login realizado com sucesso!",
@@ -195,11 +210,11 @@ export function LoginForm() {
 
       <Card className="w-full max-w-md shadow-2xl border-0 backdrop-blur-xl bg-white/90 relative z-10">
         <CardHeader className="space-y-1 text-center pb-8">
-          <div className="mx-auto w-16 h-16 bg-medical-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-            <Stethoscope className="w-8 h-8 text-white" />
+          <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden mb-6 shadow-lg">
+            <img src="/logo/logoTrathea.jpg" alt="Trathea" className="w-full h-full object-cover" />
           </div>
-          <CardTitle className="text-3xl font-bold text-medical-primary">
-            Portal Médico
+          <CardTitle className="text-3xl font-bold text-medical-primary mx-auto text-center">
+            Trathea
           </CardTitle>
           <CardDescription className="text-slate-600 text-base">
             Acesse sua conta para continuar
@@ -211,13 +226,13 @@ export function LoginForm() {
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-medium flex items-center gap-2">
                 <Mail className="w-4 h-4" />
-                Email
+                E-mail ou CPF
               </Label>
               <Input
                 id="email"
                 name="email"
-                type="email"
-                placeholder="seu@email.com"
+                type="text"
+                placeholder="seu@email.com ou 52959459873"
                 value={formData.email}
                 onChange={handleChange}
                 required
@@ -330,6 +345,24 @@ export function LoginForm() {
                 Cadastre-se
               </Link>
             </div>
+          </div>
+
+          <div className="mt-6 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => {
+                const role = user?.role || user?.tipo
+                if (isAuthenticated) {
+                  navigate("/inicio")
+                } else {
+                  navigate("/")
+                }
+              }}
+            >
+              Voltar ao início
+            </Button>
           </div>
         </CardContent>
       </Card>

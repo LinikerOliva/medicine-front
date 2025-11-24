@@ -13,6 +13,9 @@ export default function RequireAdmin({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
+  // Token válido mas usuário ainda não carregado: não bloquear
+  if (!user) return children
+
   const role = user?.role || user?.tipo
 
   if (role !== "admin") {

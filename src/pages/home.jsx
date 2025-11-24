@@ -5,8 +5,9 @@ import { Button } from "../components/ui/button"
 import { UserRoleSelector } from "../components/user-role-selector"
 import { ThemeToggle } from "../components/theme-toggle"
 import { useUser } from "../contexts/user-context"
+import { useAuth } from "../contexts/auth-context"
+import { Navigate } from "react-router-dom"
 import { 
-  Heart, 
   Stethoscope, 
   Calendar, 
   Shield, 
@@ -17,7 +18,14 @@ import {
 } from "lucide-react"
 
 export default function Home() {
+  const { isAuthenticated: authOk, user } = useAuth()
   const { isAuthenticated } = useUser()
+  // Redireciona usuários autenticados diretamente para seus painéis
+  if (authOk) {
+    const role = user?.role || user?.tipo
+    const path = role === "admin" ? "/admin/dashboard" : role === "medico" ? "/medico/dashboard" : role === "clinica" ? "/clinica/dashboard" : "/paciente/perfil"
+    return <Navigate to={path} replace />
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-app-soft">
@@ -25,11 +33,11 @@ export default function Home() {
         <div className="container flex h-16 items-center">
           <div className="mr-4 flex">
             <Link to="/" className="mr-6 flex items-center space-x-3 group">
-              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-medical-primary to-blue-600 text-white shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105 dark:from-emerald-400 dark:to-emerald-500">
-                <Heart className="w-5 h-5" />
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
+                <img src="/logo/logoTrathea.jpg" alt="Trathea" className="w-full h-full object-cover" />
               </div>
               <span className="font-bold text-xl bg-gradient-to-r from-medical-primary to-blue-600 bg-clip-text text-transparent">
-                Portal Médico
+                Trathea
               </span>
             </Link>
           </div>
@@ -65,7 +73,7 @@ export default function Home() {
                   </span>
                   <br />
                   <span className="bg-gradient-to-r from-teal-600 via-medical-primary to-blue-600 bg-clip-text text-transparent">
-                    Portal Médico
+                    Trathea
                   </span>
                 </h1>
                 

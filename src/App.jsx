@@ -82,6 +82,8 @@ import ReceberReceita from "./pages/receber/receita"
 // Verificação de receitas
 import VerificarReceita from "./pages/verificar/[id]"
 import TestSignature from "./components/TestSignature"
+import BrandWebView from "./pages/brand/webview"
+import { useAuth } from "./contexts/auth-context"
 
 function App() {
   return (
@@ -99,6 +101,8 @@ function App() {
             <Route path="/receber/receita" element={<ReceberReceita />} />
             <Route path="/verificar/:id" element={<VerificarReceita />} />
             <Route path="/test-signature" element={<TestSignature />} />
+            <Route path="/brand" element={<BrandWebView />} />
+            <Route path="/inicio" element={<RedirectHome />} />
 
             {/* Paciente */}
             <Route
@@ -213,7 +217,7 @@ function App() {
 
             {/* Página não encontrada */}
             <Route path="*" element={<div>Página não encontrada</div>} />
-          </Routes>
+        </Routes>
         </Router>
       </UserProvider>
     </AuthProvider>
@@ -221,3 +225,11 @@ function App() {
 }
 
 export default App;
+
+function RedirectHome() {
+  const { isAuthenticated, user } = useAuth()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  const role = user?.role || user?.tipo
+  const path = role === "admin" ? "/admin/dashboard" : role === "medico" ? "/medico/dashboard" : role === "clinica" ? "/clinica/dashboard" : "/paciente/perfil"
+  return <Navigate to={path} replace />
+}

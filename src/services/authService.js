@@ -46,16 +46,68 @@ export const authService = {
   async login(credentials) {
     try {
       // Envia ambos os campos para compatibilizar com backends que exigem 'username' OU 'email'
+      const userRaw = credentials.username?.trim?.() || credentials.email?.trim?.() || ""
+      const isCpf11 = /^\d{11}$/.test(userRaw)
       const payload = {
-        username: (credentials.username?.trim?.() || credentials.email?.trim?.() || undefined),
-        email: (credentials.email?.trim?.() || credentials.username?.trim?.() || undefined),
+        username: userRaw || undefined,
+        email: userRaw || undefined,
         password: credentials.password,
       }
 
-      const response = await api.post(
-        import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
-        payload
-      )
+      // Lookup por CPF -> tenta descobrir email/username oficial
+      let resolvedIdentifier = userRaw
+      if (isCpf11) {
+        const lookupCandidates = [
+          (import.meta.env.VITE_USER_PROFILE_ENDPOINT || "/api/users/") + `?cpf=${userRaw}`,
+          (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/") + `?cpf=${userRaw}`,
+          "/api/auth/users/?cpf=" + userRaw,
+        ]
+        for (const url of lookupCandidates) {
+          try {
+            const res = await api.get(url)
+            const data = res?.data
+            const list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+            const hit = list?.[0]
+            const foundEmail = hit?.email || hit?.user?.email || null
+            const foundUsername = hit?.username || hit?.user?.username || null
+            if (foundEmail || foundUsername) {
+              resolvedIdentifier = foundEmail || foundUsername
+              break
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Primeira tentativa (padrão)
+      let response
+      try {
+        response = await api.post(
+          import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
+          { ...payload, username: resolvedIdentifier || payload.username, email: resolvedIdentifier || payload.email }
+        )
+      } catch (e1) {
+        // Fallback: quando o identificador for CPF, alguns backends exigem campo específico 'cpf'
+        if (isCpf11) {
+          const cpfPayload = { cpf: userRaw, password: credentials.password }
+          const candidates = [
+            import.meta.env.VITE_LOGIN_CPF_ENDPOINT || "/api/auth/login_cpf/",
+            import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
+            "/auth/login_cpf/",
+          ]
+          let lastErr = e1
+          for (const ep of candidates) {
+            try {
+              response = await api.post(ep, cpfPayload)
+              break
+            } catch (e2) {
+              lastErr = e2
+            }
+          }
+          if (!response) throw lastErr
+        } else {
+          throw e1
+        }
+      }
 
       if (response.data) {
         const authScheme = import.meta.env.VITE_AUTH_SCHEME || "Token"

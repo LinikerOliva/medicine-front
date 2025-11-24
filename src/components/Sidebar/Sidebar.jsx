@@ -45,7 +45,6 @@ import {
   Palette,
   Zap,
   Activity,
-  Heart,
   Plus,
   Calendar,
   Clock
@@ -142,9 +141,9 @@ export function Sidebar({ role = "paciente" }) {
       {/* Header Médico Profissional */}
       <SidebarHeader className="border-b border-medical-border/10 bg-gradient-to-r from-medical-primary/5 to-medical-secondary/5 p-6">
         {/* Logo e Branding Médico */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center size-10 rounded-xl bg-gradient-to-br from-medical-primary to-medical-secondary shadow-lg">
-            <Heart className="size-5 text-white" />
+          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center justify-center size-10 rounded-xl overflow-hidden shadow-lg">
+            <img src="/logo/logoTrathea.jpg" alt="Trathea" className="w-full h-full object-cover" />
           </div>
           <div className="flex flex-col">
             <h1 className="text-lg font-bold text-medical-primary bg-gradient-to-r from-medical-primary to-medical-secondary bg-clip-text text-transparent">
