@@ -414,6 +414,9 @@ export default function Configuracao() {
     endereco: "",
   })
   const [savingMedico, setSavingMedico] = useState(false)
+  const [secretarias, setSecretarias] = useState([])
+  const [secLoading, setSecLoading] = useState(false)
+  const [secSelected, setSecSelected] = useState("")
   
   useEffect(() => {
     if (!isMedico) return
@@ -441,6 +444,12 @@ export default function Configuracao() {
           endereco = `${enderecoSrc.logradouro || enderecoSrc.rua || ""} ${enderecoSrc.numero || ""} ${enderecoSrc.bairro || ""} ${enderecoSrc.cidade || ""} ${enderecoSrc.estado || ""}`.trim()
         }
         setMedicoInfo({ nome, crm, especialidade, telefone, endereco })
+        try {
+          setSecLoading(true)
+          const list = await (await import("@/services/secretariaService")).secretariaService.listarSecretarias({ limit: 100 })
+          setSecretarias(Array.isArray(list) ? list : [])
+        } catch {}
+        finally { setSecLoading(false) }
       } catch {}
     })()
   }, [isMedico])
@@ -979,6 +988,44 @@ export default function Configuracao() {
                       <Button onClick={handleSaveMedicoInfo} disabled={savingMedico}>
                         {savingMedico ? "Salvando..." : "Salvar Dados do Médico"}
                       </Button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <p className="font-semibold">Secretária vinculada</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Secretária</Label>
+                        <select className="border rounded-md px-2 py-2" value={secSelected} onChange={(e) => setSecSelected(e.target.value)} disabled={secLoading}>
+                          <option value="">Selecione</option>
+                          {secretarias.map((s) => (
+                            <option key={s.id} value={String(s.id)}>{s?.nome || (s?.user ? `${s.user.first_name || ""} ${s.user.last_name || ""}`.trim() : `Secretária #${s.id}`)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-end">
+                        <Button
+                          onClick={async () => {
+                            if (!secSelected) { toast({ title: "Selecione", description: "Escolha uma secretária." }); return }
+                            try {
+                              const perfil = await medicoService.getPerfil()
+                              const mid = perfil?.id || perfil?.medico?.id
+                              if (!mid) throw new Error("Médico não identificado")
+                              const { secretariaService } = await import("@/services/secretariaService")
+                              await secretariaService.vincularMedico(String(secSelected), String(mid))
+                              toast({ title: "Vinculada", description: "Secretária vinculada ao médico." })
+                            } catch (e) {
+                              const msg = e?.response?.data ? JSON.stringify(e.response.data) : e?.message || "Falha ao vincular"
+                              toast({ title: "Erro", description: msg, variant: "destructive" })
+                            }
+                          }}
+                          disabled={secLoading || !secSelected}
+                        >
+                          Vincular Secretária
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>

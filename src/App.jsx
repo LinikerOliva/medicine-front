@@ -41,6 +41,7 @@ import MedicoConsultasHoje from "./pages/medico/consultas/hoje";
 import PreviewReceitaMedico from "./pages/medico/paciente/[id]/receita/preview";
 import ConfirmacaoEnvioReceita from "@/pages/medico/paciente/[id]/receita/confirmacao";
 import ResumoConsultaMedico from "./pages/medico/paciente/[id]/consulta/resumo";
+import ReceitasPacienteMedico from "./pages/medico/paciente/[id]/receitas/receitas";
 
 // Clínica
 import DashboardClinica from "./pages/clinica/dashboard/dashboard";
@@ -143,6 +144,7 @@ function App() {
               <Route path="paciente/:id/perfil" element={<PerfilPacienteMedico />} />
               <Route path="paciente/:id/prontuario" element={<ProntuarioPacienteMedico />} />
               <Route path="paciente/:id/exames" element={<ExamesPacienteMedico />} />
+              <Route path="paciente/:id/receitas" element={<ReceitasPacienteMedico />} />
               <Route path="paciente/:id/iniciar-consulta" element={<IniciarConsulta />} />
               {/* Nova rota de resumo da consulta */}
               <Route path="paciente/:id/consulta/resumo" element={<ResumoConsultaMedico />} />

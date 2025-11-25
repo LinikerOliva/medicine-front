@@ -432,17 +432,33 @@ export const adminService = {
   },
 
   async getUsuarios(params = {}) {
-    // Simplificado: usar APENAS o endpoint /users/ com os parâmetros normalizados
     const normalized = sanitizeListParams(normalizeParams(params))
-    const response = await api.get("/users/", { params: normalized })
-    const data = response.data
-    const raw = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
-    const results = raw.map((u) => ({
-      ...u,
-      id: u?.id ?? u?.pk ?? u?.uuid ?? u?.user_id ?? u?.usuario_id ?? null,
-    }))
-    const count = typeof data?.count === "number" ? data.count : results.length
-    return { results, count }
+    const bases = getUserBaseCandidates()
+    let lastErr = null
+    for (const base of bases) {
+      const b = ensureTrailingSlash(base)
+      try {
+        const response = await api.get(b, { params: normalized })
+        const data = response.data
+        const raw = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+        const results = raw.map((u) => ({
+          ...u,
+          id: u?.id ?? u?.pk ?? u?.uuid ?? u?.user_id ?? u?.usuario_id ?? null,
+        }))
+        const count = typeof data?.count === "number" ? data.count : results.length
+        return { results, count }
+      } catch (err) {
+        const st = err?.response?.status
+        if (VERBOSE) console.warn("[adminService.getUsuarios] Falhou", b, "status=", st)
+        if (st === 401) throw err
+        lastErr = err
+        continue
+      }
+    }
+    if (!VERBOSE && import.meta.env.DEV) {
+      console.info("[adminService.getUsuarios] Nenhum endpoint respondeu. Retornando lista vazia.")
+    }
+    return { results: [], count: 0 }
   },
 
   async getClinicas(params = {}) {
@@ -755,13 +771,15 @@ function getBaseCandidates() {
 function getUserBaseCandidates() {
   const envAdmin = (import.meta.env.VITE_ADMIN_USERS_ENDPOINT || "").trim()
   const envGeneric = (import.meta.env.VITE_USERS_ENDPOINT || "").trim()
-  const envs = Array.from(new Set([envAdmin, envGeneric].filter(Boolean)))
+  const envProfile = (import.meta.env.VITE_USER_PROFILE_ENDPOINT || "").trim()
+  const envs = Array.from(new Set([envAdmin, envGeneric, envProfile].filter(Boolean)))
 
   const preferred = [
     "/admin/usuarios/",
     "/usuarios/",
     "/admin/users/",
     "/users/",
+    "/api/users/",
   ]
 
   return Array.from(new Set([...envs, ...preferred].filter(Boolean)))

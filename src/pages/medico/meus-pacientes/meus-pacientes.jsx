@@ -19,13 +19,9 @@ export default function MeusPacientes() {
     ;(async () => {
       try {
         const perfil = await medicoService.getPerfil()
-        const medicoId = perfil?.id || perfil?.medico?.id
-        if (medicoId) {
-          const data = await medicoService.getPacientesVinculados(medicoId)
-          if (active) setPacientes(Array.isArray(data) ? data : [])
-        } else {
-          if (active) setPacientes([])
-        }
+        const medicoId = perfil?.id || perfil?.medico?.id || null
+        const data = await medicoService.getMeusPacientes(medicoId)
+        if (active) setPacientes(Array.isArray(data) ? data : [])
       } catch {
         if (active) setPacientes([])
       } finally {

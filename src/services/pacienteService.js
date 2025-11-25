@@ -152,24 +152,69 @@ export const pacienteService = {
     // Combina data e hora em ISO para compatibilidade com backends que exigem "data_hora"
     const dataIso = data ? `${data}${hora ? `T${hora}:00` : 'T00:00:00'}` : undefined
 
-    const payload = {
+    // Normalizar "tipo" para escolhas comuns de backends
+    const normalizeTipo = (t) => {
+      const s = String(t || '').toLowerCase().trim()
+      const map = {
+        'primeira consulta': 'inicial',
+        'primeira': 'inicial',
+        'consulta inicial': 'inicial',
+        'inicial': 'inicial',
+        'retorno': 'retorno',
+        'follow-up': 'retorno',
+        'rotina': 'rotina',
+        'checkup': 'rotina',
+      }
+      return map[s] || s || undefined
+    }
+
+    const tipoNorm = normalizeTipo(tipo)
+
+    const payloadBase = {
       medico,
       paciente: paciente?.id,
       data,
       hora,
-      // Campos alternativos aceitos por vários serializers
       data_hora: dataIso,
       inicio: dataIso,
       horario: dataIso,
       modalidade,
       local,
       observacoes,
-      tipo,
+      tipo: tipoNorm,
       motivo,
     }
 
-    const response = await api.post(endpoint, payload)
-    return response.data
+    // Remover campos vazios/undefined
+    const clean = {}
+    Object.entries(payloadBase).forEach(([k, v]) => {
+      if (v === undefined || v === null) return
+      if (typeof v === 'string' && v.trim() === '') return
+      clean[k] = v
+    })
+
+    // Tenta POST com payload normalizado; se falhar por validação do "tipo", tenta com fallback
+    try {
+      const response = await api.post(endpoint, clean)
+      return response.data
+    } catch (e1) {
+      const st = e1?.response?.status
+      const body = e1?.response?.data
+      const hasTipoError = body && (body.tipo || body.detail?.includes?.('tipo'))
+      if (st && [400, 422].includes(st) && hasTipoError) {
+        // 1) Tentar com tipo=rotina
+        try {
+          const response = await api.post(endpoint, { ...clean, tipo: 'rotina' })
+          return response.data
+        } catch (e2) {
+          // 2) Tentar sem o campo tipo
+          const { tipo: _omit, ...noTipo } = clean
+          const response = await api.post(endpoint, noTipo)
+          return response.data
+        }
+      }
+      throw e1
+    }
   },
 
   async getAgendaMedico({ medico, date, apenas_disponiveis = true }) {

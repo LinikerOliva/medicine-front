@@ -6,8 +6,18 @@ export const secretariaService = {
     return data;
   },
 
+  async listarSecretarias(params = {}) {
+    const base = (import.meta.env.VITE_SECRETARIAS_ENDPOINT || "/secretarias/").replace(/\/?$/, "/")
+    try {
+      const { data } = await api.get(base, { params })
+      const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      return list
+    } catch { return [] }
+  },
+
   async listarMedicos() {
-    const { data } = await api.get(import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/");
+    const base = (import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/").replace(/\/?$/, "/")
+    const { data } = await api.get(base, { params: { limit: 200 } });
     return Array.isArray(data?.results) ? data.results : data;
   },
 
@@ -21,6 +31,21 @@ export const secretariaService = {
     const url = medicoId ? `${endpointBase}?medico=${medicoId}` : endpointBase;
     const { data } = await api.get(url, { params });
     return data;
+  },
+
+  async listarConsultasHoje(medicoId) {
+    try {
+      const { data } = await api.get((import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/"), {
+        params: (() => {
+          const d = new Date(); const pad = (n) => String(n).padStart(2, "0"); const today = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+          const p = { date: today, data: today, dia: today, "data__date": today }
+          if (medicoId) { p.medico = medicoId; p.medico_id = medicoId }
+          return p
+        })()
+      })
+      const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      return list
+    } catch { return [] }
   },
 
   async agendarConsulta(payload) {
@@ -92,5 +117,66 @@ export const secretariaService = {
     });
 
     return data;
+  },
+
+  async buscarPacientes(query) {
+    try {
+      const base = (import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/").replace(/\/?$/, "/")
+      const { data } = await api.get(base, { params: { search: query, limit: 20 } })
+      let list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      if (list.length > 0) return list
+    } catch {}
+    // Fallback: busca em /users/ com role=paciente
+    try {
+      const usersBase = (import.meta.env.VITE_USERS_ENDPOINT || "/users/").replace(/\/?$/, "/")
+      const { data } = await api.get(usersBase, { params: { search: query, limit: 20, role: "paciente", tipo: "paciente" } })
+      const raw = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
+      // Mapear para formato de paciente mínimo
+      const mapped = raw.map((u) => ({ id: u?.id || u?.user_id || u?.pk, user: { first_name: u?.first_name, last_name: u?.last_name, username: u?.username }, nome: u?.nome || undefined, cpf: u?.cpf }))
+      return mapped
+    } catch {}
+    return []
+  },
+
+  async getMedicosDaSecretaria(secretariaId) {
+    const out = []
+    const push = (arr) => {
+      const list = Array.isArray(arr) ? arr : (Array.isArray(arr?.results) ? arr.results : [])
+      list.forEach((m) => { if (m) out.push(m) })
+    }
+    if (secretariaId) {
+      try {
+        const base = (import.meta.env.VITE_SECRETARIAS_ENDPOINT || "/secretarias/").replace(/\/?$/, "/")
+        const res = await api.get(`${base}${secretariaId}/medicos/`).catch(() => null)
+        if (res?.data) push(res.data)
+      } catch {}
+    }
+    try {
+      const prof = await this.getPerfil().catch(() => null)
+      const med = prof?.medico || prof?.medico_id
+      const meds = prof?.medicos || prof?.medicos_vinculados
+      if (med) out.push(med)
+      if (Array.isArray(meds)) push(meds)
+    } catch {}
+    return out
+  },
+
+  async vincularMedico(secretariaId, medicoId) {
+    if (!secretariaId || !medicoId) throw new Error("IDs obrigatórios")
+    const secBase = (import.meta.env.VITE_SECRETARIAS_ENDPOINT || "/secretarias/").replace(/\/?$/, "/")
+    const medBase = (import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/").replace(/\/?$/, "/")
+    const body = { medico: medicoId, medico_id: medicoId, secretaria: secretariaId, secretaria_id: secretariaId }
+    const candidates = [
+      { m: "post", u: `${secBase}${secretariaId}/vincular_medico/`, b: body },
+      { m: "post", u: `${medBase}${medicoId}/vincular_secretaria/`, b: body },
+      { m: "patch", u: `${medBase}${medicoId}/`, b: { secretaria: secretariaId, secretaria_id: secretariaId } },
+      { m: "patch", u: `${secBase}${secretariaId}/`, b: { medico: medicoId, medico_id: medicoId } },
+    ]
+    let lastErr = null
+    for (const c of candidates) {
+      try { const { data } = await api[c.m](c.u, c.b); return data } catch (e) { lastErr = e }
+    }
+    if (lastErr) throw lastErr
+    return { ok: false }
   },
 };

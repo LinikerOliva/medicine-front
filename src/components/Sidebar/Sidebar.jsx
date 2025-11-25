@@ -178,28 +178,8 @@ export function Sidebar({ role = "paciente" }) {
           />
         </div>
 
-        {/* Ações Rápidas */}
-        <div className="flex items-center justify-between mt-4">
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="btn-medical-ghost"
-              className="h-8 px-3 text-xs"
-            >
-              <Plus className="size-3 mr-1" />
-              Novo
-            </Button>
-            <Button
-              size="sm"
-              variant="btn-medical-ghost"
-              className="h-8 px-3 text-xs"
-            >
-              <Calendar className="size-3 mr-1" />
-              Agenda
-            </Button>
-          </div>
-          
-          {/* Notificações Médicas */}
+        {/* Notificações Médicas */}
+        <div className="flex items-center justify-end mt-4">
           <Button
             size="sm"
             variant="ghost"

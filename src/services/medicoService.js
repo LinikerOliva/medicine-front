@@ -140,6 +140,60 @@ export const medicoService = {
     return res.data
   },
 
+  async getMeusPacientes(medicoId = null) {
+    // Resolve médico se não informado
+    let mid = medicoId
+    if (!mid) {
+      try { mid = await this._resolveMedicoId() } catch {}
+    }
+
+    const results = []
+    const pushUnique = (arr) => {
+      const list = Array.isArray(arr) ? arr : (Array.isArray(arr?.results) ? arr.results : [])
+      for (const p of list) {
+        const key = p?.id || p?.user?.id || p?.cpf || p?.user?.cpf || JSON.stringify(p)
+        if (!key) continue
+        if (!results.some((x) => (x?.id || x?.user?.id) === (p?.id || p?.user?.id))) {
+          results.push(p)
+        }
+      }
+    }
+
+    // 1) Endpoint dedicado: /medicos/{id}/pacientes/
+    try {
+      if (mid) {
+        const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
+        const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
+        const res = await api.get(`${medBase}${mid}/pacientes/`)
+        pushUnique(res?.data)
+      }
+    } catch {}
+
+    // 2) Filtro direto em /pacientes/ por médico vinculado
+    try {
+      const pacBaseRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+      const pacBase = pacBaseRaw.endsWith("/") ? pacBaseRaw : `${pacBaseRaw}/`
+      const keys = ["medico", "medico_id", "responsavel", "doctor", "doctor_id"]
+      for (const k of keys) {
+        const res = await api.get(pacBase, { params: mid ? { [k]: mid, limit: 200 } : { limit: 200 } }).catch(() => null)
+        if (res?.data) pushUnique(res.data)
+      }
+    } catch {}
+
+    // 3) Fallback via consultas: coletar pacientes das consultas do médico
+    try {
+      const consBaseRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+      const consBase = consBaseRaw.endsWith("/") ? consBaseRaw : `${consBaseRaw}/`
+      const params = mid ? { medico: mid, medico_id: mid, limit: 200 } : { limit: 200 }
+      const res = await api.get(consBase, { params }).catch(() => null)
+      const list = Array.isArray(res?.data?.results) ? res.data.results : (Array.isArray(res?.data) ? res.data : [])
+      const pacs = list.map((c) => c?.paciente).filter(Boolean)
+      pushUnique(pacs)
+    } catch {}
+
+    return results
+  },
+
   async getConsultas(params = {}) {
     const endpoint = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
     const response = await api.get(endpoint, { params })

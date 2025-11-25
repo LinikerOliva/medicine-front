@@ -37,7 +37,7 @@ export default function PacientePerfil() {
     { label: "Prontuário", href: `/medico/paciente/${id}/prontuario` },
     { label: "Consultas", href: `/medico/paciente/${id}/consultas` },
     { label: "Exames", href: `/medico/paciente/${id}/exames` },
-    { label: "Iniciar Consulta", href: `/medico/paciente/${id}/iniciar-consulta` },
+    { label: "Receitas", href: `/medico/paciente/${id}/receitas` },
   ]
 
   return (
@@ -109,9 +109,6 @@ export default function PacientePerfil() {
 
       {/* Ações Rápidas */}
       <div className="flex justify-end gap-3">
-        <Button asChild>
-          <Link to={`/medico/paciente/${id}/iniciar-consulta`}>Iniciar Consulta</Link>
-        </Button>
         <Button variant="outline" asChild>
           <Link to={`/medico/paciente/${id}/prontuario`}>Ver Prontuário</Link>
         </Button>

@@ -2,21 +2,70 @@ import { Input } from "@/components/ui/input"
 import { PatientProfileSummary } from "@/components/patient-profile-summary"
 import { ProfileTabs } from "@/components/profile-tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Calendar, Search, User, FileText, Download } from "lucide-react"
-import { Link, useParams } from "react-router-dom"
+import { Calendar, Search } from "lucide-react"
+import { useParams } from "react-router-dom"
+import { useEffect, useMemo, useState } from "react"
+import api from "@/services/api"
+import { medicoService } from "@/services/medicoService"
 
 export default function PacienteConsultas() {
   const { id } = useParams()
+  const [consultas, setConsultas] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [patient, setPatient] = useState(null)
+  const [loadingPatient, setLoadingPatient] = useState(true)
+  const [mid, setMid] = useState(null)
 
   const medicoTabs = [
     { label: "Resumo", href: `/medico/paciente/${id}/perfil` },
     { label: "Prontuário", href: `/medico/paciente/${id}/prontuario` },
     { label: "Consultas", href: `/medico/paciente/${id}/consultas` },
     { label: "Exames", href: `/medico/paciente/${id}/exames` },
-    { label: "Iniciar Consulta", href: `/medico/paciente/${id}/iniciar-consulta` },
+    { label: "Receitas", href: `/medico/paciente/${id}/receitas` },
   ]
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const baseRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+        const base = baseRaw.endsWith("/") ? baseRaw : `${baseRaw}/`
+        const res = await api.get(`${base}${id}/`)
+        if (active) setPatient(res.data)
+      } catch (_) {}
+      finally { if (active) setLoadingPatient(false) }
+      try {
+        const m = await medicoService._resolveMedicoId().catch(() => null)
+        if (active) setMid(m)
+      } catch {}
+      try {
+        const endpointRaw = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+        const endpoint = endpointRaw.endsWith("/") ? endpointRaw : `${endpointRaw}/`
+        const params = { paciente: id, paciente_id: id, limit: 100 }
+        const res = await api.get(endpoint, { params })
+        const data = res?.data
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+        if (active) setConsultas(list)
+      } catch (e) {
+        try { console.debug("[Medico/Consultas] falha listar:", e?.response?.status) } catch {}
+        if (active) setConsultas([])
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => { active = false }
+  }, [id])
+
+  const todas = useMemo(() => Array.isArray(consultas) ? consultas : [], [consultas])
+  const minhas = useMemo(() => todas.filter((c) => {
+    const cid = c?.medico?.id || c?.medico_id
+    return mid ? String(cid) === String(mid) : false
+  }), [todas, mid])
+  const outros = useMemo(() => todas.filter((c) => {
+    const cid = c?.medico?.id || c?.medico_id
+    return mid ? String(cid) !== String(mid) : false
+  }), [todas, mid])
 
   return (
     <div className="space-y-6">
@@ -25,7 +74,7 @@ export default function PacienteConsultas() {
         <p className="text-muted-foreground">Histórico de consultas e atendimentos</p>
       </div>
 
-      <PatientProfileSummary patientId={id} isPacienteView={false} />
+      <PatientProfileSummary patientId={id} isPacienteView={false} profile={patient?.user} patient={patient} loading={loadingPatient} />
 
       <ProfileTabs tabs={medicoTabs} basePath={`/medico/paciente/${id}`} />
 
@@ -34,20 +83,13 @@ export default function PacienteConsultas() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Buscar consultas..." className="pl-10" />
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link to={`/medico/paciente/${id}/iniciar-consulta`}>
-              <Calendar className="mr-2 h-4 w-4" />
-              Nova Consulta
-            </Link>
-          </Button>
-        </div>
+        <div className="flex gap-2" />
       </div>
 
       <Tabs defaultValue="todas">
         <TabsList>
           <TabsTrigger value="todas">Todas</TabsTrigger>
-          <TabsTrigger value="minhas">Minhas Consultas</TabsTrigger>
+          <TabsTrigger value="minhas">Minhas</TabsTrigger>
           <TabsTrigger value="outros">Outros Médicos</TabsTrigger>
         </TabsList>
         <TabsContent value="todas">
@@ -57,67 +99,45 @@ export default function PacienteConsultas() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">{i % 2 === 0 ? "Dr. Carlos Oliveira" : "Dra. Ana Souza"}</p>
-                        <span className="text-sm text-muted-foreground">
-                          {i % 3 === 0 ? "Cardiologia" : i % 3 === 1 ? "Clínica Geral" : "Endocrinologia"}
-                        </span>
+                {loading ? (
+                  <p className="text-muted-foreground">Carregando...</p>
+                ) : todas.length === 0 ? (
+                  <p className="text-muted-foreground">Nenhuma consulta encontrada.</p>
+                ) : (
+                  todas.map((c) => {
+                    const dataStr = c.data_hora ? new Date(c.data_hora).toLocaleDateString() : (c.data || "—")
+                    const resumo = c.resumo || c.summary || c.observacoes || c.descricao || c.motivo || "—"
+                    const medicamentos = c.medicamentos_uso || c.medicamentos || c.itens || "—"
+                    const exames = c.exames_solicitados || c.exames || "—"
+                    return (
+                      <div key={c.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" /> {dataStr}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Resumo</p>
+                          <p className="text-sm whitespace-pre-wrap">{resumo}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Medicamentos</p>
+                          {Array.isArray(medicamentos) ? (
+                            <ul className="text-sm list-disc pl-4 space-y-1">
+                              {medicamentos.map((m, i) => (
+                                <li key={i}>{typeof m === 'string' ? m : (m?.descricao || m?.nome || m?.medicamento || JSON.stringify(m))}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap">{medicamentos}</p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Exames Solicitados</p>
+                          <p className="text-sm whitespace-pre-wrap">{exames}</p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(Date.now() - i * 30 * 86400000).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Motivo da Consulta</p>
-                      <p>
-                        {i % 3 === 0
-                          ? "Consulta de rotina"
-                          : i % 3 === 1
-                            ? "Dor abdominal"
-                            : "Acompanhamento de tratamento"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Diagnóstico</p>
-                      <p>
-                        {i % 3 === 0
-                          ? "Hipertensão Arterial Estágio 1"
-                          : i % 3 === 1
-                            ? "Gastrite"
-                            : "Hipotireoidismo sob controle"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Conduta</p>
-                      <p>
-                        {i % 3 === 0
-                          ? "Manutenção da medicação atual. Recomendação de atividade física regular e redução do consumo de sal."
-                          : i % 3 === 1
-                            ? "Prescrição de omeprazol 20mg por 30 dias. Recomendação de dieta específica."
-                            : "Ajuste da dose de levotiroxina para 75mcg. Retorno em 60 dias com exames."}
-                      </p>
-                    </div>
-                    <div className="pt-2 flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Ver Prontuário Completo
-                      </Button>
-                      {i % 2 === 0 && (
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-2 h-4 w-4" />
-                          Baixar Receita
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>
@@ -129,49 +149,45 @@ export default function PacienteConsultas() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[1, 3].map((i) => (
-                  <div key={i} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Dr. Carlos Oliveira</p>
-                        <span className="text-sm text-muted-foreground">Cardiologia</span>
+                {loading ? (
+                  <p className="text-muted-foreground">Carregando...</p>
+                ) : minhas.length === 0 ? (
+                  <p className="text-muted-foreground">Nenhuma consulta realizada por você com este paciente.</p>
+                ) : (
+                  minhas.map((c) => {
+                    const dataStr = c.data_hora ? new Date(c.data_hora).toLocaleDateString() : (c.data || "—")
+                    const resumo = c.resumo || c.summary || c.observacoes || c.descricao || c.motivo || "—"
+                    const medicamentos = c.medicamentos_uso || c.medicamentos || c.itens || "—"
+                    const exames = c.exames_solicitados || c.exames || "—"
+                    return (
+                      <div key={c.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" /> {dataStr}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Resumo</p>
+                          <p className="text-sm whitespace-pre-wrap">{resumo}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Medicamentos</p>
+                          {Array.isArray(medicamentos) ? (
+                            <ul className="text-sm list-disc pl-4 space-y-1">
+                              {medicamentos.map((m, i) => (
+                                <li key={i}>{typeof m === 'string' ? m : (m?.descricao || m?.nome || m?.medicamento || JSON.stringify(m))}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap">{medicamentos}</p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Exames Solicitados</p>
+                          <p className="text-sm whitespace-pre-wrap">{exames}</p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(Date.now() - i * 30 * 86400000).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Motivo da Consulta</p>
-                      <p>{i % 3 === 0 ? "Consulta de rotina" : "Acompanhamento de tratamento"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Diagnóstico</p>
-                      <p>{i % 3 === 0 ? "Hipertensão Arterial Estágio 1" : "Hipotireoidismo sob controle"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Conduta</p>
-                      <p>
-                        {i % 3 === 0
-                          ? "Manutenção da medicação atual. Recomendação de atividade física regular e redução do consumo de sal."
-                          : "Ajuste da dose de levotiroxina para 75mcg. Retorno em 60 dias com exames."}
-                      </p>
-                    </div>
-                    <div className="pt-2 flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Ver Prontuário Completo
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Download className="mr-2 h-4 w-4" />
-                        Baixar Receita
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>
@@ -183,39 +199,45 @@ export default function PacienteConsultas() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[2, 4, 5].map((i) => (
-                  <div key={i} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-muted-foreground" />
-                        <p className="font-medium">Dra. Ana Souza</p>
-                        <span className="text-sm text-muted-foreground">
-                          {i % 3 === 0 ? "Cardiologia" : i % 3 === 1 ? "Clínica Geral" : "Endocrinologia"}
-                        </span>
+                {loading ? (
+                  <p className="text-muted-foreground">Carregando...</p>
+                ) : outros.length === 0 ? (
+                  <p className="text-muted-foreground">Nenhuma consulta com outros médicos.</p>
+                ) : (
+                  outros.map((c) => {
+                    const dataStr = c.data_hora ? new Date(c.data_hora).toLocaleDateString() : (c.data || "—")
+                    const resumo = c.resumo || c.summary || c.observacoes || c.descricao || c.motivo || "—"
+                    const medicamentos = c.medicamentos_uso || c.medicamentos || c.itens || "—"
+                    const exames = c.exames_solicitados || c.exames || "—"
+                    return (
+                      <div key={c.id} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" /> {dataStr}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Resumo</p>
+                          <p className="text-sm whitespace-pre-wrap">{resumo}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Medicamentos</p>
+                          {Array.isArray(medicamentos) ? (
+                            <ul className="text-sm list-disc pl-4 space-y-1">
+                              {medicamentos.map((m, i) => (
+                                <li key={i}>{typeof m === 'string' ? m : (m?.descricao || m?.nome || m?.medicamento || JSON.stringify(m))}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap">{medicamentos}</p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-muted-foreground">Exames Solicitados</p>
+                          <p className="text-sm whitespace-pre-wrap">{exames}</p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(Date.now() - i * 30 * 86400000).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Motivo da Consulta</p>
-                      <p>{i % 3 === 1 ? "Dor abdominal" : "Acompanhamento de tratamento"}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Diagnóstico</p>
-                      <p>{i % 3 === 1 ? "Gastrite" : "Hipotireoidismo sob controle"}</p>
-                    </div>
-                    <div className="pt-2 flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm">
-                        <FileText className="mr-2 h-4 w-4" />
-                        Ver Prontuário Resumido
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                    )
+                  })
+                )}
               </div>
             </CardContent>
           </Card>

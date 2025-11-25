@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Calendar, Stethoscope, User, Search, CheckCircle2, XCircle, CheckSquare, CalendarDays, Eye, TrendingUp, Activity, Clock, Users } from "lucide-react"
 import { secretariaService } from "@/services/secretariaService"
+import { useAuth } from "@/contexts/auth-context"
 import { medicoService } from "@/services/medicoService"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
@@ -44,6 +45,8 @@ function normalizeConsulta(c = {}) {
 }
 
 export default function DashboardSecretaria() {
+  const { user } = useAuth()
+  const role = (user?.role || user?.tipo || "").toLowerCase()
   const [medicos, setMedicos] = useState([])
   const [medicoId, setMedicoId] = useState(null)
   const [loadingMedicos, setLoadingMedicos] = useState(true)
@@ -69,16 +72,29 @@ export default function DashboardSecretaria() {
     ;(async () => {
       setLoadingMedicos(true)
       try {
-        const list = await secretariaService.listarMedicos()
+        let list = []
+        if (role === "admin") {
+          const all = await secretariaService.listarMedicos()
+          list = Array.isArray(all) ? all : []
+        } else {
+          const perfil = await secretariaService.getPerfil().catch(() => null)
+          const sid = perfil?.id || perfil?.secretaria?.id
+          if (sid) list = await secretariaService.getMedicosDaSecretaria(String(sid))
+          if (!Array.isArray(list) || list.length === 0) {
+            const all = await secretariaService.listarMedicos()
+            list = Array.isArray(all) ? all : []
+          }
+        }
         if (!mounted) return
         setMedicos(Array.isArray(list) ? list : [])
         // Seleciona do localStorage ou primeiro
         const stored = localStorage.getItem("secretaria.medicoId")
-        const hasStored = stored && list?.some((m) => String(m.id) === String(stored))
-        if (hasStored) {
-          setMedicoId(stored)
-        } else if (list?.length > 0) {
-          setMedicoId(String(list[0].id))
+        const hasStored = stored && list?.some((m) => String(m?.id || m?.user?.id) === String(stored))
+        if (hasStored) setMedicoId(stored)
+        else if (Array.isArray(list) && list.length > 0) {
+          const first = list.find((m) => m?.id || m?.user?.id) || list[0]
+          const fid = first?.id || first?.user?.id
+          if (fid) setMedicoId(String(fid))
         }
       } catch (e) {
         console.error("Erro ao carregar médicos:", e)
@@ -98,7 +114,8 @@ export default function DashboardSecretaria() {
       try {
         const list = await secretariaService.listarConsultasHoje(medicoId)
         if (!mounted) return
-        setConsultas(Array.isArray(list) ? list : [])
+        const arr = Array.isArray(list) ? list : []
+        setConsultas(arr.map((c) => normalizeConsulta(c)))
         localStorage.setItem("secretaria.medicoId", medicoId)
       } catch (e) {
         console.error("Erro ao carregar consultas:", e)
@@ -110,7 +127,11 @@ export default function DashboardSecretaria() {
   }, [medicoId])
 
   const medicoOptions = useMemo(() => {
-    return medicos.map((m) => ({ value: String(m.id), label: m.nome }))
+    return (Array.isArray(medicos) ? medicos : []).map((m) => {
+      const val = m?.id || m?.user?.id
+      const label = formatName(m)
+      return val ? { value: String(val), label } : null
+    }).filter(Boolean)
   }, [medicos])
 
   const consultasFiltradas = useMemo(() => {
@@ -210,7 +231,8 @@ export default function DashboardSecretaria() {
     setBuscaPacLoading(true)
     try {
       const results = await secretariaService.buscarPacientes(query)
-      setBuscaPacResults(Array.isArray(results) ? results : [])
+      const arr = Array.isArray(results) ? results : []
+      setBuscaPacResults(arr)
     } catch (e) {
       console.error("Erro ao buscar pacientes:", e)
       setBuscaPacResults([])
@@ -364,23 +386,32 @@ export default function DashboardSecretaria() {
                       onChange={(e) => setBuscaPacQuery(e.target.value)}
                     />
                     {buscaPacLoading && <p className="text-xs text-muted-foreground mt-1">Buscando...</p>}
-                    {buscaPacResults.length > 0 && (
-                      <div className="mt-2 border rounded-md max-h-32 overflow-y-auto">
-                        {buscaPacResults.map((pac) => (
-                          <div
-                            key={pac.id}
-                            className="p-2 hover:bg-muted cursor-pointer text-sm"
-                            onClick={() => {
-                              setFormAg((p) => ({ ...p, pacienteId: pac.id }))
-                              setBuscaPacQuery(pac.nome)
-                              setBuscaPacResults([])
-                            }}
-                          >
-                            {pac.nome} - {pac.cpf}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="mt-2 border rounded-md max-h-40 overflow-y-auto">
+                      {buscaPacLoading ? (
+                        <div className="p-2 text-sm text-muted-foreground">Buscando...</div>
+                      ) : buscaPacResults.length === 0 ? (
+                        buscaPacQuery && buscaPacQuery.trim() ? <div className="p-2 text-sm text-muted-foreground">Nenhum paciente encontrado</div> : null
+                      ) : (
+                        buscaPacResults.map((pac) => {
+                          const pid = pac?.id || pac?.user?.id || pac?.paciente?.id
+                          const label = pac?.nome || (pac?.user ? `${pac.user.first_name || ""} ${pac.user.last_name || ""}`.trim() : (pac?.paciente?.user ? `${pac.paciente.user.first_name || ""} ${pac.paciente.user.last_name || ""}`.trim() : pac?.user?.username || "Paciente"))
+                          return (
+                            <div
+                              key={String(pid || Math.random())}
+                              className="p-2 hover:bg-muted cursor-pointer text-sm flex justify-between"
+                              onClick={() => {
+                                if (pid) setFormAg((p) => ({ ...p, pacienteId: pid }))
+                                setBuscaPacQuery(label)
+                                setBuscaPacResults([])
+                              }}
+                            >
+                              <span>{label}</span>
+                              {pac?.cpf && <span className="text-muted-foreground">{pac.cpf}</span>}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="text-sm text-muted-foreground">Motivo</label>
@@ -499,14 +530,18 @@ export default function DashboardSecretaria() {
             <div className="w-72">
               <Select value={medicoId ?? undefined} onValueChange={(v) => setMedicoId(v)}>
                 <SelectTrigger className="bg-white border-slate-200 hover:bg-slate-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
-                  <SelectValue placeholder="Escolha um médico" />
+                  <SelectValue placeholder={medicoOptions.length ? "Escolha um médico" : "Nenhum médico disponível"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {medicoOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
+                  {medicoOptions.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground">Nenhum médico disponível</div>
+                  ) : (
+                    medicoOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
