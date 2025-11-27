@@ -37,7 +37,7 @@ export default function PreviewReceitaMedico() {
   const location = useLocation()
   const navigate = useNavigate()
   const { toast } = useToast()
-  const [lastReceitaId, setLastReceitaId] = useState(null)
+  const [lastReceitaId, setLastReceitaId] = useState(location.state?.receitaId || null)
   // Helper: SHA-256 em hex do conteúdo (Blob)
   const sha256Hex = async (blob) => {
     const ab = await blob.arrayBuffer()
@@ -457,6 +457,36 @@ export default function PreviewReceitaMedico() {
   load()
   return () => { mounted = false }
 }, [id, consultaId, fromConsulta?.cpf, fromConsulta.paciente])
+
+  // NOVO: se vier receitaId no state, carregar do banco e preencher
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      if (!lastReceitaId) return
+      try {
+        const rec = await medicoService.getReceitaById(lastReceitaId)
+        const itens = await medicoService.getReceitaItens(lastReceitaId).catch(() => [])
+        const nomePac = rec?.paciente_nome || rec?.paciente?.nome || form.nome_paciente
+        const idadePac = form.idade
+        const rgCpf = rec?.cpf || rec?.paciente?.cpf || form.rg
+        const nasc = rec?.data_nascimento || form.data_nascimento
+        const meds = rec?.medicamentos || rec?.medicamento || form.medicamento
+        const poso = rec?.posologia || form.posologia
+        const val = rec?.validade || rec?.validade_receita || form.validade_receita
+        const obs = rec?.observacoes || form.observacoes
+        if (mounted) {
+          setForm((f)=>({ ...f, nome_paciente:nomePac||f.nome_paciente, idade:idadePac||f.idade, rg:rgCpf||f.rg, data_nascimento:nasc||f.data_nascimento, medicamento:meds||f.medicamento, posologia:poso||f.posologia, validade_receita:toInputDate(val)||f.validade_receita, observacoes:obs||f.observacoes }))
+        }
+        if (mounted && Array.isArray(itens) && itens.length) {
+          const mapped = itens.map((it)=>({ medicamento:{ nome: it.nome || it.medicamento_nome || it.descricao }, dose: it.dose, frequencia: it.frequencia, duracao: it.duracao, observacoes: it.observacoes, descricao: it.descricao, }))
+          receitaItems.splice(0, receitaItems.length, ...mapped)
+        }
+      } catch (e) {
+        console.warn("Falha ao carregar receita por id:", e?.message)
+      }
+    })()
+    return ()=>{ mounted=false }
+  }, [lastReceitaId])
 
   const handleChange = (e) => {
     const { name, value } = e.target

@@ -363,7 +363,9 @@ export const pacienteService = {
       const paciente = await this.getPacienteDoUsuario().catch(() => null)
       if (paciente?.id) {
         pacienteId = paciente.id
-        if (!queryParams["paciente"]) queryParams["paciente"] = paciente.id
+        const pid = paciente.id
+        // Preferir filtro suportado pelo backend
+        queryParams["consulta__paciente"] = pid
       }
     } catch (_) {}
 
@@ -372,9 +374,25 @@ export const pacienteService = {
     }
 
     try {
+      // Preferir endpoint dedicado /pacientes/{id}/receitas/
+      if (pacienteId) {
+        const basePacRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
+        const basePac = basePacRaw.endsWith("/") ? basePacRaw : `${basePacRaw}/`
+        try {
+          const resp = await api.get(`${basePac}${pacienteId}/receitas/`)
+          const data = resp?.data
+          let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+          if (list.length) return { results: list }
+        } catch (_) {}
+      }
+
       const res = await api.get(endpoint, { params: queryParams })
       const data = res?.data
       let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
+      // Fallback: se vier lista geral, filtra pelo paciente vinculado à consulta
+      if (pacienteId && Array.isArray(list) && list.length) {
+        list = list.filter((r) => String(r?.consulta?.paciente?.id || r?.consulta?.paciente) === String(pacienteId))
+      }
 
       // Carregar itens para cada receita
       const receitaItensEndpoint = String(import.meta.env.VITE_RECEITA_ITENS_ENDPOINT || "").trim()
@@ -408,7 +426,10 @@ export const pacienteService = {
       const normalizeUrl = (u) => {
         if (!u) return u
         if (/^https?:\/\//i.test(u) || /^(data|blob):/i.test(u)) return u
-        const origin = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+        const runtime = (() => {
+          try { return window.__API_BASE_URL || window.localStorage?.getItem('api_url') || null } catch { return null }
+        })()
+        const origin = (runtime || import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
         const path = u.startsWith("/") ? u : `/${u}`
         return `${origin}${path}`
       }

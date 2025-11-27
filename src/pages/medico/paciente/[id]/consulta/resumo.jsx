@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { FileText, ListChecks, ClipboardList, FileSignature } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { medicoService } from "@/services/medicoService"
+import { cleanGreeting } from "@/utils/inputValidation"
 import { DatePicker } from "@/components/ui/date-picker"
 import ReceitaItemManager from "@/components/ReceitaItemManager"
 
@@ -23,7 +24,7 @@ export default function ResumoConsultaMedico() {
   const prontuarioId = location.state?.prontuarioId
 
   const [form, setForm] = useState({
-    queixa: initial.queixa || "",
+    queixa: cleanGreeting(initial.queixa || ""),
     historia: initial.historia || "",
     diagnostico: initial.diagnostico || "",
     conduta: initial.conduta || "",

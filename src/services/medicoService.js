@@ -383,6 +383,66 @@ export const medicoService = {
     return res.data
   },
 
+  // NOVO: finalizar consulta com IA (sumarização no backend)
+  async finalizarConsultaIA(consultaId, payload = {}) {
+    if (!consultaId) throw new Error("consultaId é obrigatório")
+    const base = "/consultas/"
+    const candidates = [
+      { method: "post", url: `${base}${consultaId}/finalizar-ia/`, data: payload },
+      { method: "post", url: `/api/consultas/${consultaId}/finalizar-ia/`, data: payload },
+      { method: "post", url: `${base}${consultaId}/finalizar_ia/`, data: payload },
+    ]
+    let lastErr = null
+    for (const c of candidates) {
+      try {
+        const res = await api[c.method](c.url, c.data)
+        return res.data
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    throw lastErr || new Error("Endpoint finalizar-ia não disponível")
+  },
+
+  // NOVO: processamento unificado da transcrição no backend para criar Consulta, Receita e Itens
+  async processarTranscricaoConsulta({ texto, consultaId, pacienteId, medicoId } = {}) {
+    if (!texto) throw new Error("texto da transcrição é obrigatório")
+    const base = (import.meta.env.VITE_CONSULTAS_PROCESSAR_ENDPOINT || "/consultas/processar_transcricao/").replace(/\/?$/, "/")
+    const body = { texto, consulta_id: consultaId, consulta: consultaId, paciente: pacienteId, paciente_id: pacienteId, medico: medicoId, medico_id: medicoId }
+    const candidates = [ base, "/api/consultas/processar_transcricao/", "/consultas/sumarizar_criar_receita/" ]
+    let lastErr = null
+    for (const url of candidates) {
+      try { const { data } = await api.post(url, body); return data } catch (e) { const st=e?.response?.status; if (st===401) throw e; lastErr=e; continue }
+    }
+    if (lastErr) throw lastErr
+    throw new Error("Endpoint de processamento de transcrição indisponível")
+  },
+
+  // NOVO: obter receita por ID e seus itens
+  async getReceitaById(id) {
+    if (!id) throw new Error("id da receita é obrigatório")
+    const base = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const candidates = [ `${base}${id}/`, `/api/receitas/${id}/`, `/meu_app_receita/${id}/` ]
+    let lastErr = null
+    for (const url of candidates) {
+      try { const { data } = await api.get(url); return data } catch (e) { const st=e?.response?.status; if (st===401) throw e; lastErr=e; continue }
+    }
+    if (lastErr) throw lastErr
+    return null
+  },
+
+  async getReceitaItens(id) {
+    if (!id) throw new Error("id da receita é obrigatório")
+    const base = (import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").replace(/\/?$/, "/")
+    const candidates = [ `${base}${id}/itens/`, `${base}${id}/items/`, `/api/receitas/${id}/itens/`, `/meu_app_receitaitem/?receita=${id}` ]
+    let lastErr = null
+    for (const url of candidates) {
+      try { const { data } = await api.get(url); const list = Array.isArray(data?.results)?data.results:(Array.isArray(data)?data:[]); return list } catch (e) { const st=e?.response?.status; if (st===401) throw e; lastErr=e; continue }
+    }
+    if (lastErr) throw lastErr
+    return []
+  },
+
   // NOVO: sumarizar consulta via backend (quando disponível)
   async sumarizarConsulta(consultaId, payload = {}) {
     if (!consultaId) throw new Error("consultaId é obrigatório")

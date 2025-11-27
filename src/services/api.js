@@ -5,16 +5,31 @@ import { mockService } from "./mockService"
 // Usar variáveis de ambiente
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"
 const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || "/api"
+// Runtime override: allow setting API URL without rebuild (Render/Prod)
+const RUNTIME_API_URL = (() => {
+  try {
+    if (typeof window !== "undefined") {
+      return (
+        window.__API_BASE_URL ||
+        window.sessionStorage?.getItem("api_url") ||
+        window.localStorage?.getItem("api_url") ||
+        null
+      )
+    }
+  } catch {}
+  return import.meta.env.VITE_RUNTIME_API_URL || null
+})()
+const EFFECTIVE_API_URL = RUNTIME_API_URL || API_BASE_URL
 
 // Em desenvolvimento, por padrão usar o proxy do Vite
 const IS_DEV = import.meta.env.DEV
-const USE_PROXY = String(import.meta.env.VITE_USE_PROXY ?? "true").toLowerCase() !== "false"
+const USE_PROXY = RUNTIME_API_URL ? false : (String(import.meta.env.VITE_USE_PROXY ?? "true").toLowerCase() !== "false")
 const API_VERBOSE = String(import.meta.env.VITE_API_VERBOSE_LOGS ?? "false").toLowerCase() === "true"
 const API_SILENCE_ERRORS = String(import.meta.env.VITE_API_SILENCE_ERRORS ?? "true").toLowerCase() !== "false"
 const AUTH_STORAGE_ENV = String(import.meta.env.VITE_AUTH_STORAGE || "local").toLowerCase() // 'cookie' | 'local'
 
 // Origin base (em dev com proxy, deixamos vazio para usar o host atual)
-const BASE_ORIGIN = IS_DEV && USE_PROXY ? "" : API_BASE_URL
+const BASE_ORIGIN = IS_DEV && USE_PROXY ? "" : EFFECTIVE_API_URL
 
 // Log de diagnóstico (ajuda a confirmar no console do navegador)
 if (typeof window !== "undefined") {
@@ -72,8 +87,8 @@ api.interceptors.request.use((config) => {
       config.baseURL = "" // usar origin atual
       config.url = normalized.startsWith("/") ? normalized : "/" + normalized
     } else {
-      // Em prod -> baseURL é o host do backend e a URL inclui o base path
-      config.baseURL = (API_BASE_URL || "").replace(/\/+$/g, "")
+      // Em prod/override -> baseURL é o host do backend (Render/Prod)
+      config.baseURL = (EFFECTIVE_API_URL || "").replace(/\/+$/g, "")
       config.url = normalized.startsWith("/") ? normalized : "/" + normalized
     }
   }

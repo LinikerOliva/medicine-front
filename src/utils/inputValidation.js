@@ -341,3 +341,25 @@ export function useValidation(schema) {
     hasErrors: Object.keys(errors).length > 0
   }
 }
+
+// Limpeza de saudações e perguntas iniciais em transcrições
+export function cleanGreeting(text) {
+  const s = String(text || "").trim()
+  const low = s.toLowerCase()
+  const blacklist = [
+    "bom dia", "boa tarde", "boa noite",
+    "o que te traz aqui", "tudo bem",
+    "ola doutor", "olá doutor", "oi",
+  ]
+  for (const f of blacklist) {
+    if (low.includes(f) && s.length < 100) {
+      const cleaned = low.replace(f, "").replace("?", "").trim()
+      if (cleaned.length < 5) return ""
+    }
+  }
+  if (low.startsWith("bom dia")) {
+    const rest = s.slice(7).replace(/tudo bem\??/i, "").trim()
+    return rest.replace(/^[,\.\s]+/, "")
+  }
+  return s
+}

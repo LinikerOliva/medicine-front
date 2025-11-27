@@ -103,13 +103,6 @@ export default function IniciarConsulta() {
     }
   }
 
-  useEffect(() => {
-    // Carregar texto salvo (persistência ao trocar de tela)
-    try {
-      const saved = localStorage.getItem(storageKey)
-      if (saved) setTranscript(saved)
-    } catch {}
-  }, [storageKey])
 
   // Habilitar deep-link por hash para selecionar a aba
   useEffect(() => {
@@ -180,14 +173,9 @@ export default function IniciarConsulta() {
     return () => { mounted = false }
   }, [id])
 
-  useEffect(() => {
-    // Salvar automaticamente ao editar
-    try {
-      localStorage.setItem(storageKey, transcript || "")
-    } catch {}
-  }, [storageKey, transcript])
 
   useEffect(() => {
+    try { setTranscript("") } catch {}
     // Iniciar reconhecimento de voz quando a tela abre
     startListening()
     // Se houver consultaId, sinalizar início da consulta no backend
@@ -398,6 +386,10 @@ export default function IniciarConsulta() {
           saturacao: formData.saturacao || pick(["saturacao", "sinais_vitais.saturacao", "spo2"]) || extracted.saturacao || "",
         }
 
+        try {
+          const { cleanGreeting } = await import("@/utils/inputValidation")
+          filled.queixa = cleanGreeting(filled.queixa)
+        } catch {}
         setFormData((prev) => ({ ...prev, ...filled }))
         setAiApplied(true)
         toast({ title: "Resumo aplicado", description: "Pré-preenchimento realizado a partir da transcrição." })
@@ -713,71 +705,13 @@ export default function IniciarConsulta() {
         }
       }
 
-      // ETAPA 2: Salvar de fato o prontuário (e receita)
-      const source = filledForSave ? { ...formData, ...filledForSave } : formData
-      // Monta payload mínimo e ignora campos vazios para evitar 400
-      const prontuarioPayload = {
-        consulta_id: consultaId,
-        queixa_principal: (source.queixa || extracted.queixa || "").trim(),
-        historia_doenca_atual: (source.historia || extracted.historia || "").trim(),
-        diagnostico_principal: (source.diagnostico || extracted.diagnostico || "").trim(),
-        conduta: (source.conduta || extracted.conduta || "").trim(),
-      }
-      if (source.medicamentos || extracted.medicamentos) {
-        prontuarioPayload.medicamentos_uso = (source.medicamentos || extracted.medicamentos).trim()
-      }
-      if (source.alergias) prontuarioPayload.alergias = source.alergias
-      if (source.exames) prontuarioPayload.exames_solicitados = source.exames
-      if (source.retorno) prontuarioPayload.data_retorno = source.retorno
-
-      let prontuarioId = null
-      if (consultaId) {
-        try {
-          const result = await medicoService.criarProntuario(prontuarioPayload)
-          prontuarioId = result?.id || result?.data?.id
-        } catch (e) {
-          console.warn("Falha ao criar prontuário:", e)
-        }
-      }
-
-      // Gerar receita com base na sugestão do resumo e/ou nos campos preenchidos
-      const hoje = new Date()
-      const validade = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 7)
-      const pad = (n) => String(n).padStart(2, "0")
-      const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
-
-      const medicamentos = source.medicamentos || extracted.medicamentos || ""
-      const posologia = source.posologia || extracted.posologia || ""
-      const diagnostico = source.diagnostico || extracted.diagnostico || ""
-      const conduta = source.conduta || extracted.conduta || ""
-      const queixa = source.queixa || extracted.queixa || ""
-      const historia = source.historia || extracted.historia || ""
-
-      if (consultaId && (medicamentos || posologia)) {
-        try {
-          await medicoService.criarReceita({
-            consulta_id: consultaId,
-            paciente: id,
-            paciente_id: id,
-            medicamentos,
-            posologia,
-            validade: validadeStr,
-            observacoes: "Receita gerada automaticamente a partir do resumo da consulta.",
-          })
-        } catch (e) {
-          console.warn("Falha ao criar receita automática:", e)
-        }
-      }
+      // ETAPA 2: Processar transcrição no backend e criar Consulta + Receita + Itens
+      const proc = await medicoService.processarTranscricaoConsulta({ texto: transcript || `${(source.queixa||"")}\n${(source.historia||"")}\n${(source.diagnostico||"")}\n${(source.conduta||"")}`, consultaId, pacienteId: id })
+      const receitaId = proc?.receita_id || proc?.receita?.id || proc?.id
+      const prontuarioId = proc?.consulta_id || proc?.consulta?.id || null
 
       try { localStorage.removeItem(storageKey) } catch {}
-      // Redireciona para a nova tela de resumo da consulta antes do preview da receita
-      navigate(`/medico/paciente/${id}/consulta/resumo`, {
-        state: {
-          resumo: { medicamentos, posologia, validade: validadeStr, diagnostico, conduta, queixa, historia },
-          consultaId,
-          prontuarioId,
-        },
-      })
+      navigate(`/medico/paciente/${id}/receita/preview`, { state: { receitaId, consultaId, fromConsulta: { consultaId } } })
     } catch (err) {
       console.error('Erro ao salvar prontuário/consulta:', err)
       // Mesmo em erro, encaminhar para a tela de resumo com os dados disponíveis
