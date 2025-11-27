@@ -6,7 +6,7 @@ import fs from 'fs';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiTarget = env.VITE_API_URL || 'http://127.0.0.1:8000';
+  const apiTarget = env.VITE_API_URL || 'https://tcc-back-ktwy.onrender.com';
   const apiBasePath = env.VITE_API_BASE_PATH || '/api';
   const enableMockReceita = String(env.VITE_MOCK_RECEITA ?? 'true').toLowerCase() !== 'false';
   // Alterado: por padrão NÃO mockar certificado/assinatura. Só ativa se VITE_MOCK_MEDICO_CERTIFICADO=true
