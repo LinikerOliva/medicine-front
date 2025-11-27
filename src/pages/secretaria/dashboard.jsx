@@ -628,7 +628,17 @@ export default function DashboardSecretaria() {
                     
                     return (
                       <TableRow key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-100">
-                        <TableCell className="font-medium text-slate-900">{formatHora(c.dataHora)}</TableCell>
+                        <TableCell className="font-medium text-slate-900">{(() => {
+                          if (!c?.dataHora) return "—"
+                          try {
+                            const d = new Date(c.dataHora)
+                            if (!isNaN(d.getTime())) return d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+                            // se vier "YYYY-MM-DDTHH:mm:00"
+                            const m = String(c.dataHora).match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/)
+                            if (m) return `${m[1]} ${m[2]}`
+                          } catch {}
+                          return String(c.dataHora)
+                        })()}</TableCell>
                         <TableCell className="text-slate-700">{c.pacienteNome}</TableCell>
                         <TableCell className="text-slate-600">{c.tipo || "Consulta"}</TableCell>
                         <TableCell>
@@ -643,33 +653,26 @@ export default function DashboardSecretaria() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              disabled={!podeConfirmar} 
-                              onClick={() => confirmar(c)}
-                              className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100 disabled:opacity-50"
-                            >
-                              <CheckCircle2 className="h-4 w-4 mr-1" /> Confirmar
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              disabled={!podeCancelar} 
-                              onClick={() => cancelar(c)}
-                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 disabled:opacity-50"
-                            >
-                              <XCircle className="h-4 w-4 mr-1" /> Cancelar
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              disabled={!podePresenca} 
-                              onClick={() => presenca(c)}
-                              className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                            >
-                              <CheckSquare className="h-4 w-4 mr-1" /> Presença
-                            </Button>
+                            {c.status === "Agendada" && (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => confirmar(c)}
+                                className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                              >
+                                <CheckCircle2 className="h-4 w-4 mr-1" /> Confirmar
+                              </Button>
+                            )}
+                            {(["Agendada", "Confirmada"]).includes(c.status) && (
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => cancelar(c)}
+                                className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                              >
+                                <XCircle className="h-4 w-4 mr-1" /> Cancelar
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

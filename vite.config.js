@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
       const __mockDb = {
         receitas: [],
         prontuarios: [],
+        solicitacoes: [],
         nextId: 1,
       };
 
@@ -83,7 +84,7 @@ export default defineConfig(({ mode }) => {
             return next();
           }
 
-          // 1) Mock: criação/listagem de RECEITAS (CRUD mínimo)
+      // 1) Mock: criação/listagem de RECEITAS (CRUD mínimo)
           if (pathname === `${base}receitas/` || pathname === '/receitas/') {
             if (method === 'GET') {
               // Suporta retorno paginado ou lista direta
@@ -111,6 +112,78 @@ export default defineConfig(({ mode }) => {
             return res.end('Method Not Allowed');
           }
 
+          // 1.1) Mock: criação/listagem/atualização de CONSULTAS (DEV)
+          if (pathname === `${base}consultas/` || pathname === '/consultas/') {
+            if (method === 'GET') {
+              // filtros: medico, data
+              let list = [...(__mockDb.consultas || [])]
+              try {
+                const u = new URL(url, 'http://localhost')
+                const medico = u.searchParams.get('medico') || u.searchParams.get('medico_id')
+                const date = u.searchParams.get('date') || u.searchParams.get('data') || u.searchParams.get('dia') || u.searchParams.get('data__date')
+                if (medico) list = list.filter((c) => String(c.medico_id) === String(medico))
+                if (date) list = list.filter((c) => (c.data || '').startsWith(date))
+              } catch {}
+              return json(res, 200, { count: list.length, results: list })
+            }
+            if (['POST','PUT','PATCH'].includes(method)) {
+              const data = await readJsonBody(req)
+              if (!__mockDb.consultas) __mockDb.consultas = []
+              const id = String(__mockDb.nextId++)
+              const now = new Date().toISOString()
+              const c = {
+                id,
+                medico_id: data.medico || data.medico_id || null,
+                paciente: data.paciente || data.paciente_id || null,
+                tipo: data.tipo || 'rotina',
+                modalidade: data.modalidade || 'presencial',
+                motivo: data.motivo || '',
+                observacoes: data.observacoes || '',
+                status: (data.status || data.situacao || 'pendente').toLowerCase(),
+                data: data.data || now.slice(0,10),
+                horario: data.hora || data.horario || null,
+                created_at: now,
+                updated_at: now,
+              }
+              __mockDb.consultas.push(c)
+              return json(res, 200, c)
+            }
+            res.statusCode = 405
+            res.setHeader('Allow', 'GET, POST, PUT, PATCH')
+            return res.end('Method Not Allowed')
+          }
+
+          // Ações: /consultas/:id/confirmar|cancelar
+          const mConsAction = pathname.match(new RegExp(`^${reBaseNoSlash}/consultas/([^/]+)/(confirmar|cancelar)/?$`))
+          if (mConsAction) {
+            const id = mConsAction[1]
+            const action = mConsAction[2]
+            if (!__mockDb.consultas) __mockDb.consultas = []
+            const item = __mockDb.consultas.find((c) => String(c.id) === String(id))
+            if (!item) { return json(res, 404, { detail: 'Consulta não encontrada' }) }
+            if (action === 'confirmar') item.status = 'confirmada'
+            else if (action === 'cancelar') item.status = 'cancelada'
+            item.updated_at = new Date().toISOString()
+            return json(res, 200, item)
+          }
+
+          // PATCH /consultas/:id/
+          const mConsPatch = pathname.match(new RegExp(`^${reBaseNoSlash}/consultas/([^/]+)/?$`))
+          if (mConsPatch && method === 'PATCH') {
+            const id = mConsPatch[1]
+            const data = await readJsonBody(req)
+            if (!__mockDb.consultas) __mockDb.consultas = []
+            const item = __mockDb.consultas.find((c) => String(c.id) === String(id))
+            if (!item) { return json(res, 404, { detail: 'Consulta não encontrada' }) }
+            Object.assign(item, {
+              status: (data.status || data.situacao || item.status || 'pendente').toLowerCase(),
+              data: data.data || item.data,
+              horario: data.hora || data.horario || item.horario,
+              updated_at: new Date().toISOString(),
+            })
+            return json(res, 200, item)
+          }
+
           if (pathname === `${base}receita/` || pathname === '/receita/') {
             if (!['POST', 'PUT', 'PATCH'].includes(method)) {
               res.statusCode = 405;
@@ -132,6 +205,59 @@ export default defineConfig(({ mode }) => {
             };
             __mockDb.receitas.push(rec);
             return json(res, 200, rec);
+          }
+
+          // 0) Mock: fluxo de SOLICITAÇÕES de consultas (DEV)
+          const isSolicPath = pathname.startsWith(`${base}solicitacoes/`) || pathname.startsWith('/solicitacoes/')
+          if (isSolicPath) {
+            const m = pathname.match(/\/(solicitacoes)\/(\d+)\/(aceitar|recusar|cancelar)\/?$/)
+            if (m) {
+              const id = m[2]
+              const action = m[3]
+              const item = __mockDb.solicitacoes.find((s) => String(s.id) === String(id))
+              if (!item) { res.statusCode = 404; res.setHeader('Content-Type','application/json'); return res.end(JSON.stringify({ detail: 'Solicitação não encontrada' })) }
+              if (action === 'aceitar') { item.status = 'confirmado' }
+              else if (action === 'recusar') { item.status = 'rejeitado' }
+              else if (action === 'cancelar') { item.status = 'cancelado' }
+              item.updated_at = new Date().toISOString()
+              return json(res, 200, item)
+            }
+
+            if (method === 'GET') {
+              let list = [...__mockDb.solicitacoes]
+              try {
+                const u = new URL(url, 'http://localhost')
+                const medico = u.searchParams.get('medico') || u.searchParams.get('medico_id')
+                const date = u.searchParams.get('date') || u.searchParams.get('data') || u.searchParams.get('dia') || u.searchParams.get('data__date')
+                if (medico) list = list.filter((s) => String(s.medico_id) === String(medico))
+                if (date) list = list.filter((s) => (s.data || '').startsWith(date))
+              } catch {}
+              return json(res, 200, { count: list.length, results: list })
+            }
+            if (['POST','PUT','PATCH'].includes(method)) {
+              const data = await readJsonBody(req)
+              const id = String(__mockDb.nextId++)
+              const now = new Date().toISOString()
+              const s = {
+                id,
+                medico_id: data.medico || data.medico_id || null,
+                paciente_id: data.paciente || data.paciente_id || null,
+                tipo: data.tipo || 'inicial',
+                modalidade: data.modalidade || 'presencial',
+                motivo: data.motivo || '',
+                observacoes: data.observacoes || '',
+                status: (data.status || data.situacao || 'pendente').toLowerCase(),
+                data: data.data || now.slice(0,10),
+                horario: data.hora || data.horario || null,
+                created_at: now,
+                updated_at: now,
+              }
+              __mockDb.solicitacoes.push(s)
+              return json(res, 200, s)
+            }
+            res.statusCode = 405
+            res.setHeader('Allow', 'GET, POST, PUT, PATCH')
+            return res.end('Method Not Allowed')
           }
 
           // POST em /consultas/:id/receitas/ ou /pacientes/:id/receitas/

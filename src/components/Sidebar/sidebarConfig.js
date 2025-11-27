@@ -48,6 +48,7 @@ export const sidebarConfig = {
           { label: "Dashboard", path: "/medico/dashboard", icon: LayoutDashboard },
           { label: "Consultas de Hoje", path: "/medico/consultas/hoje", icon: Calendar },
           { label: "Meus Pacientes", path: "/medico/meus-pacientes", icon: Users },
+          { label: "Solicitações", path: "/medico/solicitacoes", icon: UserCheck },
         ],
       },
     ],

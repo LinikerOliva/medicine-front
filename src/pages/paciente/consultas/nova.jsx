@@ -59,6 +59,7 @@ export default function ContatoMedicoPaciente() {
     local: "",
     tipo: "primeira",
     preferenciaData: "",
+    preferenciaHora: "",
     preferenciaTurno: "indiferente",
     motivo: "",
     observacoes: "",
@@ -176,7 +177,7 @@ export default function ContatoMedicoPaciente() {
         motivo: form.motivo,
       }
       if (form.preferenciaData) consultaPayload.data = form.preferenciaData
-      const h = turnoToHora(form.preferenciaTurno)
+      const h = form.preferenciaHora && String(form.preferenciaHora).trim() ? form.preferenciaHora : turnoToHora(form.preferenciaTurno)
       if (h) consultaPayload.hora = h
       if (form.observacoes) consultaPayload.observacoes = form.observacoes
       
@@ -302,6 +303,12 @@ export default function ContatoMedicoPaciente() {
                 <Label>Preferência de Data</Label>
                 <DatePicker id="preferenciaData" name="preferenciaData" value={form.preferenciaData} onChange={(v) => setForm((p) => ({ ...p, preferenciaData: v }))} />
                 <div className="text-xs text-muted-foreground">Opcional: ajuda a secretaria a oferecer horários próximos.</div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Preferência de Hora</Label>
+                <Input type="time" value={form.preferenciaHora} onChange={(e) => setForm((p) => ({ ...p, preferenciaHora: e.target.value }))} />
+                <div className="text-xs text-muted-foreground">Opcional: informe uma hora sugerida.</div>
               </div>
 
               <div className="space-y-2">

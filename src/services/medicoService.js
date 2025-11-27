@@ -514,6 +514,30 @@ export const medicoService = {
     if (!normalized.medicamentos && p0.medicamento) normalized.medicamentos = p0.medicamento
     if (!normalized.medicamento && p0.medicamentos) normalized.medicamento = p0.medicamentos
     if (!normalized.validade && p0.validade_receita) normalized.validade = p0.validade_receita
+    // Compat: nomes explícitos exigidos por alguns serializers
+    if (p0.nome_paciente && !normalized.paciente_nome) normalized.paciente_nome = p0.nome_paciente
+    if (p0.medico && !normalized.medico_nome) normalized.medico_nome = p0.medico
+    if (p0.crm && !normalized.medico_crm) normalized.medico_crm = p0.crm
+    // Defaults: marcar como ativa e definir validade para +30 dias quando ausentes
+    const today = new Date()
+    if (!normalized.data_prescricao && !normalized.data_emissao) {
+      normalized.data_prescricao = today.toISOString()
+    }
+    const addDays = (base, days) => {
+      const d = new Date(base); d.setDate(d.getDate() + days)
+      const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${dd}`
+    }
+    if (!normalized.validade && !normalized.validade_receita) {
+      normalized.validade = addDays(today, 30)
+    }
+    if (!normalized.status && !normalized.situacao) {
+      normalized.status = 'ativa'
+      normalized.situacao = 'ativa'
+    }
+    if (normalized.ativa === undefined) {
+      normalized.ativa = true
+    }
 
     // Resolve automaticamente o ID do médico quando ausente
     try {
@@ -554,18 +578,15 @@ export const medicoService = {
     candidates.push(baseReceitas)
     candidates.push(`${baseReceitas}criar/`)
     candidates.push(`${baseReceitas}create/`)
-    // Endpoints de geração/preview que existem no backend e podem persistir metadados
-    candidates.push(`${baseReceitas}gerar/`)
-    candidates.push(`${baseReceitas}preview/`)
-    candidates.push(`${baseReceitas}gerar-documento/`)
-    candidates.push(`${baseReceitas}pdf/`)
+    // Removido: endpoints de geração/preview/pdf NÃO devem ser usados para criar registros
 
     // Variações singulares e nomes alternativos comuns em backends
     const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
     const altBases = Array.from(new Set([
       singularBase,
       "/receita/",
-      // Removido "/meu_app_receita/" para evitar 404 em backends padrão
+      "/meu_app_receita/",
+      "/meu_app_receitas/",
     ].filter(Boolean)))
     for (const b of altBases) {
       const bb = b.replace(/\/?$/, "/")
@@ -594,18 +615,9 @@ export const medicoService = {
         lastTried = `${m.toUpperCase()} ${url}`
         try {
           if (VERBOSE) { try { console.debug("[medicoService.criarReceita] tentando:", lastTried) } catch {} }
-          // Para endpoints de geração que retornam blob/arquivo
-          const isGen = /\/(gerar|preview|pdf)\/?$/.test(url)
-          if (isGen) {
-            const res = await api[m](url, normalized, { responseType: 'json' })
-            const data = res?.data
-            if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso (gen):", lastTried, "→", data) } catch {} }
-            return data
-          } else {
-            const { data } = await api[m](url, normalized)
-            if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso:", lastTried, "→", data) } catch {} }
-            return data
-          }
+          const { data } = await api[m](url, normalized)
+          if (VERBOSE) { try { console.debug("[medicoService.criarReceita] sucesso:", lastTried, "→", data) } catch {} }
+          return data
         } catch (e) {
           const st = e?.response?.status
           if (VERBOSE) {

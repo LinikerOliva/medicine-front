@@ -532,7 +532,6 @@ export default function PreviewReceitaMedico() {
         try {
           const itens = []
           
-          // Se temos itens estruturados, usar eles
           if (hasStructuredItems) {
             receitaItems.forEach(item => {
               itens.push({
@@ -546,16 +545,16 @@ export default function PreviewReceitaMedico() {
               })
             })
           } else {
-            // Fallback para campos legados
-            const hasMedicamento = Boolean(form.medicamento && String(form.medicamento).trim())
-            const hasPosologia = Boolean(form.posologia && String(form.posologia).trim())
-            if (hasMedicamento || hasPosologia) {
-              itens.push({ 
-                descricao: form.medicamento || undefined, 
-                posologia: form.posologia || undefined, 
-                observacoes: form.observacoes || undefined 
-              })
-            }
+            const { parsePrescriptionToItems } = await import("@/utils/aiPrescriptionParser")
+            const parsed = parsePrescriptionToItems(form.medicamento || "", form.posologia || "")
+            parsed.forEach((p) => itens.push({
+              descricao: p.descricao || undefined,
+              dose: p.dose || undefined,
+              frequencia: p.frequencia || undefined,
+              duracao: p.duracao || undefined,
+              posologia: p.posologia || undefined,
+              observacoes: p.observacoes || form.observacoes || undefined
+            }))
           }
           
           if (itens.length) await medicoService.salvarItensReceita(rid, itens)
@@ -668,6 +667,7 @@ export default function PreviewReceitaMedico() {
       // Preparar payload com dados do paciente e médico
       const payload = {
         paciente_nome: form.nome_paciente,
+        nome_paciente: form.nome_paciente,
         idade: form.idade,
         rg: form.rg,
         cpf: form.rg,
@@ -677,10 +677,15 @@ export default function PreviewReceitaMedico() {
         posologia: form.posologia,
         medico_nome: form.medico,
         medico_crm: form.crm,
+        medico: form.medico,
+        crm: form.crm,
         endereco_consultorio: form.endereco_consultorio,
         telefone_consultorio: form.telefone_consultorio,
         validade_receita: toInputDate(form.validade_receita),
         observacoes: form.observacoes,
+        status: 'ativa',
+        situacao: 'ativa',
+        data_prescricao: new Date().toISOString(),
       }
 
       const originalBlob = generated?.blob

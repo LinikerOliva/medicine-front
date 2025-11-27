@@ -146,7 +146,8 @@ export const pacienteService = {
   },
 
   async agendarConsulta({ medico, data, hora, modalidade, local, observacoes, tipo, motivo }) {
-    const endpoint = import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/"
+    const agBase = (import.meta.env.VITE_AGENDAMENTOS_ENDPOINT || "/agendamentos/").replace(/\/?$/, "/")
+    const consBase = (import.meta.env.VITE_CONSULTAS_ENDPOINT || "/consultas/").replace(/\/?$/, "/")
     const paciente = await this.getPacienteDoUsuario()
 
     // Combina data e hora em ISO para compatibilidade com backends que exigem "data_hora"
@@ -170,14 +171,15 @@ export const pacienteService = {
 
     const tipoNorm = normalizeTipo(tipo)
 
-    const payloadBase = {
+  const payloadBase = {
       medico,
+      medico_id: medico,
       paciente: paciente?.id,
       data,
       hora,
       data_hora: dataIso,
       inicio: dataIso,
-      horario: dataIso,
+      horario: hora,
       modalidade,
       local,
       observacoes,
@@ -194,26 +196,68 @@ export const pacienteService = {
     })
 
     // Tenta POST com payload normalizado; se falhar por validação do "tipo", tenta com fallback
+    const candidates = [agBase, consBase]
+    let lastErr = null
+    for (const url of candidates) {
+      try {
+        const endpoint = url.endsWith("/") ? url : `${url}/`
+        const response = await api.post(endpoint, { ...clean, paciente: paciente?.id, paciente_id: paciente?.id, status: "PENDENTE", situacao: "PENDENTE", state: "PENDENTE" })
+        try {
+          const { secretariaService } = await import("@/services/secretariaService")
+          await secretariaService.registrarSolicitacao({
+            medico: clean.medico || clean.medico_id,
+            paciente: paciente?.id,
+            paciente_id: paciente?.id,
+            data: clean.data,
+            hora: clean.hora,
+            modalidade: clean.modalidade,
+            tipo: clean.tipo,
+            motivo: clean.motivo,
+            observacoes: clean.observacoes,
+            status: "pendente",
+          })
+        } catch (_) {}
+        return response.data
+      } catch (e1) {
+        lastErr = e1
+        // continua para próximo candidato
+      }
+    }
+    // Se falhou em ambos, aplicar fallback de normalização de tipo
     try {
-      const response = await api.post(endpoint, clean)
-      return response.data
-    } catch (e1) {
-      const st = e1?.response?.status
-      const body = e1?.response?.data
-      const hasTipoError = body && (body.tipo || body.detail?.includes?.('tipo'))
+      const st = lastErr?.response?.status
+      const body = lastErr?.response?.data
+      const hasTipoError = body && (body.tipo || (typeof body?.detail === 'string' && body.detail.toLowerCase().includes('tipo')))
       if (st && [400, 422].includes(st) && hasTipoError) {
         // 1) Tentar com tipo=rotina
-        try {
-          const response = await api.post(endpoint, { ...clean, tipo: 'rotina' })
-          return response.data
-        } catch (e2) {
-          // 2) Tentar sem o campo tipo
-          const { tipo: _omit, ...noTipo } = clean
-          const response = await api.post(endpoint, noTipo)
-          return response.data
+        for (const url of candidates) {
+          try {
+            const endpoint = url.endsWith("/") ? url : `${url}/`
+            const response = await api.post(endpoint, { ...clean, tipo: 'rotina', paciente: paciente?.id, paciente_id: paciente?.id, status: 'PENDENTE', situacao: 'PENDENTE', state: 'PENDENTE' })
+            try {
+              const { secretariaService } = await import("@/services/secretariaService")
+              await secretariaService.registrarSolicitacao({ ...clean, tipo: 'rotina', paciente: paciente?.id, paciente_id: paciente?.id, status: 'PENDENTE' })
+            } catch (_) {}
+            return response.data
+          } catch (e2) {}
+        }
+        // 2) Sem tipo
+        for (const url of candidates) {
+          try {
+            const endpoint = url.endsWith("/") ? url : `${url}/`
+            const { tipo: _omit, ...noTipo } = clean
+            const response = await api.post(endpoint, { ...noTipo, paciente: paciente?.id, paciente_id: paciente?.id, status: 'PENDENTE', situacao: 'PENDENTE', state: 'PENDENTE' })
+            try {
+              const { secretariaService } = await import("@/services/secretariaService")
+              await secretariaService.registrarSolicitacao({ ...noTipo, paciente: paciente?.id, paciente_id: paciente?.id, status: 'PENDENTE' })
+            } catch (_) {}
+            return response.data
+          } catch (e3) {}
         }
       }
-      throw e1
+      throw lastErr
+    } catch (eFinal) {
+      throw eFinal
     }
   },
 
