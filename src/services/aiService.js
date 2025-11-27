@@ -187,7 +187,7 @@ export const aiService = {
   },
 
   // Sumariza uma transcrição usando Gemini; se indisponível, usa fallback local
-  async sumarizarTranscricao(transcricao, contexto = {}) {
+  async sumarizarTranscricao(transcricao, contexto = {}, options = {}) {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY
     const endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
@@ -195,9 +195,15 @@ export const aiService = {
       return this._summarizeLocal(transcricao, contexto)
     }
 
-    const systemPrompt = [
-      "Você é um assistente médico que lê a transcrição de uma consulta e retorna um resumo estruturado.",
-      "Responda em JSON estrito com as chaves:",
+    const systemPromptOverride = options?.systemPrompt || import.meta.env.VITE_AI_SYSTEM_PROMPT_SUMMARY
+    const defaultPrompt = [
+      "Aja como um Especialista em Triagem Médica e Extração de Dados (Scribe).",
+      "Receba a transcrição de uma consulta e retorne JSON estrito com os dados clínicos.",
+      "Regras:",
+      "- Dedução de papéis: quem examina/prescreve = MÉDICO; quem relata sintomas = PACIENTE.",
+      "- Ignore saudações e ruídos.",
+      "- Medicamentos: identifique nome, dosagem e frequência; una em string clara.",
+      "Formado:",
       "{",
       "  \"queixa\": string,",
       "  \"historia_doenca_atual\": string,",
@@ -211,9 +217,9 @@ export const aiService = {
       "  \"temperatura\": string,",
       "  \"saturacao\": string",
       "}",
-      "Formate as unidades quando possível (ex.: 120/80 mmHg, 75 bpm, 36.5 °C, 98%).",
-      "Se algum dado não estiver na transcrição, deixe a string vazia.",
+      "Unidades padrão quando possível (mmHg, bpm, °C, %). Campos ausentes = \"\".",
     ].join("\n")
+    const systemPrompt = String(systemPromptOverride || defaultPrompt)
 
     const payload = {
       contents: [

@@ -190,6 +190,16 @@ export default function IniciarConsulta() {
   useEffect(() => {
     // Iniciar reconhecimento de voz quando a tela abre
     startListening()
+    // Se houver consultaId, sinalizar início da consulta no backend
+    ;(async () => {
+      try {
+        if (consultaId && medicoService?.iniciarConsulta) {
+          await medicoService.iniciarConsulta(consultaId)
+        }
+      } catch (e) {
+        console.debug("[IniciarConsulta] Falha ao marcar início da consulta:", e?.message)
+      }
+    })()
     return () => {
       stopListening()
     }
@@ -572,7 +582,11 @@ export default function IniciarConsulta() {
                 medicamentos: extracted.medicamentos || "",
                 posologia: extracted.posologia || "",
                 alergias: formData.alergias || "",
-              })
+              }, { systemPrompt: (
+                "Aja como um Especialista em Triagem Médica e Extração de Dados (Scribe).\n"+
+                "Receba a transcrição e retorne APENAS JSON estrito com os campos: queixa, historia_doenca_atual, diagnostico_principal, conduta, medicamentos, posologia, alergias, pressao, frequencia_cardiaca, temperatura, saturacao.\n"+
+                "Regras: deduza papéis (médico/paciente), ignore saudações e ruído, identifique medicamentos com dosagem e frequência. Campos ausentes devem ser \"\"."
+              ) })
             } catch (e) {
               console.debug("[AI] Gemini indisponível:", e?.message)
             }
@@ -635,7 +649,11 @@ export default function IniciarConsulta() {
               medicamentos: extracted.medicamentos || formData.medicamentos || "",
               posologia: extracted.posologia || formData.posologia || "",
               alergias: formData.alergias || "",
-            })
+            }, { systemPrompt: (
+              "Aja como um Especialista em Triagem Médica e Extração de Dados (Scribe).\n"+
+              "Retorne APENAS JSON com: queixa, historia_doenca_atual, diagnostico_principal, conduta, medicamentos, posologia, alergias, pressao, frequencia_cardiaca, temperatura, saturacao.\n"+
+              "Ignore saudações. Deduza papéis. Unifique medicamentos com dosagem e frequência. Campos não mencionados = \"\"."
+            ) })
 
             // Funções auxiliares para ler de estruturas diversas (IA pode retornar em formatos diferentes)
             const candidates = [aiData, aiData?.data, aiData?.result, aiData?.output, aiData?.summary, aiData?.sumarizacao, aiData?.resumo, aiData?.fields].filter(Boolean)
