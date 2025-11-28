@@ -10,7 +10,10 @@ const ENV_API_URL = import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onren
 
 // 2. Define se usa Proxy (Local) ou Direto (Vercel)
 // Se não estiver definido, assume FALSE para garantir que funcione em produção
-const USE_PROXY = import.meta.env.VITE_USE_PROXY === 'true';
+const USE_PROXY = String(import.meta.env.VITE_USE_PROXY ?? 'false').toLowerCase() === 'true';
+
+// 2.1 Base path da API
+const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '/api';
 
 // 3. Define a baseURL final
 // Se for proxy, deixamos vazio (o navegador completa). Se for produção, usa a URL completa.
@@ -29,10 +32,14 @@ const api = axios.create({
 
 // --- INTERCEPTOR DE REQUISIÇÃO (TOKEN) ---
 api.interceptors.request.use((config) => {
-  // Ajuste de caminhos (garante que /api/ esteja presente se necessário)
+  // Ajuste de caminhos (garante que base path esteja presente)
   const path = config.url || '';
-  if (!path.startsWith('http') && !path.startsWith('/api/') && USE_PROXY) {
-      config.url = `/api${path.startsWith('/') ? path : '/' + path}`;
+  if (!path.startsWith('http')) {
+    const basePath = API_BASE_PATH.replace(/\/?$/, '/');
+    if (!path.startsWith(basePath)) {
+      const normalized = `${basePath}${path.startsWith('/') ? path.slice(1) : path}`;
+      config.url = normalized;
+    }
   }
 
   // Ignorar token em rotas públicas
@@ -83,7 +90,7 @@ api.interceptors.response.use(
             const refreshToken = secureStorage.getItem("refresh_token");
             if (refreshToken) {
                 // Tenta renovar o token
-                const response = await axios.post(`${ENV_API_URL}/api/auth/token/refresh/`, {
+                const response = await axios.post(`${ENV_API_URL}${API_BASE_PATH}/auth/token/refresh/`, {
                     refresh: refreshToken
                 });
 
