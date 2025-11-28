@@ -56,7 +56,7 @@ export default function ReceberReceita() {
     try {
       // Se relativo, prefixa com API base
       if (!/^https?:\/\//i.test(url)) {
-        const base = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "")
+        const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
         url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
       }
       const res = await api.get(url, { responseType: "blob", baseURL: "" })

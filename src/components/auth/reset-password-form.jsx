@@ -22,8 +22,8 @@ export default function ResetPasswordForm() {
 
   // Base do backend para fallback de redirecionamento
   const backendBase = useMemo(() => {
-    const base = import.meta.env.VITE_BACKEND_BASE_URL || "http://127.0.0.1:8000"
-    return base.replace(/\/$/, "")
+    const base = import.meta.env.VITE_BACKEND_BASE_URL || import.meta.env.VITE_API_URL || ""
+    return String(base).replace(/\/$/, "")
   }, [])
 
   const confirmApi = import.meta.env.VITE_RESET_PASSWORD_CONFIRM_API // opcional

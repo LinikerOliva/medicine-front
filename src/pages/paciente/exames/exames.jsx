@@ -54,7 +54,7 @@ export default function PacienteExames() {
     const url = ex?.resultado_url || ex?.arquivo_resultado || ex?.resultado?.arquivo || ex?.arquivo_url || ex?.documento_url
     if (!url) return null
     if (/^https?:\/\//i.test(url)) return url
-    const base = import.meta.env.VITE_API_URL || "http://localhost:8000"
+    const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
     return `${base}${url.startsWith("/") ? "" : "/"}${url}`
   }
 

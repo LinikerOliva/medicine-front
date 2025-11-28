@@ -56,7 +56,9 @@ const TestSignature = () => {
 
     try {
       // Teste dos endpoints Django disponíveis
-      const baseUrl = 'http://127.0.0.1:8000/api';
+      const baseOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const apiBasePath = (import.meta.env.VITE_API_BASE_PATH || '/api').replace(/\/$/, '');
+      const baseUrl = `${baseOrigin}${apiBasePath}`;
       const endpoints = [
         '/receitas/',
         '/receitas/f86c1245-2d66-4e5b-8830-e774c7c0f31f/',

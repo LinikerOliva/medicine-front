@@ -40,7 +40,7 @@ export default function PacienteHistoricoMedico() {
     const url = ex?.resultado_url || ex?.arquivo_resultado || ex?.resultado?.arquivo || ex?.arquivo_url || ex?.documento_url
     if (!url) return null
     if (/^https?:\/\//i.test(url)) return url
-    const base = import.meta.env.VITE_API_URL || "http://localhost:8000"
+    const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
     return `${base}${url.startsWith("/") ? "" : "/"}${url}`
   }
 
@@ -401,7 +401,7 @@ const handleDownloadFile = async (item) => {
 
     // Se for relativo, prefixa com base do backend
     if (!/^https?:\/\//i.test(url)) {
-      const base = import.meta.env.VITE_API_URL || "http://localhost:8000"
+      const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
       url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
     }
 
