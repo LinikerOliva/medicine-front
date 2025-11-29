@@ -81,8 +81,19 @@ export const authService = {
       // Primeira tentativa (padrão)
       let response
       try {
+        const basePath = (import.meta.env.VITE_API_BASE_PATH || "/api").replace(/\/?$/, "/")
+        const envLogin = import.meta.env.VITE_LOGIN_ENDPOINT
+        let endpoint = envLogin || `${basePath}auth/login/`
+        if (envLogin) {
+          const ep = String(envLogin)
+          if (/^https?:\/\//i.test(ep) && /(localhost|127\.0\.0\.1)/i.test(ep)) {
+            endpoint = `${basePath}auth/login/`
+          } else {
+            endpoint = ep
+          }
+        }
         response = await api.post(
-          import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
+          endpoint,
           { ...payload, username: resolvedIdentifier || payload.username, email: resolvedIdentifier || payload.email }
         )
       } catch (e1) {
