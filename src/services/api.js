@@ -6,11 +6,17 @@ import digitalSignatureServiceInstance from './digitalSignatureService';
 
 // --- CONFIGURAÇÃO INTELIGENTE DE URL ---
 // 1. Pega a URL do Render definida no .env ou Vercel
-const ENV_API_URL = import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onrender.com";
+const IS_BROWSER = typeof window !== 'undefined'
+const PROD_HOST = IS_BROWSER && /vercel\.app|onrender\.com/i.test(window.location.host)
+const ENV_API_URL = (() => {
+  const envUrl = import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onrender.com"
+  try { return (IS_BROWSER && window.__API_BASE_URL) ? window.__API_BASE_URL : envUrl } catch { return envUrl }
+})().replace(/\/$/, "")
 
 // 2. Define se usa Proxy (Local) ou Direto (Vercel)
 // Se não estiver definido, assume FALSE para garantir que funcione em produção
-const USE_PROXY = String(import.meta.env.VITE_USE_PROXY ?? 'false').toLowerCase() === 'true';
+const USE_PROXY_CFG = String(import.meta.env.VITE_USE_PROXY ?? 'false').toLowerCase() === 'true'
+const USE_PROXY = PROD_HOST ? false : USE_PROXY_CFG
 
 // 2.1 Base path da API
 const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '/api';

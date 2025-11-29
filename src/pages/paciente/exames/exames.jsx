@@ -500,7 +500,7 @@ const handleDownloadFile = async (item) => {
     let url = item?.resultado_url
     if (!url) return
     if (!/^https?:\/\//i.test(url)) {
-      const base = import.meta.env.VITE_API_URL || "http://localhost:8000"
+      const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
       url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
     }
     const res = await api.get(url, { responseType: "blob", baseURL: "" })
