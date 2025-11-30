@@ -809,35 +809,7 @@ export default defineConfig(({ mode }) => {
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
       },
-      proxy: {
-        [apiBasePath]: {
-          target: apiTarget,
-          changeOrigin: true,
-          secure: false,
-          // Importante para autenticação baseada em cookie durante o desenvolvimento
-          // Regrava domínio e caminho dos cookies para o host do Vite (localhost:5173)
-          cookieDomainRewrite: {
-            // qualquer domínio -> localhost
-            '*': 'localhost',
-          },
-          cookiePathRewrite: {
-            '*': '/',
-          },
-          // Reescreve cabeçalho Location de redireções absolutas do backend (ex.: 302 http://127.0.0.1:8000/..)
-          configure: (proxy) => {
-            proxy.on('proxyRes', (proxyRes) => {
-              const loc = proxyRes.headers['location']
-              if (loc) {
-                try {
-                  // Troca a origem do backend pelo caminho base do proxy
-                  const newLoc = loc.replace(apiTarget, apiBasePath)
-                  proxyRes.headers['location'] = newLoc
-                } catch {}
-              }
-            })
-          },
-        },
-      },
+      // proxy removido: usamos conexão direta via CORS com Render
       // Security headers (dev-friendly) para mitigar avisos do auditor
       headers: {
         'X-Content-Type-Options': 'nosniff',
