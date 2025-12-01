@@ -1,35 +1,17 @@
 import axios from "axios";
-// Certifique-se que estes arquivos existem no seu projeto, senão vai dar erro!
 import { secureStorage } from "../utils/secureStorage";
 import { mockService } from "./mockService";
 import digitalSignatureServiceInstance from './digitalSignatureService';
 
-// --- CONFIGURAÇÃO INTELIGENTE DE URL ---
-// 1. Pega a URL do Render definida no .env ou Vercel
-const IS_BROWSER = typeof window !== 'undefined'
-const PROD_HOST = IS_BROWSER && /vercel\.app|onrender\.com/i.test(window.location.host)
-const ENV_API_URL = (() => {
-  const envUrl = import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onrender.com"
-  try { return (IS_BROWSER && window.__API_BASE_URL) ? window.__API_BASE_URL : envUrl } catch { return envUrl }
-})().replace(/\/$/, "")
-
-// 2. Define se usa Proxy (Local) ou Direto (Vercel)
-// Se não estiver definido, assume FALSE para garantir que funcione em produção
-const USE_PROXY_CFG = String(import.meta.env.VITE_USE_PROXY ?? 'false').toLowerCase() === 'true'
-const USE_PROXY = PROD_HOST ? false : USE_PROXY_CFG
-
-// 2.1 Base path da API
+// FALLBACK DE SEGURANÇA: Se não ler do .env, usa direto a URL do Render (com /api)
+const API_URL = (import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onrender.com/api").replace(/\/$/, "");
 const API_BASE_PATH = import.meta.env.VITE_API_BASE_PATH || '/api';
-
-// 3. Define a baseURL final
-// Se for proxy, deixamos vazio (o navegador completa). Se for produção, usa a URL completa.
-const BASE_URL = USE_PROXY ? '' : ENV_API_URL;
-
-console.info(`[API] Conectando em: ${USE_PROXY ? 'PROXY LOCAL' : ENV_API_URL}`);
+console.log("Environment:", import.meta.env.MODE);
+console.log("Conectando API em:", API_URL);
 
 // --- CRIAÇÃO DO AXIOS ---
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_URL,
   headers: {
     "Content-Type": "application/json",
   },
@@ -96,7 +78,7 @@ api.interceptors.response.use(
             const refreshToken = secureStorage.getItem("refresh_token");
             if (refreshToken) {
                 // Tenta renovar o token
-                const response = await axios.post(`${ENV_API_URL}${API_BASE_PATH}/auth/token/refresh/`, {
+                const response = await axios.post(`${API_URL}/auth/token/refresh/`, {
                     refresh: refreshToken
                 });
 
@@ -107,7 +89,7 @@ api.interceptors.response.use(
                 const scheme = secureStorage.getItem("auth_scheme") || "Token";
                 originalRequest.headers.Authorization = `${scheme} ${access}`;
                 // Força a baseURL correta na retentativa
-                originalRequest.baseURL = BASE_URL; 
+                originalRequest.baseURL = API_URL; 
                 
                 return api(originalRequest);
             }

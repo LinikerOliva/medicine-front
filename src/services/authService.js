@@ -81,17 +81,15 @@ export const authService = {
       // Primeira tentativa (padrão)
       let response
       try {
-        const basePath = (import.meta.env.VITE_API_BASE_PATH || "/api").replace(/\/?$/, "/")
-        const endpoint = `${basePath}auth/login/`
+        const endpoint = "/auth/login/"
         response = await api.post(endpoint, { ...payload, username: resolvedIdentifier || payload.username, email: resolvedIdentifier || payload.email })
       } catch (e1) {
         // Fallback: quando o identificador for CPF, alguns backends exigem campo específico 'cpf'
         if (isCpf11) {
           const cpfPayload = { cpf: userRaw, password: credentials.password }
           const candidates = [
-            import.meta.env.VITE_LOGIN_CPF_ENDPOINT || "/api/auth/login_cpf/",
-            import.meta.env.VITE_LOGIN_ENDPOINT || "/api/auth/login/",
             "/auth/login_cpf/",
+            "/auth/login/",
           ]
           let lastErr = e1
           for (const ep of candidates) {
@@ -157,7 +155,7 @@ export const authService = {
 
   async register(userData, options = {}) {
     try {
-      const endpoint = import.meta.env.VITE_REGISTER_ENDPOINT || "/api/auth/register/"
+      const endpoint = "/auth/register/"
       const response = await api.post(endpoint, userData)
 
       let currentUserData = null
