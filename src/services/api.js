@@ -2,7 +2,7 @@ import axios from "axios";
 import { secureStorage } from "../utils/secureStorage";
 // (imports reduzidos)
 
-// FALLBACK DE SEGURANÇA: Se não ler do .env, usa direto a URL do Render (com /api)
+// FALLBACK DE SEGURANÇA: força host de produção
 const API_URL = "https://tcc-back-ktwy.onrender.com";
 console.log("--- FORÇANDO API PRODUÇÃO ---");
 console.log("URL:", API_URL);
@@ -25,6 +25,18 @@ api.interceptors.request.use((config) => {
   if (config.data instanceof FormData) {
     delete config.headers["Content-Type"];
   }
+  // Prefixa automaticamente "/api" em chamadas relativas que não são absolutas nem já começam com "/api"
+  try {
+    const url = String(config.url || "");
+    const isAbsolute = /^https?:\/\//i.test(url);
+    const startsWithSlash = url.startsWith("/");
+    const alreadyHasApi = url.startsWith("/api/") || url === "/api";
+    // Só quando não for absoluto e não tiver "/api" explícito
+    if (!isAbsolute && !alreadyHasApi) {
+      const normalized = startsWithSlash ? url : `/${url}`;
+      config.url = `/api${normalized}`;
+    }
+  } catch {}
   return config;
 });
 
