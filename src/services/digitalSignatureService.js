@@ -229,7 +229,8 @@ class DigitalSignatureService {
    */
   async verifySignature(signatureId) {
     try {
-      const response = await fetch(`http://localhost:8172/api/prescriptions/verify/${signatureId}/`)
+      const agentBase = (import.meta.env.VITE_LOCAL_AGENT_URL || 'http://localhost:8172').replace(/\/$/, '')
+      const response = await fetch(`${agentBase}/api/prescriptions/verify/${signatureId}/`)
       
       if (!response.ok) {
         // Fallback para mock local
@@ -288,7 +289,8 @@ class DigitalSignatureService {
    * @returns {string} URL de download
    */
   getDownloadUrl(signatureId) {
-    return `http://localhost:8172/api/prescriptions/download/${signatureId}/`
+    const agentBase = (import.meta.env.VITE_LOCAL_AGENT_URL || 'http://localhost:8172').replace(/\/$/, '')
+    return `${agentBase}/api/prescriptions/download/${signatureId}/`
   }
 
   /**

@@ -5,8 +5,8 @@ import api from "./api"
 // Toda comunicação deve ocorrer via TLS quando disponível.
 
 const ensureBaseUrl = () => {
-  // Usando URL local que funciona no ambiente atual
-  return "http://localhost:8172"
+  const env = (import.meta.env.VITE_LOCAL_AGENT_URL || "http://localhost:8172").trim()
+  return env.replace(/\/$/, "")
 }
 
 const parseFilename = (contentDisposition, fallback = "documento_assinado.pdf") => {
