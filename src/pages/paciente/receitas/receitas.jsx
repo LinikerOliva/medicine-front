@@ -406,10 +406,37 @@ export default function ReceitasPaciente() {
         url = `${base}${url.startsWith("/") ? "" : "/"}${url}`
       }
       const res = await api.get(url, { responseType: "blob", baseURL: "" })
-      const blob = new Blob([res.data], { type: res.headers["content-type"] || "application/pdf" })
       const cd = res.headers["content-disposition"] || ""
-      const match = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(cd)
-      let filename = match?.[1] || match?.[2]
+      const ct = String(res.headers["content-type"] || "").toLowerCase()
+      let filename = (() => {
+        const m = /filename\*=UTF-8''([^;]+)|filename="?([^\";]+)"?/i.exec(cd)
+        return m?.[1] || m?.[2] || null
+      })()
+      if (!ct.includes("application/pdf")) {
+        try {
+          const txt = await new Response(res.data).text()
+          const payload = (() => { try { return JSON.parse(txt) } catch { return null } })()
+          const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64
+          if (b64) {
+            const bytes = Uint8Array.from(atob(String(b64)), c => c.charCodeAt(0))
+            const blob = new Blob([bytes], { type: "application/pdf" })
+            const name = ensurePdfExt(payload?.filename || payload?.nome_arquivo || filename || `Receita_${r?.id || "documento"}.pdf`)
+            downloadBlob(blob, name)
+            return
+          }
+        } catch {}
+        toast({ title: "Falha no download", description: "Conteúdo não é um PDF válido.", variant: "destructive" })
+        return
+      }
+      const blob = new Blob([res.data], { type: "application/pdf" })
+      try {
+        const ab = await blob.slice(0, 8).arrayBuffer()
+        const sig = String.fromCharCode(...new Uint8Array(ab))
+        if (!sig.startsWith("%PDF-")) {
+          toast({ title: "Falha no download", description: "Arquivo recebido não é um PDF válido.", variant: "destructive" })
+          return
+        }
+      } catch {}
       if (!filename) {
         try {
           const u = new URL(url)
@@ -418,8 +445,7 @@ export default function ReceitasPaciente() {
           filename = ""
         }
       }
-      if (!filename) filename = `Receita_${r?.id || "documento"}.pdf`
-      filename = ensurePdfExt(filename)
+      filename = ensurePdfExt(filename || `Receita_${r?.id || "documento"}.pdf`)
       downloadBlob(blob, filename)
     } catch (e) {
       console.error("[Receitas] Falha ao baixar PDF assinado:", e?.response?.status || e)
