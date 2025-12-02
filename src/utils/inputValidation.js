@@ -353,12 +353,15 @@ export function cleanGreeting(text) {
   ]
   for (const f of blacklist) {
     if (low.includes(f) && s.length < 100) {
-      const cleaned = low.replace(f, "").replace("?", "").trim()
+      let cleaned = s.replace(/^[\-•\*\s]+/, "")
+      cleaned = cleaned.replace(new RegExp(f, "i"), "").replace(/\?+/g, "").trim()
       if (cleaned.length < 5) return ""
+      return cleaned
     }
   }
   if (low.startsWith("bom dia")) {
-    const rest = s.slice(7).replace(/tudo bem\??/i, "").trim()
+    let rest = s.replace(/^[\-•\*\s]+/, "")
+    rest = rest.slice(7).replace(/tudo bem\??/i, "").trim()
     return rest.replace(/^[,\.\s]+/, "")
   }
   return s
