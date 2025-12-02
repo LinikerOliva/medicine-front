@@ -2335,13 +2335,32 @@ export const medicoService = {
           if (VERBOSE) console.debug(`[signDocumento] ${m.toUpperCase()} multipart ->`, url)
           const res = await api[m](url, formData, { responseType: "blob" })
           const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-          let filename = "documento_assinado.pdf"
+          let filename = "receita_assinada.pdf"
           if (cd) {
             const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
             try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
           }
-          const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
-          return { filename, blob }
+          const ct = String(res.headers?.["content-type"] || "").toLowerCase()
+          if (ct.includes("application/pdf")) {
+            const blob = new Blob([res.data], { type: "application/pdf" })
+            return { filename, blob }
+          }
+          // Se não veio PDF na resposta blob, tentar interpretar como JSON/base64
+          try {
+            const txt = await new Response(res.data).text()
+            const payload = (() => { try { return JSON.parse(txt) } catch { return null } })()
+            const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64
+            if (b64) {
+              const byteChars = atob(String(b64))
+              const byteNumbers = new Array(byteChars.length)
+              for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
+              const byteArray = new Uint8Array(byteNumbers)
+              const blob = new Blob([byteArray], { type: "application/pdf" })
+              return { filename, blob }
+            }
+          } catch {}
+          // Caso contrário, trate como erro
+          throw e1
         } catch (e1) {
           const st1 = e1?.response?.status
           if (st1 === 404) { lastErr = e1; break }
