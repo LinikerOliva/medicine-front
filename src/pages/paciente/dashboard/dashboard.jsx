@@ -514,6 +514,19 @@ export default function DashboardPaciente() {
                             Lida
                           </Button>
                         )}
+                        {(() => {
+                          const link = n?.dados?.link || n?.link
+                          const rid = n?.dados?.receita_id || n?.receita_id || n?.receita?.id
+                          const href = link || (rid ? `/verificar/${rid}` : `/paciente/receitas`)
+                          return (
+                            <Button asChild variant="ghost" size="sm" className="hover:bg-orange-100">
+                              <Link to={href}>
+                                <Eye className="h-4 w-4 mr-1" />
+                                Abrir
+                              </Link>
+                            </Button>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>

@@ -1394,7 +1394,7 @@ ${form.telefone_consultorio || ''}`
       const configuracoes = {
         ...configuracaoEnvio,
         linkSite: window.location.origin,
-        linkDownload: rid ? `${window.location.origin}/api/receitas/${rid}/download/` : null
+        linkDownload: rid ? `${window.location.origin}/verificar/${rid}` : null
       }
 
       // Enviar através dos canais selecionados

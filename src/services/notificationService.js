@@ -1,5 +1,44 @@
 import api from './api'
+import { authService } from './authService'
 const APP_URL = (import.meta.env.VITE_APP_URL || 'https://medicine-front-six.vercel.app').replace(/\/$/, '')
+const STORAGE_PREFIX = 'local_notifications_'
+
+function _getCurrentUserId() {
+  const u = authService.getCurrentUser()
+  return u?.id || 'anon'
+}
+
+function _loadLocal() {
+  try {
+    const uid = _getCurrentUserId()
+    const raw = localStorage.getItem(`${STORAGE_PREFIX}${uid}`)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
+function _saveLocal(list) {
+  try {
+    const uid = _getCurrentUserId()
+    localStorage.setItem(`${STORAGE_PREFIX}${uid}`, JSON.stringify(list || []))
+  } catch {}
+}
+
+function _createLocalNotif({ titulo, mensagem, tipo = 'receita', dados = {} }) {
+  const n = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    titulo,
+    mensagem,
+    tipo,
+    lida: false,
+    created_at: new Date().toISOString(),
+    dados,
+  }
+  const list = _loadLocal()
+  list.unshift(n)
+  _saveLocal(list)
+  return n
+}
 
 class NotificationService {
   constructor() {
@@ -29,13 +68,16 @@ class NotificationService {
         canal: 'interno'
       }
 
-      const response = await api.post(`${this.baseUrl}enviar/`, payload)
-      
-      if (this.verbose) {
-        console.log('[NotificationService] Notificação interna enviada:', response.data)
+      try {
+        const response = await api.post(`${this.baseUrl}enviar/`, payload)
+        if (this.verbose) { console.log('[NotificationService] Notificação interna enviada:', response.data) }
+        return response.data
+      } catch (err) {
+        // Fallback local
+        const n = _createLocalNotif({ titulo, mensagem, tipo, dados })
+        if (this.verbose) { console.log('[NotificationService] Fallback local de notificação:', n) }
+        return n
       }
-      
-      return response.data
     } catch (error) {
       console.error('[NotificationService] Erro ao enviar notificação interna:', error)
       throw error
@@ -78,6 +120,8 @@ class NotificationService {
       // Link de download (fallback quando não há arquivo)
       if (linkDownload) {
         formData.append('link_download', linkDownload)
+      } else if (receitaId) {
+        formData.append('link_download', `${APP_URL}/verificar/${receitaId}`)
       }
 
       let response
@@ -89,9 +133,9 @@ class NotificationService {
         const st = primaryErr?.response?.status
         if (st === 401 || st === 403) throw primaryErr
         const candidates = [
-          `/api/receitas/${receitaId}/enviar/`,
+          receitaId ? `/api/receitas/${receitaId}/enviar/` : null,
           `/api/receitas/enviar/`
-        ]
+        ].filter(Boolean)
         let lastErr = primaryErr
         for (const url of candidates) {
           try {
@@ -115,7 +159,14 @@ class NotificationService {
       return response.data
     } catch (error) {
       console.error('[NotificationService] Erro ao enviar e-mail:', error)
-      throw error
+      // Fallback local: registrar intenção de envio
+      _createLocalNotif({
+        titulo: 'Receita enviada por e-mail (pendente)',
+        mensagem: `Sua receita foi preparada para envio. Link: ${receitaId ? APP_URL + '/verificar/' + receitaId : (linkDownload || APP_URL + '/paciente/receitas')}`,
+        tipo: 'receita',
+        dados: { receita_id: receitaId, canal: 'email', link: receitaId ? `${APP_URL}/verificar/${receitaId}` : (linkDownload || `${APP_URL}/paciente/receitas`) }
+      })
+      return { success: false, error: error.response?.data || error.message }
     }
   }
 
@@ -290,13 +341,13 @@ class NotificationService {
         const titulo = configuracoes.tituloInterno || 'Nova receita médica disponível'
         const mensagem = configuracoes.mensagemInterna || 
           'Você tem uma nova receita médica disponível. Acesse sua área do paciente para visualizar.'
-        
+        const link = configuracoes.linkDownload || (receitaId ? `${APP_URL}/verificar/${receitaId}` : `${APP_URL}/paciente/receitas`)
         resultados.interno = await this.enviarNotificacaoInterna({
           pacienteId,
           titulo,
           mensagem,
           tipo: 'receita',
-          dados: { receita_id: receitaId },
+          dados: { receita_id: receitaId, link },
           prioridade: 'alta'
         })
       } catch (error) {
@@ -309,7 +360,7 @@ class NotificationService {
       try {
         const assunto = configuracoes.assuntoEmail || 'Nova receita médica'
         const mensagemDefaultComAnexo = `Olá ${dadosPaciente.nome || ''},\n\nVocê tem uma nova receita médica em anexo.\n\nAtenciosamente,\nEquipe Médica`
-        const mensagemDefaultComLink = `Olá ${dadosPaciente.nome || ''},\n\nSua receita médica está disponível neste link: ${configuracoes.linkDownload}.\n\nAtenciosamente,\nEquipe Médica`
+        const mensagemDefaultComLink = `Olá ${dadosPaciente.nome || ''},\n\nSua receita médica está disponível neste link: ${configuracoes.linkDownload || (receitaId ? APP_URL + '/verificar/' + receitaId : APP_URL + '/paciente/receitas')}.\n\nAtenciosamente,\nEquipe Médica`
         const mensagem = configuracoes.mensagemEmail || (arquivo ? mensagemDefaultComAnexo : mensagemDefaultComLink)
         
         resultados.email = await this.enviarReceitaPorEmail({
@@ -320,7 +371,7 @@ class NotificationService {
           nomeArquivo,
           assunto,
           mensagem,
-          linkDownload: configuracoes.linkDownload
+          linkDownload: configuracoes.linkDownload || (receitaId ? `${APP_URL}/verificar/${receitaId}` : undefined)
         })
       } catch (error) {
         resultados.erros.push({ canal: 'email', erro: error.message })
@@ -376,8 +427,15 @@ class NotificationService {
       if (tipo) params.tipo = tipo
       if (lidas !== null) params.lidas = lidas
 
-      const response = await api.get(this.baseUrl, { params })
-      return response.data
+      try {
+        const response = await api.get(this.baseUrl, { params })
+        return response.data
+      } catch (err) {
+        // Fallback local
+        const list = _loadLocal()
+        const results = params.lidas === false ? list.filter((n) => !n.lida) : list
+        return { results, count: results.length }
+      }
     } catch (error) {
       console.error('[NotificationService] Erro ao buscar notificações:', error)
       throw error
@@ -389,11 +447,17 @@ class NotificationService {
    */
   async marcarComoLida(notificacaoId) {
     try {
-      const response = await api.patch(`${this.baseUrl}${notificacaoId}/`, {
-        lida: true,
-        data_leitura: new Date().toISOString()
-      })
-      return response.data
+      try {
+        const response = await api.patch(`${this.baseUrl}${notificacaoId}/`, {
+          lida: true,
+          data_leitura: new Date().toISOString()
+        })
+        return response.data
+      } catch (err) {
+        const list = _loadLocal().map((n) => (String(n.id) === String(notificacaoId) ? { ...n, lida: true, data_leitura: new Date().toISOString() } : n))
+        _saveLocal(list)
+        return { id: notificacaoId, lida: true }
+      }
     } catch (error) {
       console.error('[NotificationService] Erro ao marcar notificação como lida:', error)
       throw error
@@ -405,8 +469,14 @@ class NotificationService {
    */
   async marcarTodasComoLidas() {
     try {
-      const response = await api.post(`${this.baseUrl}marcar-todas-lidas/`)
-      return response.data
+      try {
+        const response = await api.post(`${this.baseUrl}marcar-todas-lidas/`)
+        return response.data
+      } catch (err) {
+        const list = _loadLocal().map((n) => ({ ...n, lida: true, data_leitura: n.data_leitura || new Date().toISOString() }))
+        _saveLocal(list)
+        return { ok: true }
+      }
     } catch (error) {
       console.error('[NotificationService] Erro ao marcar todas como lidas:', error)
       throw error
