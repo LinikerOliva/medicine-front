@@ -26,7 +26,7 @@ export default function ResetPasswordForm() {
     return String(base).replace(/\/$/, "")
   }, [])
 
-  const confirmApi = import.meta.env.VITE_RESET_PASSWORD_CONFIRM_API // opcional
+  const confirmApi = import.meta.env.VITE_RESET_PASSWORD_CONFIRM_API
 
   const confirmUrl = `${backendBase}/reset/${uid}/${token}/`
 
@@ -57,13 +57,38 @@ export default function ResetPasswordForm() {
 
     setSubmitting(true)
     try {
-      if (confirmApi) {
-        // Tenta confirmar via API se estiver configurado
-        await api.post(confirmApi, { uid, token, new_password: password })
+      const endpoints = []
+      if (confirmApi) endpoints.push(confirmApi)
+      endpoints.push("/api/auth/password_reset_confirm/")
+      endpoints.push("/api/password_reset/confirm/")
+      endpoints.push("/api/auth/password/reset/confirm/")
+
+      const payloads = [
+        { uid, token, new_password: password },
+        { uid, token, new_password1: password, new_password2: confirm },
+        { uid, token, password: password, confirm_password: confirm },
+        { token, password: password },
+      ]
+
+      let success = false
+      for (const ep of endpoints) {
+        for (const body of payloads) {
+          try {
+            await api.post(ep, body)
+            success = true
+            break
+          } catch (err) {
+            const st = err?.response?.status
+            if (st === 401) throw err
+          }
+        }
+        if (success) break
+      }
+
+      if (success) {
         toast({ title: "Senha redefinida!", description: "Você já pode fazer login." })
         navigate("/login")
       } else {
-        // Fallback: redireciona para a página segura do backend
         window.location.href = confirmUrl
       }
     } catch (error) {
