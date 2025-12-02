@@ -402,6 +402,11 @@ export default function IniciarConsulta() {
   // Util: extração simples a partir do texto transcrito
   function extractFromTranscript(text = "") {
     let norm = String(text || "").replace(/\r/g, "").trim()
+    norm = norm
+      .split(/\n+/)
+      .map((l) => l.replace(/^[\-•\*\s]+/, "").trim())
+      .filter(Boolean)
+      .join("\n")
     // Inserir quebras de linha antes de rótulos comuns quando surgem no meio da frase
     norm = norm
       .replace(/(?:^|[.!?])\s*(Ao exame)\s*:/gi, "\n$1:")
@@ -452,7 +457,14 @@ export default function IniciarConsulta() {
       return m ? m[1].trim() : ""
     }
   
-    const queixa = getSection(["Queixa", "Queixa Principal"]) || norm.split(/\n\n|\n-/)[0]?.slice(0, 300) || ""
+    const queixaRaw = getSection(["Queixa", "Queixa Principal"]) || norm.split(/\n\n|\n-/)[0] || ""
+    const qlow = queixaRaw.toLowerCase().trim()
+    let queixa = queixaRaw
+    const greetTokens = ["bom dia", "boa tarde", "boa noite", "tudo bem", "o que", "olá", "ola", "oi"]
+    if (qlow.length < 200 && greetTokens.some(t => qlow.includes(t))) {
+      queixa = queixa.replace(/^[\-•\*\s]+/, "").replace(/^(bom dia|boa tarde|boa noite)/i, "").replace(/tudo bem\??/i, "").trim()
+    }
+    queixa = queixa.slice(0, 300)
     const historia = getSection(["História da Doença Atual", "HDA", "História", "Historia"]) || ""
     const diagnostico = getSection(["Diagnóstico Principal", "Diagnóstico", "Diagnostico"]) || ""
     const conduta = getSection(["Conduta", "Plano", "Plano Terapêutico"]) || ""
@@ -462,7 +474,10 @@ export default function IniciarConsulta() {
     let posologia = ""
   
     if (prescricao) {
-      const lines = prescricao.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+      const lines = prescricao
+        .split(/\n+/)
+        .map((l) => l.trim())
+        .filter((l) => l && !/alerg/i.test(l))
       // Usar as linhas completas como medicamentos para garantir visibilidade no resumo
       medicamentos = lines.join("\n")
       // Extrair posologia quando possível (após "–" ou após dosagem)
@@ -484,13 +499,33 @@ export default function IniciarConsulta() {
         posologia = "Conforme conduta descrita."
       }
     }
+
+    if (!medicamentos) {
+      const usageLines = norm
+        .split(/\n+/)
+        .filter((l) => /\b(tomo|uso|faço uso|em uso|utiliza|usa)\b/i.test(l) && !/alerg/i.test(l))
+      if (usageLines.length) {
+        medicamentos = usageLines
+          .map((l) => l.replace(/^s[oó]\s+tomo\s+/i, "").trim())
+          .join("\n")
+        const posoParts = usageLines
+          .map((l) => {
+            const dashIdx = l.indexOf("–")
+            if (dashIdx >= 0) return l.slice(dashIdx + 1).trim()
+            const m = l.match(/(?:\d+\s?(mg|ml|g|mcg)[^,;]*)[,;]?(.*)$/i)
+            return m ? (m[2] || "").trim() : ""
+          })
+          .filter(Boolean)
+        if (posoParts.length) posologia = posoParts.join("\n")
+      }
+    }
   
     // Extração simples de sinais vitais no texto completo
     const pressao = (norm.match(/(PA|press[aã]o( arterial)?)[^\d]*(\d{2,3}\s*\/\s*\d{2,3})\s*(mmhg)?/i) || ["", "", "", ""])[3] || ""
-    const frequencia = (norm.match(/(FC|freq[uê]ncia\s*card[ií]aca)[^\d]*(\d{2,3})\s*(bpm)?/i) || ["", "", ""])[2] || ""
-    const temperatura = (norm.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""])[3] || ""
-    const saturacao = (norm.match(/(sat|satura[cç][aã]o)[^\d]*(\d{2})\s*%/i) || ["", "", ""])[2] || ""
-  
+    const frequencia = (norm.match(/(FC|freq[uê]ncia\s*card[ií]aca)[^\d]*(\d{2,3})\s*(bpm)?/i) || ["", "", ""]) [2] || ""
+    const temperatura = (norm.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""]) [3] || ""
+    const saturacao = (norm.match(/(sat|satura[cç][aã]o)[^\d]*(\d{2})\s*%/i) || ["", "", ""]) [2] || ""
+
     return { queixa, historia, diagnostico, conduta, medicamentos, posologia, pressao, "frequencia-cardiaca": frequencia, temperatura, saturacao }
   }
 
