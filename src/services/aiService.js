@@ -92,17 +92,32 @@ export const aiService = {
       }
     }
 
-    // Regra de negócio: quando houver Sumatriptana mencionada na transcrição,
-    // resumir a posologia para "a cada 6h se dor" e priorizar apenas essa instrução.
     try {
       const sumMatch = text.match(/sumatriptan(a)?\b[^\n]*/i)
       if (sumMatch) {
-        const doseMatch = sumMatch[0].match(/(\d+\s*mg)/i)
-        const dose = doseMatch ? doseMatch[1].replace(/\s+/g, ' ').trim() : ''
-        const posoSimple = `Sumatriptana ${dose}`.trim()
-        posologia = `${posoSimple} — a cada 6h se dor`
+        posologia = "a cada 6h"
       }
     } catch {}
+
+    const toUsage = (s) => {
+      const t = String(s || "").toLowerCase()
+      let n = null
+      let m = t.match(/a\s*cada\s*(\d{1,2})\s*h/) || t.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*h/) || null
+      if (m) n = parseInt(m[1], 10)
+      if (!n) {
+        const m2 = t.match(/(\d)\s*x\s*ao\s*dia/)
+        if (m2) { const f = parseInt(m2[1], 10); if (f > 0) n = Math.round(24 / f) }
+      }
+      if (!n) {
+        const m3 = t.match(/(\d{1,2})\s*h/)
+        if (m3) n = parseInt(m3[1], 10)
+      }
+      if (!n) return null
+      return `1 comprimido de ${n} em ${n} horas`
+    }
+
+    const posoNorm = toUsage(posologia) || toUsage(text)
+    if (posoNorm) posologia = posoNorm
 
     const alergias = readSection(["Alergias"]) || String(contexto?.alergias || "")
 
