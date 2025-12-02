@@ -591,12 +591,8 @@ export const medicoService = {
     if (!normalized.validade && !normalized.validade_receita) {
       normalized.validade = addDays(today, 30)
     }
-    if (!normalized.status && !normalized.situacao) {
-      normalized.status = 'ativa'
-      normalized.situacao = 'ativa'
-    }
-    if (normalized.ativa === undefined) {
-      normalized.ativa = true
+    if (!normalized.status) {
+      normalized.status = 'PENDENTE'
     }
 
     // Resolve automaticamente o ID do médico quando ausente
@@ -2405,7 +2401,7 @@ export const medicoService = {
     if (payload.assinada !== undefined) {
       body.assinada = Boolean(payload.assinada)
       body.signed = body.signed ?? body.assinada
-      body.status = body.assinada ? "assinada" : (body.status || "emitida")
+      body.status = body.assinada ? "ASSINADA" : (body.status || "PENDENTE")
     }
     // Hashes e algoritmo
     if (payload.hash_alg) {

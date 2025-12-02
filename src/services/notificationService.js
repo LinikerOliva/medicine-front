@@ -80,11 +80,33 @@ class NotificationService {
         formData.append('link_download', linkDownload)
       }
 
-      const response = await api.post(`${this.baseUrl}enviar-email/`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
+      let response
+      try {
+        response = await api.post(`${this.baseUrl}enviar-email/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      } catch (primaryErr) {
+        const st = primaryErr?.response?.status
+        if (st === 401 || st === 403) throw primaryErr
+        const candidates = [
+          `/api/receitas/${receitaId}/enviar/`,
+          `/api/receitas/enviar/`
+        ]
+        let lastErr = primaryErr
+        for (const url of candidates) {
+          try {
+            response = await api.post(url, formData)
+            lastErr = null
+            break
+          } catch (e2) {
+            const st2 = e2?.response?.status
+            if (st2 === 401 || st2 === 403) throw e2
+            lastErr = e2
+            continue
+          }
         }
-      })
+        if (lastErr) throw lastErr
+      }
       
       if (this.verbose) {
         console.log('[NotificationService] E-mail enviado:', response.data)

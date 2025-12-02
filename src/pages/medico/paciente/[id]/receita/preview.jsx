@@ -537,6 +537,8 @@ export default function PreviewReceitaMedico() {
       if (lastReceitaId) return lastReceitaId
       const perfil = await medicoService.getPerfil().catch(() => null)
       const mid = perfil?.medico?.id || perfil?.id || null
+      const medsText = (form.medicamento || (hasStructuredItems ? receitaItems.map(it => (it.medicamento?.nome || it.descricao || '')).filter(Boolean).join('; ') : '')).trim()
+      const posoText = (form.posologia || (hasStructuredItems ? receitaItems.map(it => [it.dose, it.frequencia, it.duracao].filter(Boolean).join(' ')).filter(Boolean).join(' | ') : '')).trim()
       const payload = {
         paciente_id: id,
         consulta_id: consultaId || undefined,
@@ -544,8 +546,8 @@ export default function PreviewReceitaMedico() {
         nome_paciente: form.nome_paciente,
         cpf: form.rg,
         data_nascimento: toInputDate(form.data_nascimento),
-        medicamento: form.medicamento,
-        posologia: form.posologia,
+        medicamento: medsText,
+        posologia: posoText,
         validade: toInputDate(form.validade_receita),
         observacoes: form.observacoes,
         medico: form.medico,
@@ -713,8 +715,7 @@ export default function PreviewReceitaMedico() {
         telefone_consultorio: form.telefone_consultorio,
         validade_receita: toInputDate(form.validade_receita),
         observacoes: form.observacoes,
-        status: 'ativa',
-        situacao: 'ativa',
+        status: 'PENDENTE',
         data_prescricao: new Date().toISOString(),
       }
 
@@ -1374,10 +1375,8 @@ ${form.telefone_consultorio || ''}`
           await medicoService.salvarArquivoAssinado(rid, fileToSend, filenameToSend)
           await medicoService.atualizarReceita(rid, {
             assinada: true,
-            status: 'emitida',
-            situacao: 'emitida',
-            enviada: true,
-            enviada_em: new Date().toISOString(),
+            status: 'ASSINADA',
+            assinada_em: new Date().toISOString(),
           })
         } catch (persistErr) {
           console.warn('[PreviewReceita] Falha ao persistir arquivo/estado da receita:', persistErr?.response?.status, persistErr?.response?.data || persistErr?.message)
