@@ -120,11 +120,13 @@ export class ErrorHandler {
   setupGlobalErrorHandlers() {
     // Erros JavaScript não capturados
     window.addEventListener('error', (event) => {
+      try { event.preventDefault() } catch {}
       this.handleError(event.error, 'GLOBAL_ERROR')
     })
 
     // Promises rejeitadas não capturadas
     window.addEventListener('unhandledrejection', (event) => {
+      try { event.preventDefault() } catch {}
       this.handleError(event.reason, 'UNHANDLED_PROMISE')
     })
   }

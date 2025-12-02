@@ -1,5 +1,6 @@
 import api from "./api"
 import { authService } from "./authService"
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "V.25"
 
 export const pacienteService = {
   async getPerfil() {
@@ -402,6 +403,7 @@ export const pacienteService = {
       let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
       // Fallback: se vier lista geral, filtra pelo paciente vinculado à consulta
       if (pacienteId && Array.isArray(list) && list.length) {
+        try { console.debug(`[${APP_VERSION}] Filtrando receitas por paciente`, pacienteId) } catch {}
         list = list.filter((r) => {
           const pidA = r?.paciente?.id || r?.paciente
           const pidB = r?.consulta?.paciente?.id || r?.consulta?.paciente
