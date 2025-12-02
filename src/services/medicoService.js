@@ -895,6 +895,7 @@ export const medicoService = {
     fd.append("arquivo_assinado", file, filename)
     fd.append("pdf_assinado", file, filename)
     fd.append("documento_assinado", file, filename)
+    fd.append("arquivo_pdf_assinado", file, filename)
     fd.append("file", file, filename)
     fd.append("pdf", file, filename)
     fd.append("documento", file, filename)
