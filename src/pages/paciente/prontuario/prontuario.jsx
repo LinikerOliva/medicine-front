@@ -157,33 +157,34 @@ export default function PacienteProntuario() {
     }
 
     ;(async () => {
+      const [pr, paciente] = await Promise.allSettled([
+        pacienteService.getProntuario(),
+        pacienteService.getPacienteDoUsuario(),
+      ])
+
+      let data = null
       try {
-        const [pr, paciente] = await Promise.allSettled([
-          pacienteService.getProntuario(),
-          pacienteService.getPacienteDoUsuario(),
-        ])
-
-        let data = null
         if (pr.status === "fulfilled") data = normalizeProntuario(pr.value)
+      } catch (_) {}
 
-        // Fallback se vier vazio do prontuário
-        const isEmpty =
-          !data ||
-          (toArray(data.alergias).length === 0 &&
-            toArray(data.condicoes).length === 0 &&
-            toArray(data.medicacoes).length === 0 &&
-            (!data.observacoes || data.observacoes === "—"))
+      const isEmpty =
+        !data ||
+        (toArray(data?.alergias).length === 0 &&
+          toArray(data?.condicoes).length === 0 &&
+          toArray(data?.medicacoes).length === 0 &&
+          (!data?.observacoes || data?.observacoes === "—"))
 
-        if (isEmpty && paciente.status === "fulfilled") {
+      if (isEmpty && paciente.status === "fulfilled") {
+        try {
           const pf = normalizeFromPatient(paciente.value)
           if (pf) data = pf
-        }
+        } catch (_) {}
+      }
 
-        if (mounted) setProntuario(data || { alergias: [], condicoes: [], medicacoes: [], observacoes: "—" })
-      } catch (e) {
-        if (mounted) setError("Não foi possível carregar o prontuário.")
-      } finally {
-        if (mounted) setLoading(false)
+      if (mounted) {
+        setProntuario(data || { alergias: [], condicoes: [], medicacoes: [], observacoes: "—" })
+        setError(null)
+        setLoading(false)
       }
     })()
 
