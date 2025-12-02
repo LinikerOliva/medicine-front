@@ -906,12 +906,6 @@ export const medicoService = {
     const candidates = []
     if (envUpload) candidates.push(envUpload)
     candidates.push(`${baseReceitas}${receitaId}/arquivo-assinado/`)
-    candidates.push(`${baseReceitas}${receitaId}/arquivo/`)
-    candidates.push(`${baseReceitas}${receitaId}/upload/`)
-    candidates.push(`${baseReceitas}${receitaId}/anexos/`)
-    // fallback: PATCH direto na receita
-    candidates.push(`${baseReceitas}${receitaId}/`)
-    candidates.push(`/api/receitas/${receitaId}/`)
 
     let lastErr = null
     for (const raw of candidates) {
@@ -934,8 +928,7 @@ export const medicoService = {
         }
       }
     }
-    if (lastErr) throw lastErr
-    throw new Error("Falha ao salvar arquivo assinado: nenhum endpoint compatível.")
+    return { ok: false, error: lastErr?.response?.status }
   },
 
   // NOVO: util para calcular SHA-256 do PDF assinado
@@ -1034,27 +1027,8 @@ export const medicoService = {
     const candidates = []
     const envGen = (import.meta.env.VITE_GERAR_RECEITA_ENDPOINT || "").trim()
     if (envGen) candidates.push(envGen)
-
-    // Priorizar endpoints que sabemos que existem no backend
-    candidates.push(`${baseReceitas}pdf/`)           // /api/receitas/pdf/
-    candidates.push(`${baseReceitas}gerar/`)         // /api/receitas/gerar/
-    candidates.push(`${baseReceitas}documento/`)     // /api/receitas/documento/
-    candidates.push(`/api/gerar-receita/`)           // endpoint direto
-    
-    // Endpoints comuns (fallback)
-    const pushCommon = (b) => {
-      const bb = b.replace(/\/?$/, "/")
-      candidates.push(`${bb}generate/`)
-      candidates.push(`${bb}preview/`)
-    }
-    pushCommon(baseReceitas)
-    
-    // singular e alternativos (apenas se necessário)
-    const singularBase = baseReceitas.replace(/receitas\/?$/i, "receita/")
-    if (singularBase !== baseReceitas) {
-      candidates.push(`${singularBase}pdf/`)
-      candidates.push(`${singularBase}gerar/`)
-    }
+    candidates.push(`${baseReceitas}pdf/`)
+    candidates.push(`${baseReceitas}gerar/`)
 
     // Remover tentativas desnecessárias que geram 404s
     // if (consultaId) candidates.push(`${baseConsultas}${consultaId}/gerar_receita/`)
@@ -1553,39 +1527,8 @@ export const medicoService = {
     const candidates = []
     const envSend = (import.meta.env.VITE_ENVIAR_RECEITA_ENDPOINT || "").trim()
     if (envSend) candidates.push(envSend)
-
-    if (receitaId) {
-      candidates.push(`${baseReceitas}${receitaId}/enviar/`)
-      candidates.push(`${baseReceitas}${receitaId}/enviar-email/`)
-      candidates.push(`${baseReceitas}${receitaId}/enviar_email/`)
-      candidates.push(`${baseReceitas}${receitaId}/email/`)
-      candidates.push(`${baseReceitas}${receitaId}/send-email/`)
-      candidates.push(`${baseReceitas}${receitaId}/send/`)
-    }
+    if (receitaId) candidates.push(`${baseReceitas}${receitaId}/enviar/`)
     candidates.push(`${baseReceitas}enviar/`)
-    candidates.push(`${baseReceitas}enviar-email/`)
-    candidates.push(`${baseReceitas}enviar_email/`)
-    candidates.push(`${baseReceitas}email/`)
-    candidates.push(`${baseReceitas}send-email/`)
-    candidates.push(`${baseReceitas}send/`)
-    candidates.push(`/email/receitas/`)
-    candidates.push(`/receitas/email/`)
-    candidates.push(`/email/send/`)
-    candidates.push(`/send-email/`)
-
-    if (pacienteId) {
-      candidates.push(`${basePacientes}${pacienteId}/receitas/enviar/`)
-      candidates.push(`${basePacientes}${pacienteId}/receitas/email/`)
-      candidates.push(`${basePacientes}${pacienteId}/receitas/send/`)
-      if (receitaId) {
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar/`)
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar-email/`)
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/enviar_email/`)
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/email/`)
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/send-email/`)
-        candidates.push(`${basePacientes}${pacienteId}/receitas/${receitaId}/send/`)
-      }
-    }
 
     let lastErr = null
     for (const raw of candidates) {
@@ -1600,32 +1543,7 @@ export const medicoService = {
       }
 
       // Alguns backends expõem ação de envio via GET em rotas de ação
-      const looksLikeAction = /\/(enviar|email|send(-email)?)\/?$/i.test(url)
-      // IMPORTANTE: se houver arquivo assinado, evitamos GET para não perder o PDF assinado
-      if (looksLikeAction && !file) {
-        try {
-          logTry("GET")
-          const params = {
-            email,
-            formato,
-            id: receitaId,
-            receita: receitaId,
-            receita_id: receitaId,
-            paciente: pacienteId,
-            paciente_id: pacienteId,
-            assinar: true,
-          }
-          const { data } = await api.get(url, { params })
-          return data
-        } catch (eGETfirst) {
-          lastErr = eGETfirst
-          const st = eGETfirst?.response?.status
-          if (st === 401) throw eGETfirst
-          // Continua para tentar POST/PUT abaixo
-        }
-      }
-
-      // 1) Tenta POST multipart
+      // Apenas POST multipart
       try {
         logTry("POST multipart")
         const { data } = await api.post(url, formData)
@@ -1636,59 +1554,10 @@ export const medicoService = {
         if (st1 && [400, 422].includes(st1)) lastErr = e1 // guarda erro de validação
         else lastErr = e1
       }
-
-      // 2) Tenta POST com JSON body (somente se não houver arquivo assinado)
-      if (!file) {
-        try {
-          logTry("POST json")
-          const { data } = await api.post(url, jsonPayload)
-          return data
-        } catch (e2) {
-          const st2 = e2?.response?.status
-          if (st2 === 401) throw e2
-          if (st2 && [400, 422].includes(st2)) lastErr = e2
-          else lastErr = e2
-        }
-      }
-
-      // 3) Tenta PUT multipart
-      try {
-        logTry("PUT multipart")
-        const { data } = await api.put(url, formData)
-        return data
-      } catch (e3) {
-        const st3 = e3?.response?.status
-        if (st3 === 401) throw e3
-        if (st3 && [400, 422].includes(st3)) lastErr = e3
-        else lastErr = e3
-      }
-
-      // 4) Tenta GET com query params (fallback geral) — somente quando não houver arquivo assinado
-      if (!file) {
-        try {
-          logTry("GET fallback")
-          const params = {
-            email,
-            formato,
-            id: receitaId,
-            receita: receitaId,
-            receita_id: receitaId,
-            paciente: pacienteId,
-            paciente_id: pacienteId,
-            assinar: true,
-          }
-          const { data } = await api.get(url, { params })
-          return data
-        } catch (e4) {
-          const st4 = e4?.response?.status
-          if (st4 === 401) throw e4
-          lastErr = e4
-        }
-      }
     }
 
     if (lastErr) throw lastErr
-    throw new Error("Falha ao enviar receita: nenhum endpoint compatível encontrado.")
+    return null
   },
 
   // NOVO: Provisionamento automático de Médico e Perfil
@@ -2433,14 +2302,8 @@ export const medicoService = {
     const candidates = []
     const envUpd = (import.meta.env.VITE_ATUALIZAR_RECEITA_ENDPOINT || "").trim()
     if (envUpd) candidates.push(envUpd.replace(/\/?$/, "/"))
-
-    // Rotas diretas (somente PATCH para evitar 400 em PUT)
     candidates.push(`${baseReceitas}${id}/`)
     candidates.push(`/api/receitas/${id}/`)
-    candidates.push(`/receitas/${id}/`)
-    // Alternativo: modelo/tabela explicitamente nomeado
-    candidates.push(`/api/meu_app_receita/${id}/`)
-    candidates.push(`/meu_app_receita/${id}/`)
 
     let lastErr = null
     for (const raw of candidates) {
@@ -2454,12 +2317,11 @@ export const medicoService = {
         if (st === 401) throw e
         if (st === 404) { lastErr = e; continue }
         if (st === 405) { lastErr = e; continue }
-        if (st && [400, 422].includes(st)) throw e
+        if (st && [400, 422].includes(st)) { lastErr = e; continue }
         lastErr = e
       }
     }
-    if (lastErr) throw lastErr
-    throw new Error("Falha ao atualizar receita: nenhum endpoint compatível.")
+    return null
   },
 
   // NOVO: registrar auditoria de assinatura
@@ -2511,9 +2373,7 @@ export const medicoService = {
         lastErr = e
       }
     }
-
-    if (lastErr) throw lastErr
-    throw new Error("Falha ao registrar auditoria de assinatura: nenhum endpoint compatível.")
+    return null
   },
 
   // NOVO: Finalizar assinatura externa (A3/Token)

@@ -1012,9 +1012,7 @@ export default function PreviewReceitaMedico() {
             await medicoService.atualizarReceita(rid, { assinada: true, hash_alg: "SHA-256", hash_pre: preHash, hash_documento: signedHash })
             await medicoService.registrarAuditoriaAssinatura({ receita_id: rid, valido: true, hash_alg: "SHA-256", hash_pre: preHash, hash_documento: signedHash, motivo: "Receita Médica", arquivo: finalName })
           }
-        } catch (error) {
-          console.error("Erro ao atualizar registro:", error)
-        }
+        } catch {}
 
         clearEphemeralCert()
         toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
@@ -1050,11 +1048,6 @@ export default function PreviewReceitaMedico() {
         
         // Obter informações do certificado antes de aplicar o carimbo
         let certInfo = null
-        try {
-          certInfo = await medicoService.getCertificadoInfo()
-        } catch (error) {
-          console.warn("Não foi possível obter informações do certificado:", error)
-        }
         
         const stampedBlob = await medicoService.applySignatureStamp(pdfBlob, {
           signerName: form.medico || undefined,
@@ -1110,12 +1103,7 @@ export default function PreviewReceitaMedico() {
         setSignedFilename(filename || (lastGeneratedFilename || pdfFile.name))
         setSignDate(new Date().toISOString())
 
-        try {
-          const info = await medicoService.getCertificadoInfo()
-          setCertInfo(info || null)
-        } catch (error) {
-          console.error("Erro ao obter informações do certificado:", error)
-        }
+        setCertInfo(certInfo || null)
 
         // Atualiza registro e auditoria com hashes
         try {
