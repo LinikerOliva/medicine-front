@@ -790,10 +790,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      ...(enableMockReceita ? [mockReceitaPlugin()] : []),
-      ...(enableMockMedicoCert ? [mockMedicoCertificadoPlugin()] : []),
-      serveLogoStaticPlugin(),
-      mockNotificationsPlugin(), // Sempre ativo em desenvolvimento
+      serveLogoStaticPlugin()
     ],
     resolve: {
       alias: {
