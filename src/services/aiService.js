@@ -92,6 +92,18 @@ export const aiService = {
       }
     }
 
+    // Regra de negócio: quando houver Sumatriptana mencionada na transcrição,
+    // resumir a posologia para "a cada 6h se dor" e priorizar apenas essa instrução.
+    try {
+      const sumMatch = text.match(/sumatriptan(a)?\b[^\n]*/i)
+      if (sumMatch) {
+        const doseMatch = sumMatch[0].match(/(\d+\s*mg)/i)
+        const dose = doseMatch ? doseMatch[1].replace(/\s+/g, ' ').trim() : ''
+        const posoSimple = `Sumatriptana ${dose}`.trim()
+        posologia = `${posoSimple} — a cada 6h se dor`
+      }
+    } catch {}
+
     const alergias = readSection(["Alergias"]) || String(contexto?.alergias || "")
 
     // Heurística de diagnóstico quando não há seção explícita

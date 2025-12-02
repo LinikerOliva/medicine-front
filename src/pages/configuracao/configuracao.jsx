@@ -680,7 +680,7 @@ export default function Configuracao() {
                         </div>
                         <div className="md:col-span-2 space-y-2">
                           <Label htmlFor="alergias">Alergias</Label>
-                          <Textarea id="alergias" name="alergias" rows={3} value={patientForm.alergias} onChange={handlePatientFormChange} placeholder="Ex.: Dipirona, poeira, frutos do mar" />
+                          <Textarea id="alergias" name="alergias" rows={3} value={patientForm.alergias} onChange={handlePatientFormChange} placeholder="Ex.: poeira, frutos do mar" />
                         </div>
                         <div className="md:col-span-2 space-y-2">
                           <Label htmlFor="condicoes_cronicas">Condições Crônicas</Label>

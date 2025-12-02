@@ -1112,12 +1112,12 @@ export default function IniciarConsulta() {
            </DialogHeader>
            <div className="space-y-2 py-2">
              <Label htmlFor="nova-alergia">Alergia</Label>
-             <Input
-               id="nova-alergia"
-               placeholder="Ex.: Dipirona"
-               value={novaAlergia}
-               onChange={(e) => setNovaAlergia(e.target.value)}
-             />
+            <Input
+              id="nova-alergia"
+              placeholder="Ex.: poeira, frutos do mar"
+              value={novaAlergia}
+              onChange={(e) => setNovaAlergia(e.target.value)}
+            />
            </div>
            <DialogFooter>
              <Button type="button" variant="outline" onClick={() => { setAlergiaDialogOpen(false); setNovaAlergia("") }}>Cancelar</Button>
