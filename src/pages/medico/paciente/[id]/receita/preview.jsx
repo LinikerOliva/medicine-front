@@ -1087,6 +1087,23 @@ export default function PreviewReceitaMedico() {
         }
         const { filename, blob } = signOut || {}
 
+        // Validação forte do PDF assinado
+        if (!(blob instanceof Blob)) {
+          toast({ title: "Falha na assinatura", description: "Não foi possível obter o PDF assinado.", variant: "destructive" })
+          return
+        }
+        try {
+          const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer())
+          const sig = String.fromCharCode(...head)
+          if (!sig.startsWith('%PDF-')) {
+            toast({ title: "Arquivo inválido", description: "Conteúdo não é um PDF válido.", variant: "destructive" })
+            return
+          }
+        } catch {
+          toast({ title: "Validação falhou", description: "Não foi possível validar o PDF assinado.", variant: "destructive" })
+          return
+        }
+
         // Atualiza estados de assinatura
         setIsSigned(true)
         setSignedBlob(blob)

@@ -425,8 +425,19 @@ export default function ReceitasPaciente() {
             return
           }
         } catch {}
-        toast({ title: "Falha no download", description: "Conteúdo não é um PDF válido.", variant: "destructive" })
-        return
+        // Fallback: endpoint dedicado de download
+        try {
+          const res2 = await api.get(`/receitas/${r?.id}/download/`, { responseType: 'blob' })
+          const blob2 = new Blob([res2.data], { type: 'application/pdf' })
+          const name2 = ensurePdfExt(`Receita_${r?.id || 'documento'}.pdf`)
+          // valida cabeçalho
+          try { const ab = await blob2.slice(0,8).arrayBuffer(); const sig = String.fromCharCode(...new Uint8Array(ab)); if (!sig.startsWith('%PDF-')) throw new Error('not-pdf') } catch { throw new Error('not-pdf') }
+          downloadBlob(blob2, name2)
+          return
+        } catch {
+          toast({ title: "Falha no download", description: "Conteúdo não é um PDF válido.", variant: "destructive" })
+          return
+        }
       }
       const blob = new Blob([res.data], { type: "application/pdf" })
       try {
