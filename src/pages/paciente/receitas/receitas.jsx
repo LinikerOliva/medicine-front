@@ -674,19 +674,7 @@ export default function ReceitasPaciente() {
         <div className="absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-white/10"></div>
       </div>
 
-      {isFallback ? (
-        <Card className="border-0 shadow-lg bg-blue-50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3 text-blue-700">
-              <Info className="h-5 w-5" />
-              <div>
-                <p className="text-sm font-semibold">Exibindo dados de exemplo</p>
-                <p className="text-sm">{emptyMsg}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+      {/* aviso de fallback suprimido */}
 
       {/* Cards de estatísticas */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
