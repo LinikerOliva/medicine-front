@@ -14,6 +14,7 @@ import { FileText, Stethoscope, ClipboardList, Save, Mic, MicOff, CircleDot } fr
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { aiService } from "@/services/aiService"
+import notificationService from "@/services/notificationService"
 import { PatientProfileSummary } from "@/components/patient-profile-summary"
 import { DatePicker } from "@/components/ui/date-picker"
 
@@ -43,6 +44,28 @@ export default function IniciarConsulta() {
     transcrito: "",
   })
   const [activeTab, setActiveTab] = useState("anamnese")
+
+  const handleNotificarMedicamentos = async () => {
+    try {
+      const meds = String(formData.medicamentos || "").trim()
+      if (!meds) {
+        toast({ title: "Sem medicamentos", description: "Preencha os medicamentos em uso para notificar o paciente.", variant: "destructive" })
+        return
+      }
+      await notificationService.enviarNotificacaoInterna({
+        pacienteId: id,
+        titulo: "Atualização de medicamentos",
+        mensagem: `Seus medicamentos em uso foram atualizados pelo médico.\n\nLista: ${meds.substring(0, 500)}`,
+        tipo: "medicamento",
+        dados: { origem: "prontuario", paciente_id: id },
+        prioridade: "alta",
+      })
+      toast({ title: "Notificação enviada", description: "O paciente foi notificado sobre os medicamentos." })
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao enviar notificação"
+      toast({ title: "Erro", description: msg, variant: "destructive" })
+    }
+  }
   const handleFieldChange = (e) => {
     const { id, value } = e.target
     setFormData((prev) => ({ ...prev, [id]: value }))
@@ -944,6 +967,11 @@ export default function IniciarConsulta() {
                   <div className="space-y-2">
                     <Label htmlFor="medicamentos">Medicamentos em Uso</Label>
                     <Textarea id="medicamentos" placeholder="Liste os medicamentos em uso" className="min-h-[100px]" value={formData.medicamentos} onChange={handleFieldChange} />
+                    <div className="mt-2 flex gap-2">
+                      <Button type="button" variant="secondary" size="sm" onClick={handleNotificarMedicamentos}>
+                        Notificar paciente
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="alergias">Alergias</Label>

@@ -1113,6 +1113,46 @@ export default function PreviewReceitaMedico() {
         clearEphemeralCert()
         toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
         setSignDialogOpen(false)
+      } else if (signMethod === 'manual') {
+        const rid = await ensureReceitaRecord()
+        const stampedBlob = await medicoService.applySignatureStamp(pdfBlob, {
+          signerName: form.medico || undefined,
+          receitaId: rid || undefined
+        })
+        const filename = lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}.pdf`
+        setIsSigned(true)
+        setSignedBlob(stampedBlob)
+        setSignedFilename(filename)
+        setSignDate(new Date().toISOString())
+        try {
+          const preHash = await sha256Hex(pdfBlob)
+          const signedHash = await sha256Hex(stampedBlob)
+          if (rid) {
+            await medicoService.atualizarReceita(rid, {
+              assinada: true,
+              assinada_em: new Date().toISOString(),
+              algoritmo_assinatura: "MANUAL",
+              hash_alg: "SHA-256",
+              hash_pre: preHash,
+              hash_documento: signedHash,
+              motivo: "Receita Médica"
+            })
+            await medicoService.registrarAuditoriaAssinatura({
+              receita_id: rid,
+              valido: true,
+              tipo: "assinatura_manual",
+              hash_alg: "SHA-256",
+              hash_pre: preHash,
+              hash_documento: signedHash,
+              motivo: "Receita Médica",
+              arquivo: filename
+            })
+          }
+        } catch (error) {
+          console.error("Erro ao atualizar registro:", error)
+        }
+        toast({ title: "Assinatura aplicada", description: "Carimbo de assinatura manual adicionado ao PDF." })
+        setSignDialogOpen(false)
       }
 
     } catch (e) {
@@ -1819,34 +1859,49 @@ ${form.telefone_consultorio || ''}`
                   {form.medico && (
                     <div>Dr(a). {form.medico}{form.crm ? ` • CRM ${form.crm}` : ""}</div>
                   )}
-                  {isSigned ? (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Assinado digitalmente conforme ICP-Brasil
-                      {certInfo?.subject_name || certInfo?.nome || certInfo?.subject ? (
-                        <> • Titular: {certInfo?.subject_name || certInfo?.nome || certInfo?.subject}</>
-                      ) : null}
-                      {form.crm ? (
-                        <> • CRM: {form.crm}</>
-                      ) : null}
-                      {form.rg ? (
-                        <> • CPF: {form.rg}</>
-                      ) : null}
-                      {certInfo?.algorithm ? (
-                        <> • Algoritmo: {certInfo.algorithm}</>
-                      ) : (
-                        <> • Algoritmo: SHA256-RSA</>
-                      )}
-                      {signDate ? (
-                        <> • Carimbo: {new Date(signDate).toLocaleString()}</>
-                      ) : null}
-                      {(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until) ? (
-                        <> • Válido até: {new Date(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until).toLocaleDateString()}</>
-                      ) : null}
-                    </div>
+                {isSigned ? (
+                    certInfo ? (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Assinado digitalmente conforme ICP-Brasil
+                        {certInfo?.subject_name || certInfo?.nome || certInfo?.subject ? (
+                          <> • Titular: {certInfo?.subject_name || certInfo?.nome || certInfo?.subject}</>
+                        ) : null}
+                        {form.crm ? (
+                          <> • CRM: {form.crm}</>
+                        ) : null}
+                        {form.rg ? (
+                          <> • CPF: {form.rg}</>
+                        ) : null}
+                        {certInfo?.algorithm ? (
+                          <> • Algoritmo: {certInfo.algorithm}</>
+                        ) : (
+                          <> • Algoritmo: SHA256-RSA</>
+                        )}
+                        {signDate ? (
+                          <> • Carimbo: {new Date(signDate).toLocaleString()}</>
+                        ) : null}
+                        {(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until) ? (
+                          <> • Válido até: {new Date(certInfo?.valid_to || certInfo?.not_after || certInfo?.valid_until).toLocaleDateString()}</>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Assinada manualmente com carimbo visual
+                        {form.medico ? (
+                          <> • Médico: {form.medico}</>
+                        ) : null}
+                        {form.crm ? (
+                          <> • CRM: {form.crm}</>
+                        ) : null}
+                        {signDate ? (
+                          <> • Data: {new Date(signDate).toLocaleString()}</>
+                        ) : null}
+                      </div>
+                    )
                   ) : (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Documento gerado. Assine para exibir o selo de assinatura digital.
-                    </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Documento gerado. Assine para exibir o selo de assinatura digital.
+                  </div>
                   )}
                 </div>
               </div>
@@ -1871,7 +1926,7 @@ ${form.telefone_consultorio || ''}`
           <Separator />
 
           <Tabs value={signMethod} onValueChange={setSignMethod} className="w-full">
-            <TabsList className="grid grid-cols-2 w-full">
+            <TabsList className="grid grid-cols-3 w-full">
               <TabsTrigger value="token" className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 Token/Smartcard
@@ -1879,6 +1934,10 @@ ${form.telefone_consultorio || ''}`
               <TabsTrigger value="pfx" className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 Certificado PFX
+              </TabsTrigger>
+              <TabsTrigger value="manual" className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-amber-500 rounded-full"></div>
+                Assinatura Manual
               </TabsTrigger>
             </TabsList>
 
@@ -1962,6 +2021,30 @@ ${form.telefone_consultorio || ''}`
                 </div>
                 <p className="text-xs text-blue-700">
                   ✓ Selecione seu certificado digital (.pfx ou .p12) e informe a senha.
+                </p>
+              </div>
+            </TabsContent>
+            <TabsContent value="manual" className="space-y-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <Shield className="h-4 w-4" />
+                  <span className="font-medium">Assinatura Manual com Carimbo Visual</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nome do Médico</Label>
+                    <Input value={form.medico || ""} readOnly disabled className="bg-white" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CRM</Label>
+                    <Input value={form.crm || ""} readOnly disabled className="bg-white" />
+                  </div>
+                </div>
+                <p className="text-xs text-amber-700">
+                  ✓ Aplica um carimbo com nome e data na última página e adiciona QR para verificação.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Use quando não houver certificado digital. O documento fica identificado e auditável.
                 </p>
               </div>
             </TabsContent>
