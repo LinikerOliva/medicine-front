@@ -2429,10 +2429,8 @@ export const medicoService = {
     const envUpd = (import.meta.env.VITE_ATUALIZAR_RECEITA_ENDPOINT || "").trim()
     if (envUpd) candidates.push(envUpd.replace(/\/?$/, "/"))
 
-    // Rotas diretas
+    // Rotas diretas (somente PATCH para evitar 400 em PUT)
     candidates.push(`${baseReceitas}${id}/`)
-    candidates.push(`${baseReceitas}${id}/update/`)
-    candidates.push(`${baseReceitas}${id}/editar/`)
     candidates.push(`/api/receitas/${id}/`)
     candidates.push(`/receitas/${id}/`)
     // Alternativo: modelo/tabela explicitamente nomeado
@@ -2443,20 +2441,16 @@ export const medicoService = {
     for (const raw of candidates) {
       if (!raw) continue
       const url = raw.endsWith("/") ? raw : `${raw}/`
-      const methods = ["patch", "put", "post"]
-      for (const m of methods) {
-        try {
-          const { data } = await api[m](url, body)
-          return data
-        } catch (e) {
-          const st = e?.response?.status
-          if (st === 401) throw e
-          if (st === 404) { lastErr = e; break }
-          if (st === 405) { lastErr = e; continue }
-          if (st && [400, 422].includes(st)) throw e
-          lastErr = e
-          break
-        }
+      try {
+        const { data } = await api.patch(url, body)
+        return data
+      } catch (e) {
+        const st = e?.response?.status
+        if (st === 401) throw e
+        if (st === 404) { lastErr = e; continue }
+        if (st === 405) { lastErr = e; continue }
+        if (st && [400, 422].includes(st)) throw e
+        lastErr = e
       }
     }
     if (lastErr) throw lastErr

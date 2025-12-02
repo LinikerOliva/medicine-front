@@ -96,7 +96,20 @@ export function DashboardLayout({ children, sidebar: Sidebar, breadcrumbs = [] }
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  try {
+                    const r = (activeRole || user?.role || user?.tipo || '').toLowerCase()
+                    if (r === 'paciente') navigate('/paciente/dashboard')
+                    else navigate('/paciente/dashboard')
+                  } catch {
+                    navigate('/paciente/dashboard')
+                  }
+                }}
+                className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+              >
                 <Bell className="size-4" />
               </Button>
               <ThemeToggle />
