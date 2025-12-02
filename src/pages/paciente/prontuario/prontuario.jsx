@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react"
 import { pacienteService } from "@/services/pacienteService"
+import notificationService from "@/services/notificationService"
 import { ProfileTabs } from "@/components/profile-tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FileText, Pill, Clock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/hooks/use-toast"
 
 export default function PacienteProntuario() {
   const [prontuario, setProntuario] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [medNotifEnabled, setMedNotifEnabled] = useState(false)
+  const [savingNotif, setSavingNotif] = useState(false)
+  const { toast } = useToast()
 
   // toArray centralizada (remove duplicadas)
   const toArray = (v) => {
@@ -28,8 +34,7 @@ export default function PacienteProntuario() {
   const parseMedication = (item) => {
     let name = "", dose = "", schedule = ""
     if (typeof item === "string") {
-      // tenta separar por “;”, “•”, “-”, “|”
-      const segs = item.split(/[;•\-\|]/).map((s) => s.trim()).filter(Boolean)
+      const segs = item.split(/[-;•|]/).map((s) => s.trim()).filter(Boolean)
       if (segs.length) name = segs[0]
       if (segs[1]) dose = segs[1]
       if (segs[2]) schedule = segs.slice(2).join(" • ")
@@ -193,6 +198,49 @@ export default function PacienteProntuario() {
     }
   }, [])
 
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const cfg = await notificationService.buscarConfiguracoes()
+        const types = Array.isArray(cfg?.tipos_habilitados) ? cfg.tipos_habilitados : []
+        const enabled = types.map((s) => String(s).toLowerCase()).includes("medicamento")
+        if (active) setMedNotifEnabled(enabled)
+      } catch (_) {
+        try {
+          const local = JSON.parse(localStorage.getItem("notif_pref_medication") || "null")
+          if (local != null && active) setMedNotifEnabled(Boolean(local))
+        } catch {}
+      }
+    })()
+    return () => { active = false }
+  }, [])
+
+  const handleToggleMedicationNotif = async (checked) => {
+    setSavingNotif(true)
+    try {
+      const cfg = await notificationService.buscarConfiguracoes().catch(() => ({}))
+      const types = Array.isArray(cfg?.tipos_habilitados) ? cfg.tipos_habilitados.map(String) : []
+      const lower = types.map((s) => s.toLowerCase())
+      let newTypes = [...types]
+      if (checked) {
+        if (!lower.includes("medicamento")) newTypes.push("medicamento")
+      } else {
+        newTypes = newTypes.filter((t) => String(t).toLowerCase() !== "medicamento")
+      }
+      await notificationService.atualizarConfiguracoes({ ...cfg, tipos_habilitados: newTypes })
+      setMedNotifEnabled(checked)
+      toast({ title: checked ? "Notificações ativadas" : "Notificações desativadas", description: "Preferência de medicamento atualizada." })
+    } catch (e) {
+      setMedNotifEnabled(checked)
+      try { localStorage.setItem("notif_pref_medication", JSON.stringify(checked)) } catch {}
+      const msg = e?.response?.data ? JSON.stringify(e.response.data) : e?.message || "Preferência salva localmente"
+      toast({ title: "Ajuste de notificação", description: msg })
+    } finally {
+      setSavingNotif(false)
+    }
+  }
+
   const renderList = (value) => {
     const items = toArray(value)
     return items.length > 0 ? (
@@ -272,10 +320,13 @@ export default function PacienteProntuario() {
         <p className="text-sm text-red-500">{error}</p>
       ) : (
         <div className="grid gap-6 lg:grid-cols-3 items-start">
-          {/* Principal: Medicações à esquerda */}
           <Card className="lg:col-span-2 min-h-[320px]">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Medicações</CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Notificação</span>
+                <Switch checked={medNotifEnabled} onCheckedChange={handleToggleMedicationNotif} disabled={savingNotif} />
+              </div>
             </CardHeader>
             <CardContent>
               {renderMedications(prontuario?.medicacoes)}
