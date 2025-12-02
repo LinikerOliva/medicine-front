@@ -2012,6 +2012,7 @@ export const medicoService = {
         const sig = String.fromCharCode(...u8)
         if (sig.startsWith("%PDF-")) return { filename, blob }
       } catch {}
+      return null
     }
     try {
       const txt = await new Response(res.data).text()
@@ -2023,8 +2024,7 @@ export const medicoService = {
         return { filename: payload?.filename || payload?.nome_arquivo || filename, blob }
       }
     } catch {}
-    const blob = new Blob([res.data], { type: "application/pdf" })
-    return { filename, blob }
+    return null
   },
 
   // NOVO: assinar documento (PDF) com o certificado do médico
