@@ -1364,10 +1364,25 @@ ${form.telefone_consultorio || ''}`
         return
       }
       
-      // 4. Prosseguir com o envio
+      // 4. Persistir no banco antes do envio
       const rid = await ensureReceitaRecord()
       const fileToSend = signedBlob
       const filenameToSend = signedFilename || lastGeneratedFilename || `Receita_${form.nome_paciente || "Medica"}_assinada.pdf`
+
+      if (rid && fileToSend instanceof Blob) {
+        try {
+          await medicoService.salvarArquivoAssinado(rid, fileToSend, filenameToSend)
+          await medicoService.atualizarReceita(rid, {
+            assinada: true,
+            status: 'emitida',
+            situacao: 'emitida',
+            enviada: true,
+            enviada_em: new Date().toISOString(),
+          })
+        } catch (persistErr) {
+          console.warn('[PreviewReceita] Falha ao persistir arquivo/estado da receita:', persistErr?.response?.status, persistErr?.response?.data || persistErr?.message)
+        }
+      }
       
       // Preparar dados do paciente
       const dadosPaciente = {
