@@ -1,6 +1,7 @@
 import api from "./api"
 import { secureStorage } from "../utils/secureStorage"
 import { solicitacaoService } from "./solicitacaoService"
+import notificationService from "./notificationService"
 
 // Helper: converte data para formato input[type="date"]
 const toInputDate = (v) => {
@@ -209,6 +210,15 @@ export const authService = {
           }
         }
       }
+
+      try {
+        const normalized = normalizeUser(currentUserData || secureStorage.getItem("user") || {})
+        const nomeCompleto = [normalized?.first_name, normalized?.last_name].filter(Boolean).join(" ") || normalized?.username || ""
+        const emailDest = normalized?.email || userData?.email
+        if (emailDest) {
+          await notificationService.enviarEmailBoasVindas({ email: emailDest, nome: nomeCompleto, role: userData?.desired_role })
+        }
+      } catch {}
 
       // NOVO: criação automática de Solicitação de Médico quando desired_role=medico
       let medicoApplication = undefined

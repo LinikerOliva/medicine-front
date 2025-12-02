@@ -16,6 +16,7 @@ import { useEffect, useState } from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { pacienteService } from "@/services/pacienteService"
+import { authService } from "@/services/authService"
 import api from "@/services/api"
 import { adminService } from "@/services/adminService"
 import { medicoService } from "@/services/medicoService"
@@ -250,6 +251,7 @@ export default function Configuracao() {
       }
       const updated = await pacienteService.atualizarPerfil(payload)
       setProfile(updated)
+      try { await authService.refreshCurrentUser() } catch {}
       toast({ title: "Perfil atualizado", description: "Suas informações pessoais foram salvas." })
     } catch (e) {
       const msg = e?.response?.data ? JSON.stringify(e.response.data) : "Não foi possível salvar o perfil."

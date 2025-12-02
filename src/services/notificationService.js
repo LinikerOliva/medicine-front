@@ -97,6 +97,49 @@ class NotificationService {
     }
   }
 
+  async enviarEmail({ email, assunto, mensagem, tipo = 'geral', dados = {} }) {
+    try {
+      const payload = {
+        email,
+        assunto,
+        mensagem,
+        tipo,
+        dados,
+        canal: 'email'
+      }
+      const endpoints = [
+        `${this.baseUrl}enviar/`,
+        '/api/notifications/enviar/',
+        '/notifications/email/'
+      ]
+      let lastErr = null
+      for (const ep of endpoints) {
+        try {
+          const res = await api.post(ep, payload)
+          if (this.verbose) { console.log('[NotificationService] E-mail genérico enviado:', res.data) }
+          return res.data
+        } catch (e) {
+          const st = e?.response?.status
+          if (st === 401 || st === 403) throw e
+          lastErr = e
+          continue
+        }
+      }
+      throw lastErr || new Error('Nenhum endpoint de e-mail disponível')
+    } catch (error) {
+      console.error('[NotificationService] Erro ao enviar e-mail genérico:', error)
+      throw error
+    }
+  }
+
+  async enviarEmailBoasVindas({ email, nome, role }) {
+    const assunto = 'Bem-vindo ao Portal Médico'
+    const saudacao = nome ? `Olá ${nome},` : 'Olá,'
+    const papel = role ? ` como ${role}` : ''
+    const mensagem = `${saudacao}\n\nSua conta foi criada com sucesso${papel}.\nVocê já pode acessar o portal com suas credenciais.\n\nAtenciosamente,\nEquipe Clínica`
+    return this.enviarEmail({ email, assunto, mensagem, tipo: 'boas_vindas', dados: { role } })
+  }
+
   /**
    * Envia receita por SMS
    */

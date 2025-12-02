@@ -57,8 +57,25 @@ export const pacienteService = {
         if (payload[k] === undefined) delete payload[k]
       })
 
-      const response = await api.patch(`${base}${user.id}/`, payload)
-      return response.data
+      const candidates = [
+        `${base}${user.id}/`,
+        `${base}me/`,
+        "/users/me/",
+        "/auth/user/",
+        "/api/auth/users/me/",
+        "/api/users/me/",
+      ]
+      let lastErr = null
+      for (const url of candidates) {
+        try {
+          const response = await api.patch(url, payload)
+          return response.data
+        } catch (e) {
+          lastErr = e
+          continue
+        }
+      }
+      throw lastErr || new Error("Falha ao atualizar perfil do usuário.")
     } catch (error) {
       console.error('[DEBUG] Erro ao atualizar perfil do usuário:', error?.response?.status, error?.response?.data)
       throw error
@@ -329,6 +346,21 @@ export const pacienteService = {
     if ("last_name" in pacienteData) payload.last_name = String(pacienteData.last_name || "").trim()
     if ("telefone" in pacienteData) payload.telefone = pacienteData.telefone?.trim?.() || "";
     if ("data_nascimento" in pacienteData) payload.data_nascimento = pacienteData.data_nascimento;
+    if ("tipo_sanguineo" in pacienteData) payload.tipo_sanguineo = String(pacienteData.tipo_sanguineo || "").trim()
+    if ("alergias" in pacienteData) payload.alergias = String(pacienteData.alergias || "").trim()
+    if ("condicoes_cronicas" in pacienteData) payload.condicoes_cronicas = String(pacienteData.condicoes_cronicas || "").trim()
+    if ("contato_emergencia_nome" in pacienteData) payload.contato_emergencia_nome = String(pacienteData.contato_emergencia_nome || "").trim()
+    if ("contato_emergencia_telefone" in pacienteData) payload.contato_emergencia_telefone = String(pacienteData.contato_emergencia_telefone || "").trim()
+    if ("plano_saude" in pacienteData) payload.plano_saude = String(pacienteData.plano_saude || "").trim()
+    if ("numero_carteirinha" in pacienteData) payload.numero_carteirinha = String(pacienteData.numero_carteirinha || "").trim()
+    if ("peso" in pacienteData) {
+      const v = pacienteData.peso
+      payload.peso = typeof v === 'number' ? v : (String(v || '').trim() ? Number(String(v).replace(',', '.')) : null)
+    }
+    if ("altura" in pacienteData) {
+      const v = pacienteData.altura
+      payload.altura = typeof v === 'number' ? v : (String(v || '').trim() ? Number(String(v).replace(',', '.')) : null)
+    }
 
     // remove undefined, mantendo null/string vazia quando intencional
     Object.keys(payload).forEach((k) => {
@@ -344,8 +376,22 @@ export const pacienteService = {
       if (!paciente?.id) {
         throw new Error("Paciente não identificado para atualização.");
       }
-      const resp = await api.patch(`${base}${paciente.id}/`, payload);
-      return resp.data;
+      const candidates = [
+        `${base}${paciente.id}/`,
+        `${base}${paciente.id}/atualizar/`,
+        `${base}${paciente.id}/update/`,
+      ]
+      let lastErr = null
+      for (const url of candidates) {
+        try {
+          const resp = await api.patch(url, payload)
+          return resp.data
+        } catch (e) {
+          lastErr = e
+          continue
+        }
+      }
+      throw lastErr || new Error("Falha ao atualizar dados do paciente.")
     }
   },
 
