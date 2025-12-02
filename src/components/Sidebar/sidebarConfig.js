@@ -54,19 +54,11 @@ export const sidebarConfig = {
     ],
   },
   clinica: {
-    header: { title: "Trathea", subtitle: "Clínica", icon: CalendarDays },
+    header: { title: "", subtitle: "", icon: CalendarDays },
     sections: [
       {
-        label: "Menu Principal",
-        items: [
-          { label: "Dashboard", path: "/clinica/dashboard", icon: Home },
-          { label: "Calendário", path: "/clinica/calendario", icon: Calendar },
-          { label: "Disponibilidade", path: "/clinica/disponibilidade", icon: Clock },
-          { label: "Exames", path: "/clinica/exames", icon: FileTextIcon },
-          { label: "Pacientes", path: "/clinica/pacientes", icon: Users },
-          { label: "Médicos", path: "/clinica/medicos", icon: Stethoscope },
-          { label: "Relatórios", path: "/clinica/relatorios", icon: BarChart3 },
-        ],
+        label: "",
+        items: [],
       },
     ],
   },
@@ -101,7 +93,6 @@ export const sidebarConfig = {
         items: [
           { label: "Solicitações", path: "/admin/solicitacoes", icon: UserCheck },
           { label: "Usuários", path: "/admin/usuarios", icon: Users },
-          { label: "Clínicas", path: "/admin/clinicas", icon: Building2 },
         ],
       },
       {
@@ -109,7 +100,6 @@ export const sidebarConfig = {
         items: [
           { label: "Paciente", path: "/paciente/perfil", icon: User },
           { label: "Médico", path: "/medico/dashboard", icon: Stethoscope },
-          { label: "Clínica", path: "/clinica/dashboard", icon: Building2 },
           { label: "Secretaria", path: "/secretaria/dashboard", icon: Users },
           { label: "Admin", path: "/admin/dashboard", icon: Shield },
         ],

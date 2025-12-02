@@ -16,11 +16,12 @@ import {
   Sparkles,
   ArrowRight
 } from "lucide-react"
+import logoTrathea from "../../logo/logoTrathea.jpg"
 
 export default function Home() {
   const { isAuthenticated: authOk, user } = useAuth()
   const { isAuthenticated } = useUser()
-  const brandLogo = import.meta.env.VITE_BRAND_LOGO_DATA_URL || "/logo/logoTrathea.jpg"
+  const brandLogo = import.meta.env.VITE_BRAND_LOGO_DATA_URL || logoTrathea
   // Redireciona usuários autenticados diretamente para seus painéis
   if (authOk) {
     const role = user?.role || user?.tipo

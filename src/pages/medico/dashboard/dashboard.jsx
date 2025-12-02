@@ -113,9 +113,11 @@ export default function MedicoDashboard() {
                 <Plus className="h-5 w-5 mr-2" />
                 Nova Consulta
               </Button>
-              <Button variant="outline" size="lg" className="bg-white text-medical-primary hover:bg-gray-50">
-                <CalendarDays className="h-5 w-5 mr-2" />
-                Ver Agenda Completa
+              <Button variant="outline" size="lg" className="bg-white text-medical-primary hover:bg-gray-50" asChild>
+                <Link to="/medico/minhas-consultas">
+                  <CalendarDays className="h-5 w-5 mr-2" />
+                  Ver Agenda Completa
+                </Link>
               </Button>
               <Button variant="btn-medical-ghost" size="lg" className="bg-white/10 hover:bg-white/20 text-white border-white/30 backdrop-blur-sm">
                 <BarChart3 className="h-5 w-5 mr-2" />
@@ -229,7 +231,7 @@ export default function MedicoDashboard() {
                 </div>
               </div>
               <Button variant="btn-medical-ghost" size="sm" asChild>
-                <Link to="/medico/consultas">
+                <Link to="/medico/minhas-consultas">
                   <Eye className="h-4 w-4 mr-2" />
                   Ver Agenda Completa
                   <ArrowRight className="h-4 w-4 ml-2" />

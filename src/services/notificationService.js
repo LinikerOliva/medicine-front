@@ -1,4 +1,5 @@
 import api from './api'
+const APP_URL = (import.meta.env.VITE_APP_URL || 'https://medicine-front-six.vercel.app').replace(/\/$/, '')
 
 class NotificationService {
   constructor() {
@@ -125,16 +126,16 @@ class NotificationService {
         telefoneFormatado = `55${telefoneNormalizado}`;
       }
 
-      const payload = {
-        destinatario_id: pacienteId,
-        telefone: telefoneFormatado,
-        telefone_original: telefone,
-        receita_id: receitaId,
-        mensagem: mensagem || `Nova receita médica disponível. Acesse: ${linkDownload || window.location.origin}/paciente/receitas`,
-        link_download: linkDownload,
-        canal: 'sms',
-        tipo: 'receita'
-      }
+        const payload = {
+          destinatario_id: pacienteId,
+          telefone: telefoneFormatado,
+          telefone_original: telefone,
+          receita_id: receitaId,
+          mensagem: mensagem || `Nova receita médica disponível. Acesse: ${linkDownload || APP_URL + '/paciente/receitas'}`,
+          link_download: linkDownload,
+          canal: 'sms',
+          tipo: 'receita'
+        }
 
       // Tentar múltiplos endpoints para SMS
       const smsEndpoints = [

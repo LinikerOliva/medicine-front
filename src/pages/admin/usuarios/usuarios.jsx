@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { adminService } from "@/services/adminService"
 import { Pencil, Trash2, UserPlus } from "lucide-react"
+import api from "@/services/api"
 
 export default function UsuariosAdmin() {
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [users, setUsers] = useState([])
@@ -119,23 +122,14 @@ export default function UsuariosAdmin() {
     if (!window.confirm("Confirma excluir este usuário?")) return
     try {
       setDeletingOne(id)
-      await adminService.removerUsuariosEmMassa([id])
-      // refetch lista
-      setLoading(true)
-      setError("")
-      const params = { search: search || undefined, page, limit: pageSize }
-      const data = await adminService.getUsuarios(params)
-      const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
-      const total = typeof data?.count === "number" ? data.count : list.length
-      setUsers(list)
-      setCount(total)
-      // remover da seleção se presente
+      await api.delete(`/users/${id}/`)
+      setUsers((prev) => prev.filter((u) => u?.id !== id))
+      setCount((c) => Math.max(0, c - 1))
       setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next })
     } catch (e) {
       window.alert("Falha ao excluir o usuário.")
     } finally {
       setDeletingOne(null)
-      setLoading(false)
     }
   }
 
@@ -357,7 +351,7 @@ export default function UsuariosAdmin() {
                     <div className="flex gap-2">
                       <button
                         className="px-3 py-1 border rounded-md text-xs inline-flex items-center gap-1.5"
-                        onClick={() => openEdit(u)}
+                        onClick={() => u?.id && navigate(`/admin/usuarios/editar/${u.id}`)}
                         disabled={!u?.id}
                         title={!u?.id ? "ID indisponível" : "Editar usuário"}
                       >

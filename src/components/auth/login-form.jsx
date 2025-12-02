@@ -11,6 +11,7 @@ import { useToast } from "../../hooks/use-toast"
 import { useTheme } from "../theme-provider"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { validateEmail, validateLoginPassword, validateCPF } from "../../utils/inputValidation"
+import logoTrathea from "../../logo/logoTrathea.jpg"
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
@@ -211,7 +212,7 @@ export function LoginForm() {
       <Card className="w-full max-w-md shadow-2xl border-0 backdrop-blur-xl bg-white/90 relative z-10">
         <CardHeader className="space-y-1 text-center pb-8">
           <div className="mx-auto w-16 h-16 rounded-2xl overflow-hidden mb-6 shadow-lg">
-            <img src="/logo/logoTrathea.jpg" alt="Trathea" className="w-full h-full object-cover" />
+            <img src={logoTrathea} alt="Trathea" className="w-full h-full object-cover" />
           </div>
           <CardTitle className="text-3xl font-bold text-medical-primary mx-auto text-center">
             Trathea

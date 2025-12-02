@@ -51,6 +51,7 @@ import {
 } from "lucide-react"
 import sidebarConfig from "./sidebarConfig"
 import { pacienteService } from "../../services/pacienteService"
+import logoTrathea from "../../../logo/logoTrathea.jpg"
 
 // Sidebar médica profissional com hierarquia visual clara
 export function Sidebar({ role = "paciente" }) {
@@ -97,7 +98,6 @@ export function Sidebar({ role = "paciente" }) {
   const adminTelas = [
     { title: "Paciente", path: "/paciente/perfil", icon: User },
     { title: "Médico", path: "/medico/dashboard", icon: Stethoscope },
-    { title: "Clínica", path: "/clinica/dashboard", icon: Building2 },
     { title: "Secretaria", path: "/secretaria/dashboard", icon: UserCircle },
     { title: "Admin", path: "/admin/dashboard", icon: Shield },
   ]
@@ -135,7 +135,7 @@ export function Sidebar({ role = "paciente" }) {
 
   // Ícone do role atual
   const RoleIcon = config.header.icon
-  const brandLogo = import.meta.env.VITE_BRAND_LOGO_DATA_URL || "/logo/logoTrathea.jpg"
+  const brandLogo = import.meta.env.VITE_BRAND_LOGO_DATA_URL || logoTrathea
 
   return (
     <UISidebar className="medical-sidebar group border-r border-medical-border/20 bg-gradient-to-b from-medical-background to-medical-background/95 backdrop-blur-xl">
@@ -361,7 +361,20 @@ export function Sidebar({ role = "paciente" }) {
               Minha Conta
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-medical-border/20" />
-            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+            <DropdownMenuItem 
+              onClick={() => {
+                const roleNow = user?.role || user?.tipo
+                const path = roleNow === "admin" 
+                  ? "/admin/dashboard" 
+                  : roleNow === "medico" 
+                  ? "/medico/dashboard" 
+                  : roleNow === "clinica" 
+                  ? "/clinica/dashboard" 
+                  : "/paciente/perfil"
+                navigate(path)
+              }}
+              className="hover:bg-medical-primary/10 focus:bg-medical-primary/10"
+            >
               <User className="size-4 mr-2 text-medical-primary" />
               Perfil
             </DropdownMenuItem>
@@ -372,11 +385,17 @@ export function Sidebar({ role = "paciente" }) {
               <Settings className="size-4 mr-2 text-medical-primary" />
               Configurações
             </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+            <DropdownMenuItem 
+              onClick={() => window.alert("Em breve")}
+              className="hover:bg-medical-primary/10 focus:bg-medical-primary/10"
+            >
               <Palette className="size-4 mr-2 text-medical-primary" />
               Tema
             </DropdownMenuItem>
-            <DropdownMenuItem className="hover:bg-medical-primary/10 focus:bg-medical-primary/10">
+            <DropdownMenuItem 
+              onClick={() => window.alert("Em breve")}
+              className="hover:bg-medical-primary/10 focus:bg-medical-primary/10"
+            >
               <HelpCircle className="size-4 mr-2 text-medical-primary" />
               Ajuda
             </DropdownMenuItem>

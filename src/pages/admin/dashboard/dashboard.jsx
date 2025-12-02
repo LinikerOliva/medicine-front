@@ -264,20 +264,7 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/50 dark:to-purple-900/50">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-semibold text-purple-700 dark:text-purple-300">Clínicas Ativas</CardTitle>
-            <div className="p-2 bg-purple-500 rounded-lg">
-              <Building2 className="h-4 w-4 text-white" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-purple-900 dark:text-purple-100">{stats.clinicasAtivas}</div>
-            <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-              +2 novas este mês
-            </p>
-          </CardContent>
-        </Card>
+        
 
         <Card className="border-0 shadow-lg bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/50 dark:to-amber-900/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
