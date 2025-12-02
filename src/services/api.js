@@ -1,11 +1,6 @@
 import axios from "axios";
 import { secureStorage } from "../utils/secureStorage";
-// (imports reduzidos)
-
-// FALLBACK DE SEGURANÇA: força host de produção
-const API_URL = "https://tcc-back-ktwy.onrender.com";
-console.log("--- FORÇANDO API PRODUÇÃO ---");
-console.log("URL:", API_URL);
+const API_URL = (import.meta.env.VITE_API_URL || "https://tcc-back-ktwy.onrender.com").replace(/\/$/, "");
 
 // --- CRIAÇÃO DO AXIOS ---
 const api = axios.create({
@@ -13,7 +8,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 30000, // Aumentei para 30s pois o Render "dorme" e demora pra acordar
+  timeout: 30000,
 });
 
 // --- INTERCEPTOR DE REQUISIÇÃO (TOKEN) ---
@@ -44,7 +39,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error("Erro na API:", error);
     return Promise.reject(error);
   }
 );
