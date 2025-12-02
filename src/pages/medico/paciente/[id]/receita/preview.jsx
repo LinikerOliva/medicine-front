@@ -807,48 +807,7 @@ export default function PreviewReceitaMedico() {
     }
   }
 
-  async function handleEnviarTesteEmail() {
-    try {
-      setSubmitLoading(true)
-      // Garantir receitaId
-      const rid = await ensureReceitaRecord()
-      if (!rid) throw new Error('Não foi possível localizar/criar a receita')
-
-      // Garantir arquivo: usa assinado se existir, senão o último gerado, senão gera
-      let file = signedBlob || lastGeneratedBlob
-      let filename = signedFilename || lastGeneratedFilename || `Receita_${form.nome_paciente || 'Medica'}.pdf`
-      if (!file) {
-        await handleGerarDocumento()
-        file = signedBlob || lastGeneratedBlob
-        filename = signedFilename || lastGeneratedFilename || filename
-      }
-
-      // Persistir arquivo e marcar como assinada antes de enviar (o backend usa arquivo salvo)
-      try {
-        await medicoService.salvarArquivoAssinado(rid, file, filename)
-        await medicoService.atualizarReceita(rid, { assinada: true, assinada_em: new Date().toISOString() })
-      } catch (_) {}
-
-      const assunto = 'Receita Médica - Teste'
-      const mensagem = `Olá ${form.nome_paciente || ''},\n\nEste é um envio de teste da sua receita. Caso não receba o anexo, acesse: ${window.location.origin}/verificar/${rid}.\n\nAtenciosamente,\nEquipe Médica`
-      const email = form.email_paciente
-      if (!email) throw new Error('Informe o e-mail do paciente no formulário')
-
-      const res = await medicoService.enviarReceita({
-        receitaId: rid,
-        pacienteId: id,
-        email,
-        formato: 'pdf'
-      })
-      toast({ title: 'Envio de teste disparado', description: `Assunto: ${assunto}` })
-    } catch (e) {
-      const st = e?.response?.status
-      const msg = e?.response?.data?.detail || e?.message || 'Falha ao enviar teste'
-      toast({ title: 'Erro no envio de teste', description: `${msg}${st ? ` [HTTP ${st}]` : ''}`, variant: 'destructive' })
-    } finally {
-      setSubmitLoading(false)
-    }
-  }
+  
 
   // Nova função para assinatura digital via API Flask
   const handleAssinarDigitalmente = async () => {
@@ -1762,16 +1721,7 @@ ${form.telefone_consultorio || ''}`
                  `Enviar via ${canaisEnvio.length} canais`}
               </Button>
 
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={handleEnviarTesteEmail} 
-                disabled={submitLoading}
-                className="flex items-center gap-2"
-              >
-                <Mail className="h-4 w-4" />
-                Enviar teste (e‑mail)
-              </Button>
+              
             </div>
 
 
