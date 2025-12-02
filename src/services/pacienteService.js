@@ -371,7 +371,6 @@ export const pacienteService = {
     // Mesmo sem pacienteId, tentar buscar receitas gerais; filtros acima reduzirão para o paciente quando possível
 
     try {
-      // Preferir endpoint dedicado /pacientes/{id}/receitas/
       if (pacienteId) {
         const basePacRaw = import.meta.env.VITE_PACIENTES_ENDPOINT || "/pacientes/"
         const basePac = basePacRaw.endsWith("/") ? basePacRaw : `${basePacRaw}/`
@@ -383,8 +382,23 @@ export const pacienteService = {
         } catch (_) {}
       }
 
-      const res = await api.get(endpoint, { params: queryParams })
-      const data = res?.data
+      const candidates = [endpoint]
+      if (!endpoint.startsWith("/api/") && endpoint.startsWith("/")) candidates.push(`/api${endpoint}`)
+      if (!candidates.includes("/receitas/")) candidates.push("/receitas/")
+
+      let data = null
+      let lastErr = null
+      for (const url of candidates) {
+        try {
+          const res = await api.get(url, { params: queryParams })
+          data = res?.data
+          break
+        } catch (e) {
+          lastErr = e
+          continue
+        }
+      }
+      if (!data && lastErr) throw lastErr
       let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
       // Fallback: se vier lista geral, filtra pelo paciente vinculado à consulta
       if (pacienteId && Array.isArray(list) && list.length) {

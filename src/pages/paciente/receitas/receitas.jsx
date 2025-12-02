@@ -14,6 +14,7 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Info,
   Stethoscope,
   Plus,
   Eye,
@@ -674,12 +675,12 @@ export default function ReceitasPaciente() {
       </div>
 
       {isFallback ? (
-        <Card className="border-0 shadow-lg bg-red-50">
+        <Card className="border-0 shadow-lg bg-blue-50">
           <CardContent className="p-4">
-            <div className="flex items-center gap-3 text-red-700">
-              <AlertCircle className="h-5 w-5" />
+            <div className="flex items-center gap-3 text-blue-700">
+              <Info className="h-5 w-5" />
               <div>
-                <p className="text-sm font-semibold">Erro ao carregar receitas</p>
+                <p className="text-sm font-semibold">Exibindo dados de exemplo</p>
                 <p className="text-sm">{emptyMsg}</p>
               </div>
             </div>
