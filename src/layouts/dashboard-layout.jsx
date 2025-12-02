@@ -102,10 +102,10 @@ export function DashboardLayout({ children, sidebar: Sidebar, breadcrumbs = [] }
                 onClick={() => {
                   try {
                     const r = (activeRole || user?.role || user?.tipo || '').toLowerCase()
-                    if (r === 'paciente') navigate('/paciente/dashboard')
-                    else navigate('/paciente/dashboard')
+                    const target = r === 'paciente' ? '/paciente/receitas' : '/paciente/receitas'
+                    navigate(target)
                   } catch {
-                    navigate('/paciente/dashboard')
+                    navigate('/paciente/receitas')
                   }
                 }}
                 className="text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
