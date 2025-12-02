@@ -1369,6 +1369,25 @@ export const medicoService = {
     return null
   },
 
+  async validateCertificadoPfx(pfxFile, password) {
+    if (!(pfxFile instanceof File) || !password) return null
+    const envValidate = (import.meta.env.VITE_MEDICO_CERTIFICADO_VALIDATE_ENDPOINT || "/api/assinatura/certificado/").trim()
+    const url = envValidate.endsWith("/") ? envValidate : `${envValidate}/`
+    const fd = new FormData()
+    fd.append("pfx", pfxFile)
+    fd.append("senha", String(password))
+    fd.append("password", String(password))
+    try {
+      const { data } = await api.post(url, fd)
+      return data
+    } catch (e) {
+      const st = e?.response?.status
+      if (st === 400) return null
+      if (st === 401) throw e
+      return null
+    }
+  },
+
   async uploadCertificado(input) {
     // input pode ser FormData ou File/Blob
     let formData

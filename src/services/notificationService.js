@@ -115,6 +115,9 @@ class NotificationService {
       if (arquivo) {
         const fileName = nomeArquivo || `receita_${receitaId}.pdf`
         formData.append('arquivo', arquivo, fileName)
+        formData.append('file', arquivo, fileName)
+        formData.append('pdf', arquivo, fileName)
+        formData.append('documento', arquivo, fileName)
       }
 
       // Link de download (fallback quando não há arquivo)

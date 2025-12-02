@@ -1048,6 +1048,9 @@ export default function PreviewReceitaMedico() {
         
         // Obter informações do certificado antes de aplicar o carimbo
         let certInfo = null
+        try {
+          certInfo = await medicoService.validateCertificadoPfx(pfxFile, pfxPassword)
+        } catch {}
         
         const stampedBlob = await medicoService.applySignatureStamp(pdfBlob, {
           signerName: form.medico || undefined,
