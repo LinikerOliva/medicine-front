@@ -51,6 +51,7 @@ export default function ReceitasPaciente() {
   const [busca, setBusca] = useState("")
   const [abaAtiva, setAbaAtiva] = useState("todas")
   const [emptyMsg, setEmptyMsg] = useState("")
+  const [isFallback, setIsFallback] = useState(false)
   
   // Dados de exemplo para fallback quando a API falhar
   const receitasExemplo = useMemo(() => [
@@ -279,16 +280,20 @@ export default function ReceitasPaciente() {
           }
         }
 
-        // Empty states: não usar dados de exemplo; manter UI sem dados com mensagem amigável
         if (receitasResult.length === 0) {
-          setReceitas([])
-          setEmptyMsg("Você ainda não possui receitas médicas.")
+          setReceitas(receitasExemplo)
+          setEmptyMsg("Exibindo dados de exemplo. Conecte-se à API para ver suas receitas reais.")
+          setIsFallback(true)
+        } else {
+          setIsFallback(false)
         }
 
       } catch (e) {
         console.error('Erro ao carregar dados:', e.message)
         if (!mounted) return
-        setErro(`Falha ao carregar receitas: ${e.message || 'Erro desconhecido'}`)
+        setReceitas(receitasExemplo)
+        setEmptyMsg("Exibindo dados de exemplo. Conecte-se à API para ver suas receitas reais.")
+        setIsFallback(true)
       } finally {
         if (mounted) {
           setLoading(false)
@@ -631,15 +636,7 @@ export default function ReceitasPaciente() {
   }
 
   if (erro) {
-    return (
-      <div className="mx-auto w-full max-w-7xl space-y-8 p-6">
-        <div className="text-center py-12">
-          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-red-500 mb-2">Erro ao carregar receitas</h3>
-          <p className="text-red-500">{erro}</p>
-        </div>
-      </div>
-    )
+    // Com fallback ativo, mantemos a página e mostramos banner informativo abaixo
   }
 
   return (
@@ -674,6 +671,20 @@ export default function ReceitasPaciente() {
         <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-white/10"></div>
         <div className="absolute -bottom-16 -left-16 h-32 w-32 rounded-full bg-white/10"></div>
       </div>
+
+      {isFallback ? (
+        <Card className="border-0 shadow-lg bg-red-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertCircle className="h-5 w-5" />
+              <div>
+                <p className="text-sm font-semibold">Erro ao carregar receitas</p>
+                <p className="text-sm">{emptyMsg}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Cards de estatísticas */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">

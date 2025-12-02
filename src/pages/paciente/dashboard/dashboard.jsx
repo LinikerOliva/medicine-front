@@ -1,13 +1,20 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Calendar, ClipboardList, FileText, Users, Activity, AlertCircle, Clock, Stethoscope, CalendarDays, Eye, Heart, Pill, Droplets, Shield, ChevronRight, Bell, MapPin, TrendingUp, UserPlus, BarChart3 } from "lucide-react"
+import { Calendar, ClipboardList, FileText, Users, Activity, AlertCircle, Clock, Stethoscope, CalendarDays, Eye, Heart, Pill, Droplets, Shield, ChevronRight, Bell, MapPin, TrendingUp, UserPlus, BarChart3, CheckCircle, XCircle } from "lucide-react"
 import { useApi } from "@/hooks/useApi"
 import { pacienteService } from "@/services/pacienteService"
 import { Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useToast } from "@/hooks/use-toast"
+import notificationService from "@/services/notificationService"
 
 export default function DashboardPaciente() {
   const { data, loading, error } = useApi(pacienteService.getDashboard)
+  const { toast } = useToast()
+  const [notifs, setNotifs] = useState([])
+  const [loadingNotifs, setLoadingNotifs] = useState(false)
+  const [showUnreadOnly, setShowUnreadOnly] = useState(true)
   const stats = data || {
     consultasMes: 0,
     consultasProximas: 0,
@@ -26,6 +33,47 @@ export default function DashboardPaciente() {
     data_hora: "2024-11-22T10:00:00",
     local: "Clínica Bem-Estar - Online",
     status: "Confirmada"
+  }
+
+  const fetchNotifs = async (onlyUnread) => {
+    try {
+      setLoadingNotifs(true)
+      const res = await notificationService.buscarNotificacoes({ page: 1, pageSize: 10, lidas: onlyUnread ? false : null })
+      const items = Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : []
+      setNotifs(items)
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao carregar notificações"
+      toast({ title: "Erro", description: msg, variant: "destructive" })
+    } finally {
+      setLoadingNotifs(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchNotifs(showUnreadOnly)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showUnreadOnly])
+
+  const handleMarkRead = async (id) => {
+    try {
+      await notificationService.marcarComoLida(id)
+      setNotifs((prev) => prev.map((n) => (String(n.id) === String(id) ? { ...n, lida: true, data_leitura: new Date().toISOString() } : n)))
+      toast({ title: "Notificação marcada como lida" })
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao marcar como lida"
+      toast({ title: "Erro", description: msg, variant: "destructive" })
+    }
+  }
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationService.marcarTodasComoLidas()
+      setNotifs((prev) => prev.map((n) => ({ ...n, lida: true, data_leitura: n.data_leitura || new Date().toISOString() })))
+      toast({ title: "Todas notificações marcadas como lidas" })
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Falha ao marcar todas como lidas"
+      toast({ title: "Erro", description: msg, variant: "destructive" })
+    }
   }
 
   if (loading) {
@@ -381,6 +429,101 @@ export default function DashboardPaciente() {
 
         {/* Sidebar - 1/3 */}
         <div className="space-y-6">
+          <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+            <CardHeader className="bg-gradient-to-r from-slate-50 to-orange-50 border-b border-slate-200/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-orange-100 rounded-lg">
+                    <Bell className="h-4 w-4 text-orange-600" />
+                  </div>
+                  <CardTitle className="text-slate-800">Notificações</CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" onClick={() => fetchNotifs(showUnreadOnly)} disabled={loadingNotifs}>
+                    Atualizar
+                  </Button>
+                  <Button variant="ghost" size="sm" className="hover:bg-orange-50" onClick={handleMarkAllRead} disabled={loadingNotifs || notifs.length === 0}>
+                    Marcar todas
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <span>{showUnreadOnly ? "Apenas não lidas" : "Todas"}</span>
+                </div>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowUnreadOnly((v) => !v)}>
+                  {showUnreadOnly ? "Mostrar todas" : "Mostrar não lidas"}
+                </Button>
+              </div>
+              {loadingNotifs ? (
+                <div className="text-center py-8">
+                  <div className="p-4 bg-slate-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <Bell className="h-8 w-8 text-slate-400" />
+                  </div>
+                  <p className="text-slate-600 font-medium">Carregando notificações...</p>
+                </div>
+              ) : notifs.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="p-4 bg-slate-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    <Bell className="h-8 w-8 text-slate-400" />
+                  </div>
+                  <p className="text-slate-600 font-medium mb-2">Sem notificações</p>
+                  <p className="text-slate-500 text-sm">Você verá atualizações aqui</p>
+                </div>
+              ) : (
+                notifs.slice(0, 5).map((n) => (
+                  <div key={n.id} className="p-4 border border-slate-200/50 rounded-xl hover:shadow-md transition-all duration-200 bg-gradient-to-r from-slate-50 to-orange-50">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-orange-100 to-orange-200 rounded-full flex items-center justify-center">
+                        {n.lida ? (
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        ) : (
+                          <Bell className="h-5 w-5 text-orange-600" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold truncate text-slate-900">{n.titulo || n.title || "Notificação"}</p>
+                          {n.tipo && (
+                            <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700 border-orange-200">
+                              {String(n.tipo).toUpperCase()}
+                            </Badge>
+                          )}
+                          {!n.lida && (
+                            <Badge variant="destructive" className="text-xs">Nova</Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-600 truncate">
+                          {n.mensagem || n.message || ""}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {(() => { try { return new Date(n.created_at || n.data || n.data_envio).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) } catch { return "" } })()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!n.lida ? (
+                          <Button variant="ghost" size="sm" className="hover:bg-orange-100" onClick={() => handleMarkRead(n.id)}>
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Lida
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" className="hover:bg-slate-100" disabled>
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Lida
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              <Button variant="ghost" className="w-full text-sm hover:bg-orange-50" onClick={() => fetchNotifs(showUnreadOnly)} disabled={loadingNotifs}>
+                Ver mais
+              </Button>
+            </CardContent>
+          </Card>
           {/* Ações Rápidas */}
           <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
             <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200/50">
