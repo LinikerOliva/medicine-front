@@ -458,6 +458,12 @@ export default function ReceitasPaciente() {
   // Gerar PDF usando template personalizado (consistente com preview)
   async function handleDownloadGerado(r) {
     try {
+      if (r?.arquivo_assinado) {
+        await handleDownloadAssinado(r.arquivo_assinado, r)
+        return
+      }
+      toast({ title: "Assinatura pendente", description: "Esta receita ainda não foi assinada digitalmente pelo médico.", variant: "destructive" })
+      return
       // Importar o serviço (lazy) para evitar bundle pesado inicial
       const { pdfTemplateService } = await import("@/services/pdfTemplateService")
 
@@ -836,7 +842,7 @@ export default function ReceitasPaciente() {
                                     {r.arquivo_assinado ? (
                                       <Button size="sm" variant="outline" onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}>Baixar</Button>
                                     ) : (
-                                      <Button size="sm" variant="outline" onClick={() => handleDownloadGerado(r)}>Gerar</Button>
+                                      <Button size="sm" variant="outline" disabled>Assinatura pendente</Button>
                                     )}
                                   </TableCell>
                                 </TableRow>
@@ -985,15 +991,15 @@ export default function ReceitasPaciente() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="group border-amber-500/60 bg-gradient-to-b from-amber-500/10 to-amber-600/10 text-amber-700 hover:from-amber-500/20 hover:to-amber-600/20 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-100"
-                          onClick={() => handleDownloadGerado(r)}
+                          disabled
+                          className="group border-amber-500/60 bg-gradient-to-b from-amber-500/10 to-amber-600/10 text-amber-700 dark:text-amber-300"
                         >
                           <Download className="h-4 w-4 mr-2" />
-                          Baixar PDF (Gerado)
+                          Assinatura pendente
                         </Button>
                         <div className="text-xs text-muted-foreground flex items-center gap-2">
                           <AlertCircle className="h-3 w-3" />
-                          Receita não assinada digitalmente
+                          Aguarde o médico assinar para baixar o PDF.
                         </div>
                       </>
                     )}
