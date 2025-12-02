@@ -1150,7 +1150,25 @@ export default function PreviewReceitaMedico() {
 
         clearEphemeralCert()
         toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
-        try { baixarBlob(blob, filename || (lastGeneratedFilename || pdfFile.name)) } catch {}
+        // Preferir baixar o arquivo salvo no backend (garante bytes corretos)
+        try {
+          if (rid) {
+            const { data, headers } = await api.get(`/receitas/${rid}/download/`, { responseType: 'blob' })
+            const ct = headers?.['content-type'] || 'application/pdf'
+            const backendBlob = new Blob([data], { type: ct })
+            const head = new Uint8Array(await backendBlob.slice(0, 8).arrayBuffer())
+            const sig = String.fromCharCode(...head)
+            if (sig.startsWith('%PDF-')) {
+              baixarBlob(backendBlob, filename || (lastGeneratedFilename || pdfFile.name))
+            } else {
+              baixarBlob(blob, filename || (lastGeneratedFilename || pdfFile.name))
+            }
+          } else {
+            baixarBlob(blob, filename || (lastGeneratedFilename || pdfFile.name))
+          }
+        } catch {
+          try { baixarBlob(blob, filename || (lastGeneratedFilename || pdfFile.name)) } catch {}
+        }
         try {
           const canais = ['interno', 'email']
           const nomeArquivo = (filename || (lastGeneratedFilename || pdfFile.name))
