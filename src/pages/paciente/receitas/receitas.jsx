@@ -1008,10 +1008,10 @@ export default function ReceitasPaciente() {
                           variant="outline"
                           size="sm"
                           className="group border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 text-emerald-700 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100"
-                          onClick={() => window.open(r.arquivo_assinado || r.arquivo_pdf_assinado, '_blank')}
+                          onClick={() => handleDownloadAssinado(`/receitas/${r?.id}/download/`, r)}
                         >
                           <Eye className="h-4 w-4 mr-2" />
-                          Visualizar PDF
+                          Visualizar (Download)
                         </Button>
                         <Button
                           variant="outline"
