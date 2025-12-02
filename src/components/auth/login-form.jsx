@@ -11,7 +11,7 @@ import { useToast } from "../../hooks/use-toast"
 import { useTheme } from "../theme-provider"
 import { Mail, Lock, Eye, EyeOff } from "lucide-react"
 import { validateEmail, validateLoginPassword, validateCPF } from "../../utils/inputValidation"
-import logoTrathea from "../../logo/logoTrathea.jpg"
+import logoTrathea from "../../../logo/logoTrathea.jpg"
 
 export function LoginForm() {
   const [formData, setFormData] = useState({
