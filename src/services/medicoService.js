@@ -2127,6 +2127,37 @@ export const medicoService = {
     return await this._applySignatureStampToPdf(blobOrFile, opts)
   },
 
+  async _ensurePdfFromResponse(res, fallbackName = "documento_assinado.pdf") {
+    const cd = res?.headers?.["content-disposition"] || res?.headers?.get?.("content-disposition") || ""
+    const ct = String(res?.headers?.["content-type"] || res?.headers?.get?.("content-type") || "").toLowerCase()
+    let filename = fallbackName
+    if (cd) {
+      const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
+      try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
+    }
+    if (ct.includes("application/pdf")) {
+      const blob = new Blob([res.data], { type: "application/pdf" })
+      try {
+        const ab = await blob.slice(0, 8).arrayBuffer()
+        const u8 = new Uint8Array(ab)
+        const sig = String.fromCharCode(...u8)
+        if (sig.startsWith("%PDF-")) return { filename, blob }
+      } catch {}
+    }
+    try {
+      const txt = await new Response(res.data).text()
+      const payload = (() => { try { return JSON.parse(txt) } catch { return null } })()
+      const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64
+      if (b64) {
+        const bytes = Uint8Array.from(atob(String(b64)), c => c.charCodeAt(0))
+        const blob = new Blob([bytes], { type: "application/pdf" })
+        return { filename: payload?.filename || payload?.nome_arquivo || filename, blob }
+      }
+    } catch {}
+    const blob = new Blob([res.data], { type: "application/pdf" })
+    return { filename, blob }
+  },
+
   // NOVO: assinar documento (PDF) com o certificado do médico
   async signDocumento(fileOrForm, meta = {}) {
     // fileOrForm pode ser File (PDF) ou FormData
@@ -2334,32 +2365,8 @@ export const medicoService = {
         try {
           if (VERBOSE) console.debug(`[signDocumento] ${m.toUpperCase()} multipart ->`, url)
           const res = await api[m](url, formData, { responseType: "blob" })
-          const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-          let filename = "receita_assinada.pdf"
-          if (cd) {
-            const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
-            try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
-          }
-          const ct = String(res.headers?.["content-type"] || "").toLowerCase()
-          if (ct.includes("application/pdf")) {
-            const blob = new Blob([res.data], { type: "application/pdf" })
-            return { filename, blob }
-          }
-          // Se não veio PDF na resposta blob, tentar interpretar como JSON/base64
-          try {
-            const txt = await new Response(res.data).text()
-            const payload = (() => { try { return JSON.parse(txt) } catch { return null } })()
-            const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64
-            if (b64) {
-              const byteChars = atob(String(b64))
-              const byteNumbers = new Array(byteChars.length)
-              for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
-              const byteArray = new Uint8Array(byteNumbers)
-              const blob = new Blob([byteArray], { type: "application/pdf" })
-              return { filename, blob }
-            }
-          } catch {}
-          // Caso contrário, trate como erro
+          const ensured = await this._ensurePdfFromResponse(res, "documento_assinado.pdf")
+          if (ensured?.blob) return ensured
           throw e1
         } catch (e1) {
           const st1 = e1?.response?.status
@@ -2370,29 +2377,8 @@ export const medicoService = {
           try {
             if (VERBOSE) console.debug(`[signDocumento] ${m.toUpperCase()} json ->`, url)
             const res = await api[m](url, jsonPayload, { responseType: "json" })
-            const ct = res.headers?.["content-type"] || ""
-            if (/application\/pdf/i.test(ct)) {
-              const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-              let filename = "documento_assinado.pdf"
-              if (cd) {
-                const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
-                try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
-              }
-              const blob = new Blob([res.data], { type: "application/pdf" })
-              return { filename, blob }
-            }
-            // Se vier JSON com base64
-            const payload = res.data || {}
-            const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64 || null
-            if (b64) {
-              const byteChars = atob(String(b64))
-              const byteNumbers = new Array(byteChars.length)
-              for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
-              const byteArray = new Uint8Array(byteNumbers)
-              const blob = new Blob([byteArray], { type: "application/pdf" })
-              const filename = payload?.filename || payload?.nome_arquivo || "documento_assinado.pdf"
-              return { filename, blob }
-            }
+            const ensured = await this._ensurePdfFromResponse(res, "documento_assinado.pdf")
+            if (ensured?.blob) return ensured
             // Se 400/422 no JSON, seguir tentando outros endpoints
             const st2 = res?.status
             if (st2 && [400,422].includes(st2)) { lastErr = e1; continue }
@@ -2760,27 +2746,13 @@ export const medicoService = {
       try {
         if (VERBOSE) { try { console.debug(`[assinarReceita] POST ->`, url, { receitaId }) } catch {} }
         const res = await api.post(url, formData, { responseType: "blob" })
-        const cd = res.headers?.["content-disposition"] || res.headers?.get?.("content-disposition")
-        let filename = "receita_assinada.pdf"
-        if (cd) {
-          const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd)
-          try { filename = decodeURIComponent(match?.[1] || match?.[2] || filename) } catch { filename = match?.[1] || match?.[2] || filename }
-        }
-        const blob = new Blob([res.data], { type: res.headers?.["content-type"] || "application/pdf" })
-
-        // Persistir arquivo e metadados
+        const ensured = await this._ensurePdfFromResponse(res, "receita_assinada.pdf")
+        const blob = ensured.blob
+        const filename = ensured.filename
         const hashHex = await this.computeSHA256Hex(blob)
         await this.salvarArquivoAssinado(receitaId, blob, filename)
         const nowIso = new Date().toISOString()
-        await this.atualizarReceita(receitaId, {
-          assinada: true,
-          assinada_em: nowIso,
-          carimbo_tempo: nowIso,
-          algoritmo_assinatura: "RSA-SHA256-PADES",
-          hash_documento: hashHex,
-          motivo
-        })
-
+        await this.atualizarReceita(receitaId, { assinada: true, assinada_em: nowIso, carimbo_tempo: nowIso, algoritmo_assinatura: "RSA-SHA256-PADES", hash_documento: hashHex, motivo })
         return { receitaId, filename, blob }
       } catch (e) {
         const st = e?.response?.status
@@ -2789,26 +2761,14 @@ export const medicoService = {
         // Alguns backends podem responder JSON com base64
         try {
           const resJson = await api.post(url, formData)
-          const payload = resJson?.data || {}
-          const b64 = payload?.pdf_base64 || payload?.documento_base64 || payload?.file_base64 || payload?.arquivo_base64 || null
-          if (b64) {
-            const byteChars = atob(String(b64))
-            const byteNumbers = new Array(byteChars.length)
-            for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i)
-            const byteArray = new Uint8Array(byteNumbers)
-            const blob = new Blob([byteArray], { type: "application/pdf" })
-            const filename = payload?.filename || payload?.nome_arquivo || "receita_assinada.pdf"
+          const ensured = await this._ensurePdfFromResponse(resJson, "receita_assinada.pdf")
+          if (ensured?.blob) {
+            const blob = ensured.blob
+            const filename = ensured.filename
             const hashHex = await this.computeSHA256Hex(blob)
             await this.salvarArquivoAssinado(receitaId, blob, filename)
             const nowIso = new Date().toISOString()
-            await this.atualizarReceita(receitaId, {
-              assinada: true,
-              assinada_em: nowIso,
-              carimbo_tempo: nowIso,
-              algoritmo_assinatura: "RSA-SHA256-PADES",
-              hash_documento: hashHex,
-              motivo
-            })
+            await this.atualizarReceita(receitaId, { assinada: true, assinada_em: nowIso, carimbo_tempo: nowIso, algoritmo_assinatura: "RSA-SHA256-PADES", hash_documento: hashHex, motivo })
             return { receitaId, filename, blob }
           }
           lastErr = e

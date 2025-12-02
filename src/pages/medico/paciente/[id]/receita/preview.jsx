@@ -864,7 +864,7 @@ export default function PreviewReceitaMedico() {
       // Baixar o PDF assinado no mesmo aba, sem abrir nova guia
       if (result.download_url) {
         try {
-          const { data, headers } = await api.get(result.download_url, { responseType: 'blob' })
+          const { data, headers } = await api.get(result.download_url, { responseType: 'blob', baseURL: '' })
           const ct = headers?.['content-type'] || 'application/pdf'
           const blob = new Blob([data], { type: ct })
           const filename = signedFilename || lastGeneratedFilename || `Receita_${form.nome_paciente || 'Medica'}_assinada.pdf`
@@ -1072,7 +1072,20 @@ export default function PreviewReceitaMedico() {
           pfxPassword: pfxPassword || ""
         }
 
-        const { filename, blob } = await medicoService.signDocumento(pdfFile, meta)
+        let signOut
+        try {
+          signOut = await medicoService.assinarReceita({
+            receitaId: rid,
+            pdfFile,
+            certificado: pfxFile,
+            senha: pfxPassword,
+            modo_assinatura: "pfx",
+            motivo: "Receita Médica",
+          })
+        } catch (eAssinar) {
+          signOut = await medicoService.signDocumento(pdfFile, meta)
+        }
+        const { filename, blob } = signOut || {}
 
         // Atualiza estados de assinatura
         setIsSigned(true)

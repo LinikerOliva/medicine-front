@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
   // Prefixa automaticamente "/api" em chamadas relativas que não são absolutas nem já começam com "/api"
   try {
     const url = String(config.url || "");
-    const isAbsolute = /^https?:\/\//i.test(url);
+    const isAbsolute = /^(https?:\/\/|blob:|data:)/i.test(url);
     const startsWithSlash = url.startsWith("/");
     const alreadyHasApi = url.startsWith("/api/") || url === "/api";
     // Só quando não for absoluto e não tiver "/api" explícito
