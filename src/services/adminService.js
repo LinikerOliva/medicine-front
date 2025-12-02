@@ -2,8 +2,12 @@ import api from "./api"
 import { solicitacaoService } from "./solicitacaoService"
 import { authService } from "./authService"
 
-const STRICT = String(import.meta.env.VITE_DISABLE_ENDPOINT_PROBING ?? "true").toLowerCase() !== "false"
-const VERBOSE = String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
+const STRICT = import.meta.env.PROD
+  ? true
+  : String(import.meta.env.VITE_DISABLE_ENDPOINT_PROBING ?? "true").toLowerCase() !== "false"
+const VERBOSE = import.meta.env.PROD
+  ? false
+  : String(import.meta.env.VITE_VERBOSE_ENDPOINT_LOGS ?? "false").toLowerCase() === "true"
 
 export const adminService = {
   async getDashboard() {

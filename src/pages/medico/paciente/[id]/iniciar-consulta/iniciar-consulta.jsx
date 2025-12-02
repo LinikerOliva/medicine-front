@@ -469,6 +469,10 @@ export default function IniciarConsulta() {
     if (qlow.length < 200 && greetTokens.some(t => qlow.includes(t))) {
       queixa = queixa.replace(/^[\-•\*\s]+/, "").replace(/^(bom dia|boa tarde|boa noite)/i, "").replace(/tudo bem\??/i, "").trim()
     }
+    if (!queixa || /^(bom dia|boa tarde|boa noite)/i.test(queixa)) {
+      const fallbackLine = (norm.split(/\n+/).find((l) => /(dor|febre|tosse|dispneia|diarreia|enjoo|náusea|les[aã]o|mancha|incha[cç][aã]o)/i.test(l)) || "").trim()
+      if (fallbackLine) queixa = fallbackLine
+    }
     queixa = queixa.slice(0, 300)
     const historia = getSection(["História da Doença Atual", "HDA", "História", "Historia"]) || ""
     const diagnostico = getSection(["Diagnóstico Principal", "Diagnóstico", "Diagnostico"]) || ""
@@ -478,14 +482,19 @@ export default function IniciarConsulta() {
     let medicamentos = ""
     let posologia = ""
   
+    // Alergias explícitas
+    const alergiaMatch = norm.match(/alergi[ao]\s*(?:a|à|ao)?\s*([^\n]+)/i)
+    const alergias = alergiaMatch ? alergiaMatch[1].replace(/^[\-•\*\s]+/, "").trim() : ""
+
     if (prescricao) {
       const lines = prescricao
         .split(/\n+/)
         .map((l) => l.trim())
         .filter((l) => l && !/alerg/i.test(l))
-      // Usar as linhas completas como medicamentos para garantir visibilidade no resumo
-      medicamentos = lines.join("\n")
-      // Extrair posologia quando possível (após "–" ou após dosagem)
+      medicamentos = lines
+        .map((l) => l.replace(/^s[oó]\s+tomo\s+/i, "").replace(/^apenas\s+/i, "").replace(/^s[oó]\s+uso\s+/i, "").trim())
+        .filter(Boolean)
+        .join("\n")
       const posoParts = lines
         .map((l) => {
           const dashIdx = l.indexOf("–")
@@ -508,10 +517,10 @@ export default function IniciarConsulta() {
     if (!medicamentos) {
       const usageLines = norm
         .split(/\n+/)
-        .filter((l) => /\b(tomo|uso|faço uso|em uso|utiliza|usa)\b/i.test(l) && !/alerg/i.test(l))
+        .filter((l) => /\b(tomo|uso|fa[çc]o uso|em uso|utiliza|usa)\b/i.test(l) && !/alerg/i.test(l))
       if (usageLines.length) {
         medicamentos = usageLines
-          .map((l) => l.replace(/^s[oó]\s+tomo\s+/i, "").trim())
+          .map((l) => l.replace(/^[\-•\*\s]+/, "").replace(/^s[oó]\s+tomo\s+/i, "").replace(/^apenas\s+/i, "").replace(/^s[oó]\s+uso\s+/i, "").trim())
           .join("\n")
         const posoParts = usageLines
           .map((l) => {
@@ -531,7 +540,7 @@ export default function IniciarConsulta() {
     const temperatura = (norm.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""]) [3] || ""
     const saturacao = (norm.match(/(sat|satura[cç][aã]o)[^\d]*(\d{2})\s*%/i) || ["", "", ""]) [2] || ""
 
-    return { queixa, historia, diagnostico, conduta, medicamentos, posologia, pressao, "frequencia-cardiaca": frequencia, temperatura, saturacao }
+    return { queixa, historia, diagnostico, conduta, medicamentos, posologia, pressao, "frequencia-cardiaca": frequencia, temperatura, saturacao, alergias }
   }
 
   // Adiciona alergia no formulário e opcionalmente atualiza no backend
@@ -650,7 +659,7 @@ export default function IniciarConsulta() {
             queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
             historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
             medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
-            alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
+            alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || extracted.alergias || "",
             diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
             conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
             posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
@@ -699,7 +708,7 @@ export default function IniciarConsulta() {
               conduta: extracted.conduta || formData.conduta || "",
               medicamentos: extracted.medicamentos || formData.medicamentos || "",
               posologia: extracted.posologia || formData.posologia || "",
-              alergias: formData.alergias || "",
+              alergias: formData.alergias || extracted.alergias || "",
             }, { systemPrompt: (
               "Aja como um Especialista em Triagem Médica e Extração de Dados (Scribe).\n"+
               "Retorne APENAS JSON com: queixa, historia_doenca_atual, diagnostico_principal, conduta, medicamentos, posologia, alergias, pressao, frequencia_cardiaca, temperatura, saturacao.\n"+
@@ -732,7 +741,7 @@ export default function IniciarConsulta() {
               queixa: formData.queixa || pick(["queixa_principal", "anamnese.queixa_principal", "queixa", "anamnesis.queixaPrincipal", "chiefComplaint", "chief_complaint"]) || extracted.queixa || "",
               historia: formData.historia || pick(["historia_doenca_atual", "anamnese.historia_doenca_atual", "hda", "historia", "history_of_present_illness", "hpi"]) || extracted.historia || "",
               medicamentos: formData.medicamentos || pick(["medicamentos_uso", "medicamentos", "prescricao.medicamentos", "prescription.medications"]) || extracted.medicamentos || "",
-              alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || "",
+              alergias: formData.alergias || pick(["alergias", "anamnese.alergias", "allergies"]) || extracted.alergias || "",
               diagnostico: formData.diagnostico || pick(["diagnostico_principal", "diagnostico", "diagnosis", "assessment"]) || extracted.diagnostico || "",
               conduta: formData.conduta || pick(["conduta", "plano", "plan", "plan_terapeutico"]) || extracted.conduta || "",
               posologia: formData.posologia || pick(["posologia", "prescricao.posologia", "prescription.posology", "dosage_instructions", "dosage", "instrucoes", "dosagem"]) || extracted.posologia || "",
