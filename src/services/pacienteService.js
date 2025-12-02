@@ -349,10 +349,7 @@ export const pacienteService = {
   },
 
   async getReceitas(params = {}) {
-    const configured = String(import.meta.env.VITE_RECEITAS_ENDPOINT || "").trim()
-    if (!configured) {
-      return { results: [] }
-    }
+    const configured = String(import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/").trim()
     const endpoint = configured.endsWith("/") ? configured : `${configured}/`
 
     const { __propagateErrors, ...cleanParams } = params || {}
@@ -364,14 +361,14 @@ export const pacienteService = {
       if (paciente?.id) {
         pacienteId = paciente.id
         const pid = paciente.id
-        // Preferir filtro suportado pelo backend
+        // Preferir filtros suportados pelo backend
+        queryParams["paciente"] = pid
+        queryParams["paciente_id"] = pid
         queryParams["consulta__paciente"] = pid
       }
     } catch (_) {}
 
-    if (!pacienteId && Object.keys(queryParams).length === 0) {
-      return { results: [] }
-    }
+    // Mesmo sem pacienteId, tentar buscar receitas gerais; filtros acima reduzirão para o paciente quando possível
 
     try {
       // Preferir endpoint dedicado /pacientes/{id}/receitas/
@@ -391,7 +388,11 @@ export const pacienteService = {
       let list = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : [])
       // Fallback: se vier lista geral, filtra pelo paciente vinculado à consulta
       if (pacienteId && Array.isArray(list) && list.length) {
-        list = list.filter((r) => String(r?.consulta?.paciente?.id || r?.consulta?.paciente) === String(pacienteId))
+        list = list.filter((r) => {
+          const pidA = r?.paciente?.id || r?.paciente
+          const pidB = r?.consulta?.paciente?.id || r?.consulta?.paciente
+          return String(pidA || pidB || "") === String(pacienteId)
+        })
       }
 
       // Carregar itens para cada receita

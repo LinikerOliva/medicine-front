@@ -38,6 +38,7 @@ import api from "@/services/api"
 import ReceitaPreviewLayout from "@/components/ReceitaPreviewLayout"
 import { loadTemplateConfig, loadDoctorLogo } from "@/utils/pdfTemplateUtils"
 import { createRoot } from "react-dom/client"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 export default function ReceitasPaciente() {
   const { toast } = useToast()
@@ -807,6 +808,56 @@ export default function ReceitasPaciente() {
                 </div>
               ) : (
                 <div className="grid gap-6">
+                  <Card className="border-0 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Tabela de Receitas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>ID</TableHead>
+                              <TableHead>Data</TableHead>
+                              <TableHead>Médico</TableHead>
+                              <TableHead>Medicamentos</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>PDF</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {receitasFiltradas.map((r) => {
+                              const medicoNome = getDoctorName(r.medico) || getDoctorName(r.consulta?.medico) || "Médico"
+                              const dataStr = (() => {
+                                const d = r?.created_at || r?.data_emissao || ""
+                                try { return d ? new Date(d).toLocaleDateString() : "—" } catch { return String(d || "—") }
+                              })()
+                              const status = getStatusReceita(r)
+                              const medsShort = String(r?.medicamentos || "").split("\n")[0]
+                              return (
+                                <TableRow key={`row-${r.id}`}>
+                                  <TableCell className="whitespace-nowrap">{r.id}</TableCell>
+                                  <TableCell className="whitespace-nowrap">{dataStr}</TableCell>
+                                  <TableCell className="min-w-[160px]">{medicoNome}</TableCell>
+                                  <TableCell className="truncate max-w-[260px]" title={r?.medicamentos || ""}>{medsShort || "—"}</TableCell>
+                                  <TableCell>
+                                    <Badge className={getStatusColor(status)} variant="outline">{status}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {r.arquivo_assinado ? (
+                                      <Button size="sm" variant="outline" onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}>Baixar</Button>
+                                    ) : (
+                                      <Button size="sm" variant="outline" onClick={() => handleDownloadGerado(r)}>Gerar</Button>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
                   {receitasFiltradas.map((r) => {
             const consulta = r.consulta
             const medicoNome =
