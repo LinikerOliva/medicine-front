@@ -57,7 +57,7 @@ export const aiService = {
       }).filter(Boolean)
       // Extrair nomes limpos conhecidos
       const nameSet = new Set()
-      const KNOWN = [/\bbuscopan\s+composto\b/i, /\bmetoclopramida\b/i, /\bondansetrona\b/i, /\bdomperidona\b/i, /\bdipirona\b/i]
+      const KNOWN = [/\bbuscopan\s+composto\b/i, /\bmetoclopramida\b/i, /\bondansetrona\b/i, /\bdomperidona\b/i, /\bdipirona\b/i, /\bsumatriptan(a)?\b/i]
       KNOWN.forEach((rx) => { const m = text.match(rx); if (m) nameSet.add(m[0].replace(/\s+/g,' ').trim()) })
       candidates.forEach((l) => {
         const m = l.match(/^([A-Za-zÀ-ÿ0-9 .+\-]+?)(?:\s+\d+\s?(mg|ml|g|mcg)|\s*[–-])/)
@@ -94,6 +94,41 @@ export const aiService = {
 
     const alergias = readSection(["Alergias"]) || String(contexto?.alergias || "")
 
+    // Heurística de diagnóstico quando não há seção explícita
+    let diagHeur = ""
+    try {
+      if (/\benxaqueca\b/i.test(text)) diagHeur = "Enxaqueca"
+      else if (/cefaleia\s+tensional/i.test(text)) diagHeur = "Cefaleia tensional"
+      else if (/cefaleia\b/i.test(text)) diagHeur = "Cefaleia"
+    } catch {}
+
+    // Construir história baseada em sintomas/duração quando vazia
+    let historiaAuto = ""
+    try {
+      const dur = (text.match(/faz\s*(\d+)\s*dias?/i) || [null, null])[1]
+      const fotofobia = /fotofobia|luz\s*(est[aá]\s*incomodando|incomoda)/i.test(text)
+      const nausea = /enjo(o|o)|n[aá]usea/i.test(text)
+      const puls = /pulsa(n|ndo)/i.test(text)
+      const pa = (text.match(/(\d{2,3}\s*\/\s*\d{2,3})/i) || [null])[0]
+      const parts = []
+      if (dur) parts.push(`Dor há ${dur} dias`)
+      if (puls) parts.push("sensação pulsátil")
+      if (fotofobia) parts.push("fotofobia")
+      if (nausea) parts.push("náusea/enjoo")
+      if (pa) parts.push(`PA ${pa}`)
+      historiaAuto = parts.join(", ")
+    } catch {}
+
+    // Extrair conduta/orientações do texto quando não há seção
+    let condutaHeur = ""
+    try {
+      const items = []
+      if (/evit(ar|e)\s*(telas|computador|celular)/i.test(text)) items.push("evitar telas")
+      if (/descans(ar|e)/i.test(text)) items.push("descansar em ambiente escuro")
+      if (/beb(er|a)\s*(bastante\s*)?\s*\s*[aá]gua/i.test(text)) items.push("hidratação")
+      if (items.length) condutaHeur = items.join("; ")
+    } catch {}
+
     const pressao = (text.match(/(PA|press[aã]o( arterial)?)[^\d]*(\d{2,3}\s*\/\s*\d{2,3})\s*(mmhg)?/i) || ["", "", "", ""])[3] || ""
     const frequencia = (text.match(/(FC|freq[uê]ncia\s*card[ií]aca)[^\d]*(\d{2,3})\s*(bpm)?/i) || ["", "", ""])[2] || ""
     const temperatura = (text.match(/(temp(eratura)?)[^\d]*(\d{2}(?:[\.,]\d)?)\s*(?:°?c|celsius)?/i) || ["", "", "", ""])[3] || ""
@@ -101,9 +136,9 @@ export const aiService = {
 
     return {
       queixa: queixa || String(contexto?.queixa || ""),
-      historia_doenca_atual: historia || String(contexto?.historia_doenca_atual || contexto?.historia || ""),
-      diagnostico_principal: diagnostico || String(contexto?.diagnostico_principal || contexto?.diagnostico || ""),
-      conduta: conduta || String(contexto?.conduta || ""),
+      historia_doenca_atual: historia || historiaAuto || String(contexto?.historia_doenca_atual || contexto?.historia || ""),
+      diagnostico_principal: diagnostico || diagHeur || String(contexto?.diagnostico_principal || contexto?.diagnostico || ""),
+      conduta: conduta || condutaHeur || String(contexto?.conduta || ""),
       medicamentos: medicamentos || String(contexto?.medicamentos || ""),
       posologia: posologia || String(contexto?.posologia || ""),
       alergias: String(alergias || ""),
