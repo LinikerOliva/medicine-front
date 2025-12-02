@@ -50,6 +50,7 @@ export default function ReceitasPaciente() {
   const [submitting, setSubmitting] = useState(false)
   const [busca, setBusca] = useState("")
   const [abaAtiva, setAbaAtiva] = useState("todas")
+  const [emptyMsg, setEmptyMsg] = useState("")
   
   // Dados de exemplo para fallback quando a API falhar
   const receitasExemplo = useMemo(() => [
@@ -278,14 +279,10 @@ export default function ReceitasPaciente() {
           }
         }
 
-        // Se não há receitas nem médicos, usar dados de exemplo
-        if (receitasResult.length === 0 && medicosResult.length === 0) {
-          setReceitas(receitasExemplo)
-          setMedicos(medicosExemplo)
-          setErro("Exibindo dados de exemplo. Conecte-se à API para ver suas receitas reais.")
-        } else if (receitasResult.length === 0) {
-          setReceitas(receitasExemplo)
-          setErro("Nenhuma receita encontrada na API. Exibindo exemplos.")
+        // Empty states: não usar dados de exemplo; manter UI sem dados com mensagem amigável
+        if (receitasResult.length === 0) {
+          setReceitas([])
+          setEmptyMsg("Você ainda não possui receitas médicas.")
         }
 
       } catch (e) {
@@ -785,9 +782,10 @@ export default function ReceitasPaciente() {
                   <Pill className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-muted-foreground mb-2">Nenhuma receita encontrada</h3>
                   <p className="text-muted-foreground mb-6">
-                    {abaAtiva === 'ativas' ? 'Você não possui receitas ativas no momento.' : 
-                     abaAtiva === 'historico' ? 'Você não possui receitas no histórico.' :
-                     'Você ainda não possui receitas médicas.'}
+                    {emptyMsg ||
+                      (abaAtiva === 'ativas' ? 'Você não possui receitas ativas no momento.' : 
+                       abaAtiva === 'historico' ? 'Você não possui receitas no histórico.' :
+                       'Você ainda não possui receitas médicas.')}
                   </p>
                 </div>
               ) : receitasFiltradas.length === 0 ? (
