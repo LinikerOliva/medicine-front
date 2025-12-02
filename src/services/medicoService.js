@@ -2159,25 +2159,14 @@ export const medicoService = {
     const candidates = []
     const envSign = (import.meta.env.VITE_MEDICO_ASSINATURA_ENDPOINT || "").trim()
     if (envSign) candidates.push(envSign)
-
-    const medBaseRaw = import.meta.env.VITE_MEDICOS_ENDPOINT || "/medicos/"
-    const medBase = medBaseRaw.endsWith("/") ? medBaseRaw : `${medBaseRaw}/`
-
-    candidates.push(`/api/assinatura/assinar/`)
-    candidates.push(`/assinatura/assinar/`)
-    // endpoints explícitos de receita
-    candidates.push(`/api/assinar-receita/`)
-    candidates.push(`/assinar-receita/`)
-    candidates.push(`/documentos/assinar/`)
-    candidates.push(`/receitas/assinar/`)
-    candidates.push(`${medBase}me/assinar/`)
-    candidates.push(`${medBase}assinar/`)
-
-    let medicoId = null
-    try { medicoId = await this._resolveMedicoId() } catch {}
-    if (medicoId) {
-      candidates.push(`${medBase}${medicoId}/assinar/`)
-      candidates.push(`${medBase}${medicoId}/assinatura/`)
+    const baseReceitasRaw = import.meta.env.VITE_RECEITAS_ENDPOINT || "/receitas/"
+    const baseReceitas = baseReceitasRaw.endsWith("/") ? baseReceitasRaw : `${baseReceitasRaw}/`
+    const ridForEndpoint = rid || null
+    if (ridForEndpoint) {
+      candidates.push(`${baseReceitas}${ridForEndpoint}/assinar/`)
+      candidates.push(`/api/receitas/${ridForEndpoint}/assinar/`)
+    } else {
+      candidates.push(`/api/receitas/assinar/`)
     }
 
     // Preparar JSON fallback (base64)
