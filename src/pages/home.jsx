@@ -20,6 +20,7 @@ import {
 export default function Home() {
   const { isAuthenticated: authOk, user } = useAuth()
   const { isAuthenticated } = useUser()
+  const brandLogo = import.meta.env.VITE_BRAND_LOGO_DATA_URL || "/logo/logoTrathea.jpg"
   // Redireciona usuários autenticados diretamente para seus painéis
   if (authOk) {
     const role = user?.role || user?.tipo
@@ -34,7 +35,7 @@ export default function Home() {
           <div className="mr-4 flex">
             <Link to="/" className="mr-6 flex items-center space-x-3 group">
               <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden shadow-lg group-hover:shadow-blue-500/25 transition-all duration-300 group-hover:scale-105">
-                <img src="/logo/logoTrathea.jpg" alt="Trathea" className="w-full h-full object-cover" />
+                <img src={brandLogo} alt="Trathea" className="w-full h-full object-cover" />
               </div>
               <span className="font-bold text-xl bg-gradient-to-r from-medical-primary to-blue-600 bg-clip-text text-transparent">
                 Trathea

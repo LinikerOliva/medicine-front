@@ -626,7 +626,26 @@ export default function IniciarConsulta() {
           setAiApplied(true)
           toast({
             title: "Resumo aplicado",
-            description: "Campos preenchidos com a sugestão da IA. Revise e clique em 'Salvar Prontuário'.",
+            description: "Campos preenchidos com a sugestão da IA. Revise e confirme o resumo.",
+          })
+          // Navegar para a tela de Resumo com os campos estruturados vindos da IA
+          const hoje = new Date()
+          const validade = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 7)
+          const pad = (n) => String(n).padStart(2, "0")
+          const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
+          navigate(`/medico/paciente/${id}/consulta/resumo`, {
+            state: {
+              resumo: {
+                queixa: filledForSave.queixa || "",
+                historia: filledForSave.historia || "",
+                diagnostico: filledForSave.diagnostico || "",
+                conduta: filledForSave.conduta || "",
+                medicamentos: filledForSave.medicamentos || "",
+                posologia: filledForSave.posologia || "",
+                validade: validadeStr,
+              },
+              consultaId,
+            },
           })
           setIsSubmitting(false)
           return
@@ -682,7 +701,25 @@ export default function IniciarConsulta() {
             filledForSave = filled
             setFormData((prev) => ({ ...prev, ...filled }))
             setAiApplied(true)
-            toast({ title: "Campos sugeridos", description: "Usamos a transcrição e a IA para preencher. Revise e clique em 'Salvar Prontuário'." })
+            toast({ title: "Campos sugeridos", description: "Usamos a transcrição e a IA para preencher. Revise e confirme o resumo." })
+            const hoje = new Date()
+            const validade = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + 7)
+            const pad = (n) => String(n).padStart(2, "0")
+            const validadeStr = `${validade.getFullYear()}-${pad(validade.getMonth() + 1)}-${pad(validade.getDate())}`
+            navigate(`/medico/paciente/${id}/consulta/resumo`, {
+              state: {
+                resumo: {
+                  queixa: filledForSave.queixa || "",
+                  historia: filledForSave.historia || "",
+                  diagnostico: filledForSave.diagnostico || "",
+                  conduta: filledForSave.conduta || "",
+                  medicamentos: filledForSave.medicamentos || "",
+                  posologia: filledForSave.posologia || "",
+                  validade: validadeStr,
+                },
+                consultaId,
+              },
+            })
             setIsSubmitting(false)
             return
           } catch (e) {
