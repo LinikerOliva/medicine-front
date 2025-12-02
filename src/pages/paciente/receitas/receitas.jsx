@@ -865,8 +865,8 @@ export default function ReceitasPaciente() {
                                     <Badge className={getStatusColor(status)} variant="outline">{status}</Badge>
                                   </TableCell>
                                   <TableCell>
-                                    {r.arquivo_assinado ? (
-                                      <Button size="sm" variant="outline" onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}>Baixar</Button>
+                                    {(r.arquivo_assinado || r.arquivo_pdf_assinado) ? (
+                                      <Button size="sm" variant="outline" onClick={() => handleDownloadAssinado(r.arquivo_assinado || r.arquivo_pdf_assinado, r)}>Baixar</Button>
                                     ) : (
                                       <Button size="sm" variant="outline" disabled>Assinatura pendente</Button>
                                     )}
@@ -991,13 +991,13 @@ export default function ReceitasPaciente() {
 
                   {/* Ações */}
                   <div className="flex flex-wrap gap-3 pt-4 border-t">
-                    {r.arquivo_assinado ? (
+                    {(r.arquivo_assinado || r.arquivo_pdf_assinado) ? (
                       <>
                         <Button
                           variant="outline"
                           size="sm"
                           className="group border-emerald-500/60 bg-gradient-to-b from-emerald-500/10 to-emerald-600/10 text-emerald-700 hover:from-emerald-500/20 hover:to-emerald-600/20 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-100"
-                          onClick={() => window.open(r.arquivo_assinado, '_blank')}
+                          onClick={() => window.open(r.arquivo_assinado || r.arquivo_pdf_assinado, '_blank')}
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           Visualizar PDF
@@ -1006,7 +1006,7 @@ export default function ReceitasPaciente() {
                           variant="outline"
                           size="sm"
                           className="group border-blue-500/60 bg-gradient-to-b from-blue-500/10 to-blue-600/10 text-blue-700 hover:from-blue-500/20 hover:to-blue-600/20 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100"
-                          onClick={() => handleDownloadAssinado(r.arquivo_assinado, r)}
+                          onClick={() => handleDownloadAssinado(r.arquivo_assinado || r.arquivo_pdf_assinado, r)}
                         >
                           <Download className="h-4 w-4 mr-2" />
                           Baixar PDF Assinado
