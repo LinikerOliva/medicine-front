@@ -1112,6 +1112,7 @@ export default function PreviewReceitaMedico() {
               hash_documento: signedHash, 
               motivo: "Receita Médica" 
             })
+            await medicoService.salvarArquivoAssinado(rid, blob, filename || (lastGeneratedFilename || pdfFile.name))
             await medicoService.registrarAuditoriaAssinatura({ 
               receita_id: rid, 
               valido: true, 
@@ -1128,6 +1129,20 @@ export default function PreviewReceitaMedico() {
 
         clearEphemeralCert()
         toast({ title: "Documento assinado", description: "Assinatura digital aplicada com sucesso." })
+        try { baixarBlob(blob, filename || (lastGeneratedFilename || pdfFile.name)) } catch {}
+        try {
+          const canais = ['interno', 'email']
+          const nomeArquivo = (filename || (lastGeneratedFilename || pdfFile.name))
+          await notificationService.enviarReceitaMulticanal({
+            pacienteId: id,
+            receitaId: rid,
+            arquivo: blob,
+            nomeArquivo,
+            canais,
+            dadosPaciente: { nome: form.nome_paciente, email: form.email_paciente },
+            configuracoes: { linkSite: window.location.origin, linkDownload: rid ? `${window.location.origin}/verificar/${rid}` : null }
+          })
+        } catch {}
         setSignDialogOpen(false)
       } else if (signMethod === 'manual') {
         const rid = await ensureReceitaRecord()
