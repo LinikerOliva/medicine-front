@@ -1123,7 +1123,11 @@ export default function PreviewReceitaMedico() {
           const signedHash = await sha256Hex(blob)
           if (rid) {
             await medicoService.atualizarReceita(rid, { 
-              assinada: true, 
+              assinada: true,
+              status: 'ASSINADA',
+              assinada_em: new Date().toISOString(),
+              carimbo_tempo: new Date().toISOString(),
+              algoritmo_assinatura: 'RSA-SHA256-PADES',
               hash_alg: "SHA-256", 
               hash_pre: preHash, 
               hash_documento: signedHash, 
