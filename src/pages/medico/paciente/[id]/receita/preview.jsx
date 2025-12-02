@@ -823,20 +823,22 @@ export default function PreviewReceitaMedico() {
         filename = signedFilename || lastGeneratedFilename || filename
       }
 
+      // Persistir arquivo e marcar como assinada antes de enviar (o backend usa arquivo salvo)
+      try {
+        await medicoService.salvarArquivoAssinado(rid, file, filename)
+        await medicoService.atualizarReceita(rid, { assinada: true, assinada_em: new Date().toISOString() })
+      } catch (_) {}
+
       const assunto = 'Receita Médica - Teste'
       const mensagem = `Olá ${form.nome_paciente || ''},\n\nEste é um envio de teste da sua receita. Caso não receba o anexo, acesse: ${window.location.origin}/verificar/${rid}.\n\nAtenciosamente,\nEquipe Médica`
       const email = form.email_paciente
       if (!email) throw new Error('Informe o e-mail do paciente no formulário')
 
-      const res = await notificationService.enviarReceitaPorEmail({
+      const res = await medicoService.enviarReceita({
+        receitaId: rid,
         pacienteId: id,
         email,
-        receitaId: rid,
-        arquivo: file,
-        nomeArquivo: filename,
-        assunto,
-        mensagem,
-        linkDownload: `${window.location.origin}/verificar/${rid}`
+        formato: 'pdf'
       })
       toast({ title: 'Envio de teste disparado', description: `Assunto: ${assunto}` })
     } catch (e) {
