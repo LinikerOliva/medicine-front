@@ -40,6 +40,7 @@ export default function IniciarConsulta() {
     conduta: "",
     exames: "",
     retorno: "",
+    transcrito: "",
   })
   const [activeTab, setActiveTab] = useState("anamnese")
   const handleFieldChange = (e) => {
@@ -64,6 +65,10 @@ export default function IniciarConsulta() {
   // Ref para acompanhar o último interim e poder "dar flush" quando o motor reinicia
   const interimRef = useRef("")
   useEffect(() => { interimRef.current = interimText }, [interimText])
+
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, transcrito: transcript || "" }))
+  }, [transcript])
 
   // Estados relacionados ao paciente e ao modal de alergias
   const [pacienteInfo, setPacienteInfo] = useState(null)
@@ -899,16 +904,28 @@ export default function IniciarConsulta() {
                 <CardTitle>Anamnese</CardTitle>
                 <CardDescription>Registre a queixa principal e o histórico do paciente</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="queixa">Queixa Principal</Label>
-                  <Textarea
-                    id="queixa"
-                    placeholder="Descreva a queixa principal do paciente"
-                    className="min-h-[100px]"
-                    value={formData.queixa}
-                    onChange={handleFieldChange}
-                  />
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="transcrito">Texto Transcrito</Label>
+              <Textarea
+                id="transcrito"
+                placeholder="Texto completo capturado da conversa"
+                className="min-h-[120px]"
+                value={formData.transcrito}
+                readOnly
+                disabled
+                aria-readonly="true"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="queixa">Queixa Principal</Label>
+              <Textarea
+                id="queixa"
+                placeholder="Descreva a queixa principal do paciente"
+                className="min-h-[100px]"
+                value={formData.queixa}
+                onChange={handleFieldChange}
+              />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="historia">História da Doença Atual</Label>
