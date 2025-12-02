@@ -1392,7 +1392,6 @@ export const medicoService = {
         lastErr = e
       }
     }
-    if (lastErr) throw lastErr
     return null
   },
 
